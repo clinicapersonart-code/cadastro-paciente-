@@ -153,7 +153,6 @@ export const PatientForm: React.FC<PatientFormProps> = ({
                     </div>
                 )}
                 
-                {/* ... other fields ... */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label htmlFor="convenio" className="block text-sm font-medium text-slate-400 mb-1">Convênio</label>
@@ -184,8 +183,7 @@ export const PatientForm: React.FC<PatientFormProps> = ({
                         <button type="button" onClick={() => { if (novoProfissional) { onAddProfissional(novoProfissional); setNovoProfissional(''); } }} className="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 rounded-lg text-sm transition"><PlusIcon className="w-4 h-4" /></button>
                     </div>
                     <div className="flex flex-wrap gap-2 mt-2">
-{/* FIX: Explicitly type the parameter 'p' as string to resolve type inference issue. */}
-                        {formData.profissionais.map((p: string) => <Chip key={p} text={p} onRemove={() => handleRemoveItem(formData.profissionais, (pro) => setFormData(prev => ({...prev, profissionais: pro})), p)} />)}
+                        {formData.profissionais.map((p: string) => <span key={p}><Chip text={p} onRemove={() => handleRemoveItem(formData.profissionais, (pro) => setFormData(prev => ({...prev, profissionais: pro})), p)} /></span>)}
                     </div>
                 </div>
 
@@ -202,8 +200,7 @@ export const PatientForm: React.FC<PatientFormProps> = ({
                         <button type="button" onClick={() => { if (novaEspecialidade) { onAddEspecialidade(novaEspecialidade); setNovaEspecialidade(''); } }} className="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 rounded-lg text-sm transition"><PlusIcon className="w-4 h-4" /></button>
                     </div>
                     <div className="flex flex-wrap gap-2 mt-2">
-{/* FIX: Explicitly type the parameter 'e' as string to resolve type inference issue. */}
-                        {formData.especialidades.map((e: string) => <Chip key={e} text={e} onRemove={() => handleRemoveItem(formData.especialidades, (esp) => setFormData(prev => ({...prev, especialidades: esp})), e)} />)}
+                        {formData.especialidades.map((e: string) => <span key={e}><Chip text={e} onRemove={() => handleRemoveItem(formData.especialidades, (esp) => setFormData(prev => ({...prev, especialidades: esp})), e)} /></span>)}
                     </div>
                 </div>
 
