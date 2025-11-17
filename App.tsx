@@ -75,8 +75,9 @@ const App: React.FC = () => {
             const encrypted = await encryptJSON(payload, pass);
     
             const res = await fetch(url, {
+                redirect: 'follow',
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                 body: JSON.stringify(encrypted)
             });
     
@@ -116,7 +117,7 @@ const App: React.FC = () => {
 
         try {
             setSyncStatus({ msg: 'Buscando backup na nuvem...', isOk: true });
-            const res = await fetch(url);
+            const res = await fetch(url, { redirect: 'follow' });
             if (!res.ok) throw new Error(`Erro do servidor ${res.status}: ${res.statusText}.`);
             
             const pkg = await res.json();
