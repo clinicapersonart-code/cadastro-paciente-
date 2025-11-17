@@ -74,7 +74,10 @@ const App: React.FC = () => {
             const payload: BackupData = { pacientes: currentPatients, convenios, profissionais, especialidades, ts: new Date().toISOString() };
             const encrypted = await encryptJSON(payload, pass);
     
-            const res = await fetch(url, {
+            const urlToFetch = new URL(url);
+            urlToFetch.searchParams.append('action', 'save');
+
+            const res = await fetch(urlToFetch.toString(), {
                 redirect: 'follow',
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -117,7 +120,11 @@ const App: React.FC = () => {
 
         try {
             setSyncStatus({ msg: 'Buscando backup na nuvem...', isOk: true });
-            const res = await fetch(url, { redirect: 'follow' });
+            
+            const urlToFetch = new URL(url);
+            urlToFetch.searchParams.append('action', 'get');
+
+            const res = await fetch(urlToFetch.toString(), { redirect: 'follow' });
             if (!res.ok) throw new Error(`Erro do servidor ${res.status}: ${res.statusText}.`);
             
             const pkg = await res.json();
