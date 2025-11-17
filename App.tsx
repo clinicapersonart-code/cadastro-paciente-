@@ -36,13 +36,78 @@ const App: React.FC = () => {
     const sortedProfissionais = useMemo(() => [...profissionais].sort((a, b) => a.localeCompare(b, 'pt-BR')), [profissionais]);
     const sortedEspecialidades = useMemo(() => [...especialidades].sort((a, b) => a.localeCompare(b, 'pt-BR')), [especialidades]);
 
-    const handleSavePatient = (patient: Patient) => {
-        if (patient.id) {
-            setPatients(patients.map(p => p.id === patient.id ? patient : p));
-        } else {
-            setPatients([...patients, { ...patient, id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}` }]);
+    const performCloudSync = useCallback(async (currentPatients: Patient[], isManualTrigger: boolean) => {
+        let url = cloudEndpoint;
+        if (!url) {
+            if (isManualTrigger) {
+                url = prompt('Para sincronizar, cole a URL do seu Apps Script para o Google Drive:') || '';
+                if (!url) {
+                    alert('Endpoint não informado. Sincronização cancelada.');
+                    return;
+                }
+                setCloudEndpoint(url);
+            } else {
+                setSyncStatus({ msg: 'Endpoint da nuvem não configurado para backup automático.', isOk: false });
+                console.warn('Cloud endpoint not configured. Automatic sync skipped.');
+                return;
+            }
         }
+    
+        let pass = cloudPass;
+        if (!pass) {
+            if (isManualTrigger) {
+                pass = prompt('Defina a senha para criptografar o backup na nuvem (ficará salva neste navegador):');
+                if (!pass) {
+                    alert('Senha não informada. Sincronização cancelada.');
+                    return;
+                }
+                setCloudPass(pass);
+            } else {
+                setSyncStatus({ msg: 'Senha da nuvem não configurada para backup automático.', isOk: false });
+                console.warn('Cloud password not configured. Automatic sync skipped.');
+                return;
+            }
+        }
+    
+        try {
+            setSyncStatus({ msg: 'Sincronizando com a nuvem...', isOk: true });
+            const payload: BackupData = { pacientes: currentPatients, convenios, profissionais, especialidades, ts: new Date().toISOString() };
+            const encrypted = await encryptJSON(payload, pass);
+    
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(encrypted)
+            });
+    
+            if (!res.ok) throw new Error(`Erro do servidor ${res.status}: ${res.statusText}. Verifique a URL do endpoint e as permissões do script.`);
+    
+            const result = await res.json();
+            const statusMsg = `Backup salvo no Google Drive. ${result?.name ? `Arquivo: ${result.name}` : ''}`;
+            setSyncStatus({ msg: statusMsg, isOk: true });
+            if (isManualTrigger) alert(statusMsg);
+        } catch (err) {
+            const errorMsg = `Erro ao sincronizar: ${err instanceof Error ? err.message : String(err)}`;
+            setSyncStatus({ msg: errorMsg, isOk: false });
+            if (isManualTrigger) alert(errorMsg);
+            throw err;
+        }
+    }, [cloudEndpoint, cloudPass, convenios, profissionais, especialidades, setCloudEndpoint, setCloudPass]);
+
+    const handleSavePatient = (patient: Patient) => {
+        let updatedPatients;
+        if (patient.id) {
+            updatedPatients = patients.map(p => p.id === patient.id ? patient : p);
+        } else {
+            updatedPatients = [...patients, { ...patient, id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}` }];
+        }
+        setPatients(updatedPatients);
         setEditingPatient(null);
+
+        // Automatically trigger cloud backup in the background
+        performCloudSync(updatedPatients, false).catch(error => {
+            console.error("Falha no backup automático em segundo plano:", error);
+        });
     };
 
     const handleEditPatient = (patient: Patient) => {
@@ -93,7 +158,6 @@ const App: React.FC = () => {
             setCloudPass(pass);
         }
         try {
-// FIX: Correctly map the 'patients' state variable to the 'pacientes' property.
             const payload: BackupData = { pacientes: patients, convenios, profissionais, especialidades, ts: new Date().toISOString() };
             const pkg = await encryptJSON(payload, pass);
             downloadFile('backup_personart.enc.json', JSON.stringify(pkg), 'application/json');
@@ -140,47 +204,8 @@ const App: React.FC = () => {
         }
     };
     
-    const handleSync = async () => {
-        let url = cloudEndpoint;
-        if (!url) {
-            url = prompt('Cole a URL do seu Apps Script (endpoint):') || '';
-            if(!url) {
-                alert('Endpoint não informado.');
-                return;
-            }
-            setCloudEndpoint(url);
-        }
-
-        let pass = cloudPass;
-        if (!pass) {
-            pass = prompt('Defina a senha para criptografar antes de enviar (será salva neste navegador)');
-            if (!pass) return;
-            setCloudPass(pass);
-        }
-        
-        try {
-            setSyncStatus({ msg: 'Criptografando e enviando...', isOk: true });
-// FIX: Correctly map the 'patients' state variable to the 'pacientes' property.
-            const payload: BackupData = { pacientes: patients, convenios, profissionais, especialidades, ts: new Date().toISOString() };
-            const encrypted = await encryptJSON(payload, pass);
-            
-            const res = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(encrypted)
-            });
-
-            if (!res.ok) throw new Error(`HTTP Error ${res.status}: ${res.statusText}`);
-            
-            const result = await res.json();
-            const statusMsg = `Backup enviado para a nuvem. ${result?.name ? `Arquivo: ${result.name}` : ''}`;
-            setSyncStatus({ msg: statusMsg, isOk: true });
-            alert(statusMsg);
-        } catch (err) {
-            const errorMsg = `Erro ao sincronizar: ${err instanceof Error ? err.message : String(err)}`;
-            setSyncStatus({ msg: errorMsg, isOk: false });
-            alert(errorMsg);
-        }
+    const handleSyncClick = () => {
+        performCloudSync(patients, true);
     };
 
     return (
@@ -234,10 +259,10 @@ const App: React.FC = () => {
                         <button onClick={handleExport} className="bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold px-3 py-1.5 rounded-md text-xs transition flex items-center gap-1"><DownloadIcon className="w-3.5 h-3.5" />Exportar CSV</button>
                         <button onClick={handleEncryptedBackup} className="bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold px-3 py-1.5 rounded-md text-xs transition flex items-center gap-1"><DownloadIcon className="w-3.5 h-3.5" />Backup Local</button>
                         <label className="bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold px-3 py-1.5 rounded-md text-xs transition flex items-center gap-1 cursor-pointer"><UploadIcon className="w-3.5 h-3.5" />Importar<input ref={importFileInputRef} type="file" accept="application/json" className="hidden" onChange={handleImportBackup} /></label>
-                        <button onClick={handleSync} className="bg-sky-600 hover:bg-sky-500 text-white font-semibold px-3 py-1.5 rounded-md text-xs transition flex items-center gap-1"><CloudIcon className="w-3.5 h-3.5" />Sincronizar</button>
+                        <button onClick={handleSyncClick} className="bg-sky-600 hover:bg-sky-500 text-white font-semibold px-3 py-1.5 rounded-md text-xs transition flex items-center gap-1"><CloudIcon className="w-3.5 h-3.5" />Salvar no Google Drive</button>
                         <button onClick={() => { if(window.confirm('APAGAR TODOS OS DADOS?')) setPatients([]) }} className="bg-red-800/80 hover:bg-red-700/80 text-red-200 font-semibold px-3 py-1.5 rounded-md text-xs transition flex items-center gap-1"><TrashIcon className="w-3.5 h-3.5" />Zerar Dados</button>
                       </div>
-                      {syncStatus && <p className={`text-xs ${syncStatus.isOk ? 'text-green-400' : 'text-red-400'}`}>{syncStatus.msg}</p>}
+                      {syncStatus && <p className={`text-xs mt-2 ${syncStatus.isOk ? 'text-green-400' : 'text-red-400'}`}>{syncStatus.msg}</p>}
                     </div>
 
                     {showTable ? (
