@@ -157,19 +157,27 @@ const App: React.FC = () => {
 
 
     const handleSavePatient = (patient: Patient) => {
-        let updatedPatients;
-        if (patient.id) {
-            updatedPatients = patients.map(p => p.id === patient.id ? patient : p);
-        } else {
-            updatedPatients = [...patients, { ...patient, id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}` }];
-        }
-        setPatients(updatedPatients);
-        setEditingPatient(null);
+        try {
+            let updatedPatients;
+            if (patient.id) {
+                updatedPatients = patients.map(p => p.id === patient.id ? patient : p);
+            } else {
+                updatedPatients = [...patients, { ...patient, id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}` }];
+            }
+            setPatients(updatedPatients);
+            setEditingPatient(null);
 
-        // Automatically trigger cloud backup in the background
-        performCloudSync(updatedPatients, false).catch(error => {
-            console.error("Falha no backup automático em segundo plano:", error);
-        });
+            alert('Paciente salvo com sucesso!');
+
+            // Automatically trigger cloud backup in the background
+            performCloudSync(updatedPatients, false).catch(error => {
+                console.error("Falha no backup automático em segundo plano:", error);
+                // The syncStatus message will show the error, no need for another alert.
+            });
+        } catch (error) {
+            console.error("Erro ao salvar paciente localmente:", error);
+            alert(`Ocorreu um erro ao salvar o paciente: ${error instanceof Error ? error.message : String(error)}`);
+        }
     };
 
     const handleEditPatient = (patient: Patient) => {
