@@ -15,7 +15,7 @@ const App: React.FC = () => {
     const [profissionais, setProfissionais] = useLocalStorage<string[]>(STORAGE_KEYS.PROFISSIONAIS, DEFAULT_PROFISSIONAIS);
     const [especialidades, setEspecialidades] = useLocalStorage<string[]>(STORAGE_KEYS.ESPECIALIDADES, DEFAULT_ESPECIALIDADES);
     const [brand, setBrand] = useLocalStorage<BrandConfig>(STORAGE_KEYS.BRAND, { color: '#F2C8A0', dark: '#E3B189', logo: null, name: 'Clínica Personart' });
-    const [cloudEndpoint, setCloudEndpoint] = useLocalStorage<string>(STORAGE_KEYS.CLOUD_ENDPOINT, 'https://script.google.com/macros/s/AKfycbzngsqG19W8ArqohZtC6bxPyWgxMk_CcRXRKduLsK50MpXJf3Jvm6HP0tQaRPrcAFjjNg/exec');
+    const [cloudEndpoint, setCloudEndpoint] = useLocalStorage<string>(STORAGE_KEYS.CLOUD_ENDPOINT, 'https://script.google.com/macros/s/AKfycbyM5earqQA7H3Wuh601E4d1KpAIq7StzqfNNc0bMNbZHHsCdh63GgJiv03aclt8wcTxrQ/exec');
     const [cloudPass, setCloudPass] = useLocalStorage<string>(STORAGE_KEYS.CLOUD_PASS, '');
 
     const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
