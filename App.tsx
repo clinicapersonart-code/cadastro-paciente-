@@ -109,7 +109,7 @@ const App: React.FC = () => {
     }, [cloudEndpoint, cloudPass, convenios, profissionais, especialidades, setCloudEndpoint, setCloudPass]);
 
     const handleCloudRestore = useCallback(async () => {
-        if (!window.confirm('Isso substituirá TODOS os dados locais pelo backup do Google Drive. Deseja continuar?')) {
+        if (patients.length > 0 && !window.confirm('Isso substituirá TODOS os dados locais pelo backup do Google Drive. Deseja continuar?')) {
             return;
         }
 
@@ -151,13 +151,15 @@ const App: React.FC = () => {
             const successMsg = `Dados sincronizados com sucesso do Google Drive. Total de ${data.pacientes.length} pacientes carregados.`;
             setSyncStatus({ msg: successMsg, isOk: true });
             alert(successMsg);
+            // Save password for future auto-saves if successful
+            setCloudPass(pass); 
 
         } catch (err) {
             const errorMsg = `Erro ao restaurar da nuvem: ${err instanceof Error ? err.message : String(err)}`;
             setSyncStatus({ msg: errorMsg, isOk: false });
             alert(errorMsg);
         }
-    }, [cloudEndpoint, cloudPass, setCloudEndpoint, setPatients, setConvenios, setProfissionais, setEspecialidades]);
+    }, [cloudEndpoint, cloudPass, setCloudEndpoint, setCloudPass, setPatients, setConvenios, setProfissionais, setEspecialidades, patients.length]);
 
 
     const handleSavePatient = (patient: Patient) => {
@@ -354,8 +356,20 @@ const App: React.FC = () => {
                             <p className="text-sm text-slate-400 text-right">{filteredPatients.length} paciente(s) encontrado(s)</p>
                         </>
                     ) : (
-                        <div className="text-center py-10 text-slate-500">
-                            A lista está oculta. Use a busca, filtros ou "Ver todos".
+                         <div className="text-center py-10 text-slate-500 space-y-2">
+                            <p>A lista está oculta. Use a busca, filtros ou "Ver todos".</p>
+                            {patients.length === 0 && (
+                                <div className="p-4 bg-slate-900/50 rounded-lg border border-slate-700 inline-block mt-4 max-w-xs">
+                                    <p className="text-xs text-slate-300 mb-2">Se você está acessando em um novo computador e já possui dados salvos:</p>
+                                    <button 
+                                        onClick={handleCloudRestore}
+                                        className="bg-teal-600 hover:bg-teal-500 text-white font-bold py-1 px-3 rounded text-xs flex items-center gap-1 mx-auto"
+                                    >
+                                        <CloudDownloadIcon className="w-3 h-3" />
+                                        Clique aqui para baixar seus dados
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     )}
                 </section>
