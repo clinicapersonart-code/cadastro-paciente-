@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Patient } from '../types';
-import { PlusIcon, XIcon } from './icons';
+import { PlusIcon, XIcon, TrashIcon } from './icons';
 
 interface PatientFormProps {
     editingPatient: Patient | null;
@@ -13,6 +13,9 @@ interface PatientFormProps {
     onAddConvenio: (convenio: string) => void;
     onAddProfissional: (profissional: string) => void;
     onAddEspecialidade: (especialidade: string) => void;
+    onRemoveConvenio: (convenio: string) => void;
+    onRemoveProfissional: (profissional: string) => void;
+    onRemoveEspecialidade: (especialidade: string) => void;
 }
 
 const emptyPatient: Patient = {
@@ -29,15 +32,37 @@ const Chip = ({ text, onRemove }: { text: string, onRemove: () => void }) => (
 );
 
 export const PatientForm: React.FC<PatientFormProps> = ({
-    editingPatient, onSave, onClear, convenios, profissionais, especialidades, onAddConvenio, onAddProfissional, onAddEspecialidade
+    editingPatient, onSave, onClear, convenios, profissionais, especialidades, 
+    onAddConvenio, onAddProfissional, onAddEspecialidade,
+    onRemoveConvenio, onRemoveProfissional, onRemoveEspecialidade
 }) => {
     const [formData, setFormData] = useState<Patient>(emptyPatient);
+    
+    // States for adding new items
     const [novoProfissional, setNovoProfissional] = useState('');
     const [novaEspecialidade, setNovaEspecialidade] = useState('');
 
+    // States for the select dropdowns (to enable deletion of selected item)
+    const [selectedProfissional, setSelectedProfissional] = useState('');
+    const [selectedEspecialidade, setSelectedEspecialidade] = useState('');
+    const [selectedConvenio, setSelectedConvenio] = useState('');
+
     useEffect(() => {
         setFormData(editingPatient ? { ...editingPatient } : { ...emptyPatient });
+        // Se editando, preenche o select de convênio com o valor atual, se existir
+        if (editingPatient?.convenio) {
+            setSelectedConvenio(editingPatient.convenio);
+        } else {
+            setSelectedConvenio('');
+        }
     }, [editingPatient]);
+
+    // Sincroniza o select de convênio com o formData
+    const handleConvenioSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const val = e.target.value;
+        setSelectedConvenio(val);
+        setFormData(prev => ({ ...prev, convenio: val }));
+    };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -157,11 +182,31 @@ export const PatientForm: React.FC<PatientFormProps> = ({
                     <div>
                         <label htmlFor="convenio" className="block text-sm font-medium text-slate-400 mb-1">Convênio</label>
                         <div className="flex gap-2">
-                        <select id="convenio" name="convenio" value={formData.convenio || ''} onChange={handleChange} className="flex-1 w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition">
-                            <option value="">Selecione</option>
-                            {convenios.map(c => <option key={c} value={c}>{c}</option>)}
-                        </select>
-                        <button type="button" onClick={() => {const n = prompt('Novo convênio:'); if (n) onAddConvenio(n);}} className="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 rounded-lg text-sm transition"><PlusIcon className="w-4 h-4" /></button>
+                            <select 
+                                id="convenio" 
+                                name="convenio" 
+                                value={selectedConvenio} 
+                                onChange={handleConvenioSelect} 
+                                className="flex-1 w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition"
+                            >
+                                <option value="">Selecione...</option>
+                                {convenios.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                            <button 
+                                type="button" 
+                                title="Excluir convênio selecionado da lista de opções (não apaga do paciente)" 
+                                onClick={() => {
+                                    if (selectedConvenio) {
+                                        onRemoveConvenio(selectedConvenio);
+                                        setSelectedConvenio('');
+                                        setFormData(prev => ({...prev, convenio: ''}));
+                                    }
+                                }} 
+                                className="bg-slate-700 hover:bg-red-900/50 hover:text-red-300 text-slate-200 px-2.5 rounded-lg text-sm transition"
+                            >
+                                <TrashIcon className="w-4 h-4" />
+                            </button>
+                            <button type="button" title="Criar novo convênio" onClick={() => {const n = prompt('Novo convênio:'); if (n) onAddConvenio(n);}} className="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 rounded-lg text-sm transition"><PlusIcon className="w-4 h-4" /></button>
                         </div>
                     </div>
                     <div>
@@ -173,13 +218,43 @@ export const PatientForm: React.FC<PatientFormProps> = ({
                 <div>
                     <label className="block text-sm font-medium text-slate-400 mb-1">Profissionais</label>
                     <div className="flex gap-2 mb-2">
-                      <select id="profissional-select" className="flex-1 w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition">
+                      <select 
+                          id="profissional-select" 
+                          value={selectedProfissional}
+                          onChange={(e) => setSelectedProfissional(e.target.value)}
+                          className="flex-1 w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition"
+                      >
+                          <option value="">Selecione para adicionar ou excluir...</option>
                           {profissionais.map(p => <option key={p} value={p}>{p}</option>)}
                       </select>
-                      <button type="button" onClick={() => handleAddItem(formData.profissionais, (p) => setFormData(prev => ({...prev, profissionais: p})), (document.getElementById('profissional-select') as HTMLSelectElement).value)} className="bg-sky-600 hover:bg-sky-500 text-white font-semibold px-4 rounded-lg text-sm transition">Adicionar</button>
+                      <button 
+                        type="button" 
+                        title="Excluir profissional selecionado da lista de opções" 
+                        onClick={() => {
+                            if(selectedProfissional) {
+                                onRemoveProfissional(selectedProfissional);
+                                setSelectedProfissional('');
+                            }
+                        }} 
+                        className="bg-slate-700 hover:bg-red-900/50 hover:text-red-300 text-slate-200 px-3 rounded-lg text-sm transition"
+                      >
+                          <TrashIcon className="w-4 h-4" />
+                      </button>
+                      <button 
+                        type="button" 
+                        title="Adicionar profissional ao paciente" 
+                        onClick={() => {
+                            if (selectedProfissional) {
+                                handleAddItem(formData.profissionais, (p) => setFormData(prev => ({...prev, profissionais: p})), selectedProfissional);
+                            }
+                        }} 
+                        className="bg-sky-600 hover:bg-sky-500 text-white font-semibold px-4 rounded-lg text-sm transition"
+                      >
+                          Adicionar
+                      </button>
                     </div>
                     <div className="flex gap-2">
-                        <input type="text" value={novoProfissional} onChange={(e) => setNovoProfissional(e.target.value)} placeholder="Novo profissional" className="flex-1 w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition" />
+                        <input type="text" value={novoProfissional} onChange={(e) => setNovoProfissional(e.target.value)} placeholder="Criar novo profissional (Digite e clique em +)" className="flex-1 w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition" />
                         <button type="button" onClick={() => { if (novoProfissional) { onAddProfissional(novoProfissional); setNovoProfissional(''); } }} className="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 rounded-lg text-sm transition"><PlusIcon className="w-4 h-4" /></button>
                     </div>
                     <div className="flex flex-wrap gap-2 mt-2">
@@ -190,13 +265,43 @@ export const PatientForm: React.FC<PatientFormProps> = ({
                  <div>
                     <label className="block text-sm font-medium text-slate-400 mb-1">Especialidades</label>
                     <div className="flex gap-2 mb-2">
-                      <select id="especialidade-select" className="flex-1 w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition">
+                      <select 
+                        id="especialidade-select" 
+                        value={selectedEspecialidade}
+                        onChange={(e) => setSelectedEspecialidade(e.target.value)}
+                        className="flex-1 w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition"
+                      >
+                          <option value="">Selecione para adicionar ou excluir...</option>
                           {especialidades.map(e => <option key={e} value={e}>{e}</option>)}
                       </select>
-                      <button type="button" onClick={() => handleAddItem(formData.especialidades, (e) => setFormData(prev => ({...prev, especialidades: e})), (document.getElementById('especialidade-select') as HTMLSelectElement).value)} className="bg-sky-600 hover:bg-sky-500 text-white font-semibold px-4 rounded-lg text-sm transition">Adicionar</button>
+                      <button 
+                        type="button" 
+                        title="Excluir especialidade selecionada da lista de opções" 
+                        onClick={() => {
+                            if(selectedEspecialidade) {
+                                onRemoveEspecialidade(selectedEspecialidade);
+                                setSelectedEspecialidade('');
+                            }
+                        }}
+                        className="bg-slate-700 hover:bg-red-900/50 hover:text-red-300 text-slate-200 px-3 rounded-lg text-sm transition"
+                      >
+                          <TrashIcon className="w-4 h-4" />
+                      </button>
+                      <button 
+                        type="button" 
+                        title="Adicionar especialidade ao paciente" 
+                        onClick={() => {
+                            if (selectedEspecialidade) {
+                                handleAddItem(formData.especialidades, (e) => setFormData(prev => ({...prev, especialidades: e})), selectedEspecialidade);
+                            }
+                        }}
+                        className="bg-sky-600 hover:bg-sky-500 text-white font-semibold px-4 rounded-lg text-sm transition"
+                      >
+                          Adicionar
+                      </button>
                     </div>
                     <div className="flex gap-2">
-                        <input type="text" value={novaEspecialidade} onChange={(e) => setNovaEspecialidade(e.target.value)} placeholder="Nova especialidade" className="flex-1 w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition" />
+                        <input type="text" value={novaEspecialidade} onChange={(e) => setNovaEspecialidade(e.target.value)} placeholder="Criar nova especialidade (Digite e clique em +)" className="flex-1 w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition" />
                         <button type="button" onClick={() => { if (novaEspecialidade) { onAddEspecialidade(novaEspecialidade); setNovaEspecialidade(''); } }} className="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 rounded-lg text-sm transition"><PlusIcon className="w-4 h-4" /></button>
                     </div>
                     <div className="flex flex-wrap gap-2 mt-2">

@@ -31,6 +31,18 @@ const App: React.FC = () => {
         document.documentElement.style.setProperty('--brand-dark-color', brand.dark);
     }, [brand]);
 
+    // Ensure new default professionals (with CRP) are added to the list if missing
+    useEffect(() => {
+        const missing = DEFAULT_PROFISSIONAIS.filter(d => !profissionais.includes(d));
+        if (missing.length > 0) {
+            setProfissionais(prev => {
+                // Combine and remove duplicates just in case
+                const combined = [...prev, ...missing];
+                return Array.from(new Set(combined));
+            });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const sortedConvenios = useMemo(() => [...convenios].sort((a, b) => a.localeCompare(b, 'pt-BR')), [convenios]);
     const sortedProfissionais = useMemo(() => [...profissionais].sort((a, b) => a.localeCompare(b, 'pt-BR')), [profissionais]);
@@ -74,13 +86,9 @@ const App: React.FC = () => {
             const payload: BackupData = { pacientes: currentPatients, convenios, profissionais, especialidades, ts: new Date().toISOString() };
             const encrypted = await encryptJSON(payload, pass);
     
-            const urlToFetch = new URL(url);
-            urlToFetch.searchParams.append('action', 'save');
-
-            const res = await fetch(urlToFetch.toString(), {
-                redirect: 'follow',
+            const res = await fetch(url, {
                 method: 'POST',
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(encrypted)
             });
     
@@ -120,11 +128,7 @@ const App: React.FC = () => {
 
         try {
             setSyncStatus({ msg: 'Buscando backup na nuvem...', isOk: true });
-            
-            const urlToFetch = new URL(url);
-            urlToFetch.searchParams.append('action', 'get');
-
-            const res = await fetch(urlToFetch.toString(), { redirect: 'follow' });
+            const res = await fetch(url);
             if (!res.ok) throw new Error(`Erro do servidor ${res.status}: ${res.statusText}.`);
             
             const pkg = await res.json();
@@ -157,27 +161,19 @@ const App: React.FC = () => {
 
 
     const handleSavePatient = (patient: Patient) => {
-        try {
-            let updatedPatients;
-            if (patient.id) {
-                updatedPatients = patients.map(p => p.id === patient.id ? patient : p);
-            } else {
-                updatedPatients = [...patients, { ...patient, id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}` }];
-            }
-            setPatients(updatedPatients);
-            setEditingPatient(null);
-
-            alert('Paciente salvo com sucesso!');
-
-            // Automatically trigger cloud backup in the background
-            performCloudSync(updatedPatients, false).catch(error => {
-                console.error("Falha no backup automático em segundo plano:", error);
-                // The syncStatus message will show the error, no need for another alert.
-            });
-        } catch (error) {
-            console.error("Erro ao salvar paciente localmente:", error);
-            alert(`Ocorreu um erro ao salvar o paciente: ${error instanceof Error ? error.message : String(error)}`);
+        let updatedPatients;
+        if (patient.id) {
+            updatedPatients = patients.map(p => p.id === patient.id ? patient : p);
+        } else {
+            updatedPatients = [...patients, { ...patient, id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}` }];
         }
+        setPatients(updatedPatients);
+        setEditingPatient(null);
+
+        // Automatically trigger cloud backup in the background
+        performCloudSync(updatedPatients, false).catch(error => {
+            console.error("Falha no backup automático em segundo plano:", error);
+        });
     };
 
     const handleEditPatient = (patient: Patient) => {
@@ -203,6 +199,15 @@ const App: React.FC = () => {
         const trimmed = item.trim();
         if (trimmed && !list.some(i => i.toLowerCase() === trimmed.toLowerCase())) {
             setList([...list, trimmed]);
+        }
+    };
+    
+    const handleRemoveItem = (list: string[], setList: (list: string[]) => void, item: string) => {
+        if (!item) return;
+        // Remove from the list of options. This does NOT remove it from existing patients, 
+        // because existing patients store the string value directly.
+        if (window.confirm(`Tem certeza que deseja remover "${item}" da lista de opções?\n\nIsso NÃO apaga a informação dos pacientes que já possuem esse registro.`)) {
+            setList(list.filter(i => i !== item));
         }
     };
     
@@ -305,6 +310,9 @@ const App: React.FC = () => {
                     onAddConvenio={(c) => handleAddNewItem(convenios, setConvenios, c)}
                     onAddProfissional={(p) => handleAddNewItem(profissionais, setProfissionais, p)}
                     onAddEspecialidade={(e) => handleAddNewItem(especialidades, setEspecialidades, e)}
+                    onRemoveConvenio={(c) => handleRemoveItem(convenios, setConvenios, c)}
+                    onRemoveProfissional={(p) => handleRemoveItem(profissionais, setProfissionais, p)}
+                    onRemoveEspecialidade={(e) => handleRemoveItem(especialidades, setEspecialidades, e)}
                 />
 
                 <section className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6 shadow-2xl backdrop-blur-sm space-y-4">
