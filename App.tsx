@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { Patient, BrandConfig, BackupData, EncryptedPackage, Appointment } from './types';
+import { Patient, BrandConfig, BackupData, EncryptedPackage, Appointment, PreCadastro } from './types';
 import { STORAGE_KEYS, DEFAULT_CONVENIOS, DEFAULT_PROFISSIONAIS, DEFAULT_ESPECIALIDADES } from './constants';
 import useLocalStorage from './hooks/useLocalStorage';
 import { encryptJSON, decryptJSON } from './services/cryptoService';
@@ -8,14 +8,23 @@ import { downloadFile, exportToCSV, readTextFromFile, readDataURLFromFile } from
 import { PatientForm } from './components/PatientForm';
 import { PatientTable } from './components/PatientTable';
 import { Agenda } from './components/Agenda';
-import { DownloadIcon, UploadIcon, CloudIcon, TrashIcon, CloudDownloadIcon, UserIcon, CalendarIcon } from './components/icons';
+import { PublicRegistration } from './components/PublicRegistration';
+import { DownloadIcon, UploadIcon, CloudIcon, TrashIcon, CloudDownloadIcon, UserIcon, CalendarIcon, InboxIcon, CheckIcon, XIcon } from './components/icons';
 
 const App: React.FC = () => {
+    const [convenios, setConvenios] = useLocalStorage<string[]>(STORAGE_KEYS.CONVENIOS, DEFAULT_CONVENIOS);
+    
+    // Simple router check
+    const params = new URLSearchParams(window.location.search);
+    const mode = params.get('mode');
+    const isPublicRegistration = mode === 'cadastro';
+    const isPatientUpdate = mode === 'atualizacao';
+
     const [activeTab, setActiveTab] = useState<'pacientes' | 'agenda'>('pacientes');
     
     const [patients, setPatients] = useLocalStorage<Patient[]>(STORAGE_KEYS.PACIENTES, []);
     const [appointments, setAppointments] = useLocalStorage<Appointment[]>(STORAGE_KEYS.AGENDA, []);
-    const [convenios, setConvenios] = useLocalStorage<string[]>(STORAGE_KEYS.CONVENIOS, DEFAULT_CONVENIOS);
+    // convenios is declared above to be available for PublicRegistration return check
     const [profissionais, setProfissionais] = useLocalStorage<string[]>(STORAGE_KEYS.PROFISSIONAIS, DEFAULT_PROFISSIONAIS);
     const [especialidades, setEspecialidades] = useLocalStorage<string[]>(STORAGE_KEYS.ESPECIALIDADES, DEFAULT_ESPECIALIDADES);
     const [brand, setBrand] = useLocalStorage<BrandConfig>(STORAGE_KEYS.BRAND, { color: '#F2C8A0', dark: '#E3B189', logo: null, name: 'Clínica Personart' });
@@ -28,7 +37,27 @@ const App: React.FC = () => {
     const [isListVisible, setIsListVisible] = useState(false);
     const [syncStatus, setSyncStatus] = useState<{ msg: string, isOk: boolean } | null>(null);
     
+    // Inbox State
+    const [inbox, setInbox] = useState<PreCadastro[]>([]);
+    const [showInbox, setShowInbox] = useState(false);
+
     const importFileInputRef = useRef<HTMLInputElement>(null);
+    
+    const sortedConvenios = useMemo(() => [...convenios].sort((a, b) => a.localeCompare(b, 'pt-BR')), [convenios]);
+
+    // If Public Mode, return early
+    if (isPublicRegistration || isPatientUpdate) {
+        return (
+            <PublicRegistration 
+                cloudEndpoint={cloudEndpoint} 
+                brandName={brand.name} 
+                brandColor={brand.color} 
+                brandLogo={brand.logo} 
+                isUpdateMode={isPatientUpdate}
+                convenios={sortedConvenios}
+            />
+        );
+    }
 
     useEffect(() => {
         document.documentElement.style.setProperty('--brand-color', brand.color);
@@ -46,7 +75,7 @@ const App: React.FC = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const sortedConvenios = useMemo(() => [...convenios].sort((a, b) => a.localeCompare(b, 'pt-BR')), [convenios]);
+    
     const sortedProfissionais = useMemo(() => [...profissionais].sort((a, b) => a.localeCompare(b, 'pt-BR')), [profissionais]);
     const sortedEspecialidades = useMemo(() => [...especialidades].sort((a, b) => a.localeCompare(b, 'pt-BR')), [especialidades]);
 
@@ -83,7 +112,6 @@ const App: React.FC = () => {
     
         try {
             setSyncStatus({ msg: 'Sincronizando com a nuvem...', isOk: true });
-            // Inclui appointments no payload
             const payload: BackupData = { 
                 pacientes: currentPatients, 
                 agendamentos: currentAppointments,
@@ -97,7 +125,10 @@ const App: React.FC = () => {
             const res = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                body: JSON.stringify(encrypted)
+                body: JSON.stringify({
+                    type: 'backup',
+                    data: encrypted
+                })
             });
     
             if (!res.ok) throw new Error(`Erro do servidor ${res.status}: ${res.statusText}.`);
@@ -105,7 +136,7 @@ const App: React.FC = () => {
             const result = await res.json();
             if (result.status === 'error') throw new Error(result.message);
 
-            const statusMsg = `Backup salvo no Google Drive. ${result?.name ? `Arquivo: ${result.name}` : ''}`;
+            const statusMsg = `Backup salvo no Google Drive.`;
             setSyncStatus({ msg: statusMsg, isOk: true });
             if (isManualTrigger) alert(statusMsg);
         } catch (err) {
@@ -136,7 +167,8 @@ const App: React.FC = () => {
 
         try {
             setSyncStatus({ msg: 'Buscando backup na nuvem...', isOk: true });
-            const res = await fetch(url);
+            // Add parameter to specifically ask for backup
+            const res = await fetch(`${url}?action=get_backup`);
             if (!res.ok) throw new Error(`Erro do servidor ${res.status}: ${res.statusText}.`);
             
             const pkg = await res.json();
@@ -148,7 +180,7 @@ const App: React.FC = () => {
             const data = await decryptJSON(pkg as EncryptedPackage, pass);
 
             setPatients(data.pacientes || []);
-            setAppointments(data.agendamentos || []); // Restaura agendamentos
+            setAppointments(data.agendamentos || []);
             setConvenios(data.convenios || DEFAULT_CONVENIOS);
             setProfissionais(data.profissionais || DEFAULT_PROFISSIONAIS);
             setEspecialidades(data.especialidades || DEFAULT_ESPECIALIDADES);
@@ -164,6 +196,69 @@ const App: React.FC = () => {
             alert(errorMsg);
         }
     }, [cloudEndpoint, cloudPass, setCloudEndpoint, setCloudPass, setPatients, setAppointments, setConvenios, setProfissionais, setEspecialidades, patients.length]);
+
+    // --- Inbox Logic ---
+
+    const checkInbox = async () => {
+        if (!cloudEndpoint) return;
+        try {
+            setSyncStatus({ msg: 'Verificando novos cadastros...', isOk: true });
+            const res = await fetch(`${cloudEndpoint}?action=get_inbox`);
+            if (!res.ok) throw new Error('Erro ao buscar inbox');
+            const data = await res.json();
+            
+            if (data && Array.isArray(data.submissions)) {
+                setInbox(data.submissions);
+                if (data.submissions.length > 0) {
+                    setShowInbox(true);
+                    setSyncStatus({ msg: `${data.submissions.length} novos pré-cadastros encontrados.`, isOk: true });
+                } else {
+                    alert('Nenhum pré-cadastro novo encontrado.');
+                    setSyncStatus({ msg: 'Caixa de entrada vazia.', isOk: true });
+                }
+            }
+        } catch (err) {
+            console.error(err);
+            setSyncStatus({ msg: 'Erro ao verificar inbox.', isOk: false });
+        }
+    };
+
+    const handleImportInboxItem = (item: PreCadastro) => {
+        const age = new Date().getFullYear() - new Date(item.nascimento).getFullYear();
+        
+        // Check if patient already exists to update or create new
+        // Simple check by name for now, could be improved
+        const existing = patients.find(p => p.nome.toLowerCase() === item.nome.toLowerCase());
+
+        const newPatient: Patient = {
+            id: existing ? existing.id : `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+            nome: item.nome,
+            nascimento: item.nascimento,
+            faixa: age < 18 ? 'Criança' : 'Adulto',
+            responsavel: item.responsavel,
+            contato: item.contato,
+            email: item.email,
+            endereco: item.endereco,
+            convenio: item.convenio || (existing ? existing.convenio : ''),
+            carteirinha: item.carteirinha || (existing ? existing.carteirinha : ''),
+            tipoAtendimento: existing ? existing.tipoAtendimento : '',
+            profissionais: existing ? existing.profissionais : [],
+            especialidades: existing ? existing.especialidades : [],
+            origem: 'Site'
+        };
+        setEditingPatient(newPatient);
+        setShowInbox(false);
+        // Remove from inbox list locally (real removal from server should happen, but for now we just ignore)
+        setInbox(prev => prev.filter(i => i.id !== item.id));
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    const handleDismissInboxItem = (id: string) => {
+         if(window.confirm("Ignorar este pré-cadastro?")) {
+            setInbox(prev => prev.filter(i => i.id !== id));
+         }
+    };
+
 
     // --- Patient Actions ---
 
@@ -230,7 +325,7 @@ const App: React.FC = () => {
         return patients
             .filter(p => {
                 const search = searchTerm.toLowerCase();
-                const blob = [p.nome, p.responsavel, p.contato, p.crm, p.origem, p.carteirinha, p.tipoAtendimento].filter(Boolean).join(' ').toLowerCase();
+                const blob = [p.nome, p.responsavel, p.contato, p.email, p.crm, p.origem, p.carteirinha, p.tipoAtendimento].filter(Boolean).join(' ').toLowerCase();
                 if (search && !blob.includes(search)) return false;
                 if (filters.convenio && p.convenio !== filters.convenio) return false;
                 if (filters.faixa && p.faixa !== filters.faixa) return false;
@@ -295,6 +390,8 @@ const App: React.FC = () => {
     
     const handleSyncClick = () => performCloudSync(patients, appointments, true);
 
+    // --- RENDER ---
+
     return (
         <div className="min-h-screen pb-12">
             <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-20 backdrop-blur-md bg-opacity-80">
@@ -307,18 +404,24 @@ const App: React.FC = () => {
                     </div>
 
                     {/* Navigation Tabs */}
-                    <nav className="flex space-x-2 bg-slate-800 p-1 rounded-xl">
+                    <nav className="flex space-x-2 bg-slate-800 p-1 rounded-xl overflow-x-auto max-w-full">
                         <button 
                             onClick={() => setActiveTab('pacientes')}
-                            className={`px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 ${activeTab === 'pacientes' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-700/50'}`}
+                            className={`px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 whitespace-nowrap ${activeTab === 'pacientes' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-700/50'}`}
                         >
                             <UserIcon className="w-4 h-4" /> Pacientes
                         </button>
                         <button 
                             onClick={() => setActiveTab('agenda')}
-                            className={`px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 ${activeTab === 'agenda' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-700/50'}`}
+                            className={`px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 whitespace-nowrap ${activeTab === 'agenda' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-700/50'}`}
                         >
                             <CalendarIcon className="w-4 h-4" /> Agenda
+                        </button>
+                        <button 
+                            onClick={checkInbox}
+                            className="px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 text-sky-400 hover:text-sky-300 hover:bg-slate-700/50 whitespace-nowrap border border-slate-700"
+                        >
+                            <InboxIcon className="w-4 h-4" /> Pré-cadastros
                         </button>
                     </nav>
                 </div>
@@ -395,6 +498,35 @@ const App: React.FC = () => {
                     </div>
                 )}
             </main>
+
+            {/* Inbox Modal */}
+            {showInbox && (
+                <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                    <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-xl font-bold text-slate-100 flex items-center gap-2"><InboxIcon className="w-5 h-5 text-sky-400"/> Novos Pré-cadastros</h3>
+                            <button onClick={() => setShowInbox(false)} className="text-slate-400 hover:text-slate-200"><XIcon className="w-5 h-5" /></button>
+                        </div>
+                        <div className="space-y-4">
+                            {inbox.map(item => (
+                                <div key={item.id} className="bg-slate-900/50 border border-slate-700 rounded-xl p-4 flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+                                    <div>
+                                        <h4 className="font-bold text-white">{item.nome}</h4>
+                                        <p className="text-sm text-slate-400">Nasc: {item.nascimento} • Resp: {item.responsavel || 'N/A'}</p>
+                                        <p className="text-sm text-slate-400">{item.contato} • {item.email}</p>
+                                        <p className="text-sm text-slate-500 mt-1">{item.convenio ? `${item.convenio} (${item.carteirinha})` : 'Particular'}</p>
+                                        <p className="text-xs text-slate-600 mt-1">Enviado em: {new Date(item.dataEnvio).toLocaleDateString()}</p>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => handleDismissInboxItem(item.id)} className="p-2 hover:bg-red-900/30 text-red-400 rounded-lg transition text-sm">Ignorar</button>
+                                        <button onClick={() => handleImportInboxItem(item)} className="py-2 px-4 bg-sky-600 hover:bg-sky-500 text-white rounded-lg transition text-sm font-semibold">Importar</button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

@@ -21,13 +21,13 @@ export function exportToCSV(patients: Patient[]): string {
         return `${d}/${m}/${y.slice(-2)}`;
     };
 
-    const header = ['id', 'nome', 'nascimento(dd/mm/aa)', 'faixa', 'responsavel', 'endereco', 'contato', 'convenio', 'carteirinha', 'tipoAtendimento', 'profissionais', 'especialidades', 'crm', 'origem'];
+    const header = ['id', 'nome', 'nascimento(dd/mm/aa)', 'faixa', 'responsavel', 'endereco', 'contato', 'email', 'convenio', 'carteirinha', 'tipoAtendimento', 'profissionais', 'especialidades', 'crm', 'origem'];
     const lines = [header.join(',')];
 
     for (const p of patients) {
         const arr = [
             p.id, p.nome, formatShort(p.nascimento), p.faixa, p.responsavel,
-            p.endereco, p.contato, p.convenio, p.carteirinha, p.tipoAtendimento,
+            p.endereco, p.contato, p.email, p.convenio, p.carteirinha, p.tipoAtendimento,
             p.profissionais.join(' | '),
             p.especialidades.join(' | '),
             p.crm, p.origem

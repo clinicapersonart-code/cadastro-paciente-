@@ -161,6 +161,17 @@ export const PatientForm: React.FC<PatientFormProps> = ({
                     </div>
                 </div>
 
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label htmlFor="contato" className="block text-sm font-medium text-slate-400 mb-1">Telefone/WhatsApp *</label>
+                        <input id="contato" name="contato" type="text" required placeholder="Ex.: (15) 99999-9999" value={formData.contato || ''} onChange={handleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition" />
+                    </div>
+                    <div>
+                        <label htmlFor="email" className="block text-sm font-medium text-slate-400 mb-1">E-mail</label>
+                        <input id="email" name="email" type="email" placeholder="email@exemplo.com" value={formData.email || ''} onChange={handleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition" />
+                    </div>
+                </div>
+
                 <div className="flex items-center gap-4 pt-1">
                     <span className="text-sm text-slate-400">Faixa etária:</span>
                     <label className="flex items-center gap-2 text-sm cursor-pointer">

@@ -7,6 +7,7 @@ export interface Patient {
   responsavel?: string;
   endereco?: string;
   contato?: string;
+  email?: string;
   convenio?: string;
   carteirinha?: string;
   tipoAtendimento?: 'Convencional' | 'ABA' | '';
@@ -38,11 +39,24 @@ export interface BrandConfig {
 
 export interface BackupData {
   pacientes: Patient[];
-  agendamentos?: Appointment[]; // Adicionado campo opcional para compatibilidade com backups antigos
+  agendamentos?: Appointment[];
   convenios: string[];
   profissionais: string[];
   especialidades: string[];
   ts: string;
+}
+
+export interface PreCadastro {
+  id: string;
+  nome: string;
+  nascimento: string;
+  responsavel: string;
+  contato: string;
+  email: string;
+  endereco: string;
+  convenio: string;
+  carteirinha: string;
+  dataEnvio: string;
 }
 
 export interface EncryptedPackage {
