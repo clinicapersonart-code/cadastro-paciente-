@@ -1,7 +1,9 @@
 
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { Patient } from '../types';
 import { PlusIcon, XIcon, TrashIcon } from './icons';
+import { DEFAULT_ORIGINS } from '../constants';
 
 interface PatientFormProps {
     editingPatient: Patient | null;
@@ -224,6 +226,21 @@ export const PatientForm: React.FC<PatientFormProps> = ({
                         <label htmlFor="carteirinha" className="block text-sm font-medium text-slate-400 mb-1">Número da carteirinha</label>
                         <input id="carteirinha" name="carteirinha" type="text" placeholder="Ex.: 123456789" value={formData.carteirinha || ''} onChange={handleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition" />
                     </div>
+                </div>
+
+                {/* Campo Origem */}
+                <div>
+                    <label htmlFor="origem" className="block text-sm font-medium text-slate-400 mb-1">Origem (Como conheceu a clínica?)</label>
+                    <select 
+                        id="origem" 
+                        name="origem" 
+                        value={formData.origem || ''} 
+                        onChange={handleChange} 
+                        className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition"
+                    >
+                        <option value="">Selecione a origem...</option>
+                        {DEFAULT_ORIGINS.map(o => <option key={o} value={o}>{o}</option>)}
+                    </select>
                 </div>
 
                 <div>

@@ -1,4 +1,5 @@
 
+
 export const STORAGE_KEYS = {
   PACIENTES: 'personart.pacientes.v1',
   AGENDA: 'personart.agenda.v1',
@@ -25,3 +26,13 @@ export const DEFAULT_PROFISSIONAIS = [
 ];
 
 export const DEFAULT_ESPECIALIDADES = ['Psicologia', 'Fonoaudiologia', 'Terapia Ocupacional', 'Nutrição'];
+
+export const DEFAULT_ORIGINS = [
+    'Google / Pesquisa',
+    'Instagram',
+    'Facebook',
+    'Recomendação de Amigo/Parente',
+    'Encaminhamento Médico',
+    'Passou em frente',
+    'Outros'
+];

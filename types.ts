@@ -1,4 +1,5 @@
 
+
 export interface Patient {
   id: string;
   nome: string;
@@ -56,6 +57,7 @@ export interface PreCadastro {
   endereco: string;
   convenio: string;
   carteirinha: string;
+  origem?: string;
   dataEnvio: string;
 }
 

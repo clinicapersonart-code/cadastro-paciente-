@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { Patient, BrandConfig, BackupData, EncryptedPackage, Appointment, PreCadastro } from './types';
 import { STORAGE_KEYS, DEFAULT_CONVENIOS, DEFAULT_PROFISSIONAIS, DEFAULT_ESPECIALIDADES } from './constants';
@@ -244,7 +245,8 @@ const App: React.FC = () => {
             tipoAtendimento: existing ? existing.tipoAtendimento : '',
             profissionais: existing ? existing.profissionais : [],
             especialidades: existing ? existing.especialidades : [],
-            origem: 'Site'
+            origem: item.origem || (existing ? existing.origem : 'Site'),
+            crm: existing ? existing.crm : ''
         };
         setEditingPatient(newPatient);
         setShowInbox(false);
@@ -515,6 +517,7 @@ const App: React.FC = () => {
                                         <p className="text-sm text-slate-400">Nasc: {item.nascimento} • Resp: {item.responsavel || 'N/A'}</p>
                                         <p className="text-sm text-slate-400">{item.contato} • {item.email}</p>
                                         <p className="text-sm text-slate-500 mt-1">{item.convenio ? `${item.convenio} (${item.carteirinha})` : 'Particular'}</p>
+                                        {item.origem && <p className="text-xs text-sky-400 mt-1">Origem: {item.origem}</p>}
                                         <p className="text-xs text-slate-600 mt-1">Enviado em: {new Date(item.dataEnvio).toLocaleDateString()}</p>
                                     </div>
                                     <div className="flex gap-2">

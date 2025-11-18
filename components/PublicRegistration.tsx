@@ -1,7 +1,9 @@
 
+
 import React, { useState } from 'react';
 import { PreCadastro } from '../types';
 import { CheckIcon, StarIcon } from './icons';
+import { DEFAULT_ORIGINS } from '../constants';
 
 interface PublicRegistrationProps {
     cloudEndpoint: string;
@@ -21,7 +23,8 @@ export const PublicRegistration: React.FC<PublicRegistrationProps> = ({ cloudEnd
         email: '',
         endereco: '',
         convenio: '',
-        carteirinha: ''
+        carteirinha: '',
+        origem: ''
     });
     const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
 
@@ -188,6 +191,20 @@ export const PublicRegistration: React.FC<PublicRegistrationProps> = ({ cloudEnd
                                 <input name="carteirinha" value={formData.carteirinha} onChange={handleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-3 text-white focus:ring-2 focus:ring-sky-500 outline-none transition" placeholder="Número da carteira do convênio" />
                             </div>
                         </div>
+                    </div>
+
+                    {/* Campo Origem */}
+                    <div className="pt-2">
+                         <label className="block text-sm font-medium text-slate-400 mb-1">Como conheceu a clínica?</label>
+                         <select 
+                            name="origem" 
+                            value={formData.origem} 
+                            onChange={handleChange} 
+                            className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-3 text-white focus:ring-2 focus:ring-sky-500 outline-none transition appearance-none"
+                        >
+                            <option value="">Selecione...</option>
+                            {DEFAULT_ORIGINS.map(o => <option key={o} value={o}>{o}</option>)}
+                        </select>
                     </div>
 
                     <div className="pt-4">

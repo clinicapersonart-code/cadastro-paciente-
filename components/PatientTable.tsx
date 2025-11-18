@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 import { Patient } from '../types';
 import { EditIcon, TrashIcon } from './icons';
@@ -33,6 +34,7 @@ export const PatientTable: React.FC<PatientTableProps> = ({ patients, onEdit, on
                         <th scope="col" className="px-6 py-3">Resp.</th>
                         <th scope="col" className="px-6 py-3">Convênio</th>
                         <th scope="col" className="px-6 py-3">Carteirinha</th>
+                        <th scope="col" className="px-6 py-3">Origem</th>
                         <th scope="col" className="px-6 py-3">Profissionais</th>
                         <th scope="col" className="px-6 py-3">Ações</th>
                     </tr>
@@ -48,6 +50,7 @@ export const PatientTable: React.FC<PatientTableProps> = ({ patients, onEdit, on
                             <td className="px-6 py-4">{p.faixa === 'Criança' ? p.responsavel : '-'}</td>
                             <td className="px-6 py-4">{p.convenio}</td>
                             <td className="px-6 py-4">{p.carteirinha}</td>
+                            <td className="px-6 py-4">{p.origem || '-'}</td>
                             <td className="px-6 py-4">
                                 <div className="flex flex-wrap gap-1">
                                     {p.profissionais.map(pro => <span key={pro} className="bg-slate-700 text-slate-300 text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap">{pro}</span>)}
