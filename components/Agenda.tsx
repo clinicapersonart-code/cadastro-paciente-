@@ -12,6 +12,11 @@ interface AgendaProps {
     onDeleteAppointment: (id: string) => void;
 }
 
+const TIME_SLOTS = [
+    '07:00', '08:00', '09:00', '10:00', '11:00', '12:00', 
+    '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00'
+];
+
 export const Agenda: React.FC<AgendaProps> = ({
     patients,
     profissionais,
@@ -21,11 +26,13 @@ export const Agenda: React.FC<AgendaProps> = ({
     onDeleteAppointment
 }) => {
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+    const [filterProfissional, setFilterProfissional] = useState('');
+    const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
     const [showForm, setShowForm] = useState(false);
     
     // Form State
     const [selectedPatientId, setSelectedPatientId] = useState('');
-    const [selectedProfissional, setSelectedProfissional] = useState('');
+    const [formProfissional, setFormProfissional] = useState('');
     const [time, setTime] = useState('08:00');
     const [type, setType] = useState<'Convênio' | 'Particular'>('Convênio');
     const [obs, setObs] = useState('');
@@ -34,25 +41,34 @@ export const Agenda: React.FC<AgendaProps> = ({
     useEffect(() => {
         if (showForm) {
             setObs('');
-            // Don't reset date/time aggressively to allow user flow
         }
     }, [showForm]);
+
+    // Se mudar o filtro de profissional, muda o modo de visualização para Grade se quiser
+    useEffect(() => {
+        if (filterProfissional) {
+            setFormProfissional(filterProfissional);
+        }
+    }, [filterProfissional]);
 
     // Auto-fill professional/type when patient is selected
     useEffect(() => {
         if (selectedPatientId) {
             const p = patients.find(pt => pt.id === selectedPatientId);
             if (p) {
-                if (p.profissionais.length > 0) setSelectedProfissional(p.profissionais[0]);
+                // Só preenche o profissional se o formulário não estiver "travado" por um filtro ou seleção prévia de slot
+                if (!filterProfissional && p.profissionais.length > 0 && !formProfissional) {
+                    setFormProfissional(p.profissionais[0]);
+                }
                 if (!p.convenio) setType('Particular');
                 else setType('Convênio');
             }
         }
-    }, [selectedPatientId, patients]);
+    }, [selectedPatientId, patients, filterProfissional, formProfissional]);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!selectedPatientId || !selectedProfissional || !time) {
+        if (!selectedPatientId || !formProfissional || !time) {
             alert('Preencha paciente, profissional e horário.');
             return;
         }
@@ -60,11 +76,21 @@ export const Agenda: React.FC<AgendaProps> = ({
         const patient = patients.find(p => p.id === selectedPatientId);
         if (!patient) return;
 
+        // Verificar conflito
+        const conflict = appointments.find(
+            a => a.date === selectedDate && a.time === time && a.profissional === formProfissional && a.status !== 'Cancelado'
+        );
+
+        if (conflict) {
+            alert(`Já existe um agendamento para ${formProfissional} às ${time}.`);
+            return;
+        }
+
         const newAppt: Appointment = {
             id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             patientId: patient.id,
             patientName: patient.nome,
-            profissional: selectedProfissional,
+            profissional: formProfissional,
             date: selectedDate,
             time,
             type,
@@ -77,13 +103,15 @@ export const Agenda: React.FC<AgendaProps> = ({
         setShowForm(false);
         setSelectedPatientId('');
         setObs('');
+        if (!filterProfissional) setFormProfissional(''); // Limpa se não estiver filtrando
     };
 
-    const sortedAppointments = useMemo(() => {
+    const filteredAppointments = useMemo(() => {
         return appointments
             .filter(a => a.date === selectedDate)
+            .filter(a => !filterProfissional || a.profissional === filterProfissional)
             .sort((a, b) => a.time.localeCompare(b.time));
-    }, [appointments, selectedDate]);
+    }, [appointments, selectedDate, filterProfissional]);
 
     const handleNextDay = () => {
         const d = new Date(selectedDate + 'T00:00:00');
@@ -101,6 +129,13 @@ export const Agenda: React.FC<AgendaProps> = ({
         onUpdateAppointment({ ...appt, status: newStatus });
     };
 
+    const openNewApptModal = (preselectedTime?: string) => {
+        if (preselectedTime) setTime(preselectedTime);
+        if (filterProfissional) setFormProfissional(filterProfissional);
+        setSelectedPatientId('');
+        setShowForm(true);
+    };
+
     // Sort patients alphabetically for dropdown
     const sortedPatients = useMemo(() => [...patients].sort((a, b) => a.nome.localeCompare(b.nome)), [patients]);
 
@@ -113,91 +148,136 @@ export const Agenda: React.FC<AgendaProps> = ({
     return (
         <div className="space-y-6">
             {/* Header & Controls */}
-            <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-4 shadow-lg backdrop-blur-sm flex flex-col md:flex-row items-center justify-between gap-4">
-                <div className="flex items-center gap-2">
-                    <button onClick={handlePrevDay} className="p-2 hover:bg-slate-700 rounded-lg transition text-slate-300">❮</button>
-                    <input 
-                        type="date" 
-                        value={selectedDate} 
-                        onChange={(e) => setSelectedDate(e.target.value)} 
-                        className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 outline-none focus:ring-2 focus:ring-sky-500"
-                    />
-                    <button onClick={handleNextDay} className="p-2 hover:bg-slate-700 rounded-lg transition text-slate-300">❯</button>
-                    <span className="text-slate-300 capitalize font-medium ml-2 hidden sm:inline-block">
-                        {formatDateDisplay(selectedDate)}
-                    </span>
-                </div>
+            <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-4 shadow-lg backdrop-blur-sm flex flex-col gap-4">
                 
-                <button 
-                    onClick={() => setShowForm(true)} 
-                    className="bg-sky-600 hover:bg-sky-500 text-white font-semibold px-4 py-2 rounded-lg text-sm transition flex items-center gap-2 shadow-lg shadow-sky-900/20"
-                >
-                    <PlusIcon className="w-4 h-4" /> Novo Agendamento
-                </button>
-            </div>
-
-            {/* List */}
-            <div className="grid gap-4">
-                {sortedAppointments.length === 0 ? (
-                    <div className="text-center py-12 text-slate-500 bg-slate-900/30 rounded-2xl border border-slate-800 border-dashed">
-                        <CalendarIcon className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                        <p>Nenhum agendamento para este dia.</p>
+                {/* Top Row: Date & Add Button */}
+                <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                    <div className="flex items-center gap-2">
+                        <button onClick={handlePrevDay} className="p-2 hover:bg-slate-700 rounded-lg transition text-slate-300">❮</button>
+                        <input 
+                            type="date" 
+                            value={selectedDate} 
+                            onChange={(e) => setSelectedDate(e.target.value)} 
+                            className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 outline-none focus:ring-2 focus:ring-sky-500"
+                        />
+                        <button onClick={handleNextDay} className="p-2 hover:bg-slate-700 rounded-lg transition text-slate-300">❯</button>
+                        <span className="text-slate-300 capitalize font-medium ml-2 hidden sm:inline-block">
+                            {formatDateDisplay(selectedDate)}
+                        </span>
                     </div>
-                ) : (
-                    sortedAppointments.map(appt => (
-                        <div key={appt.id} className={`relative flex flex-col md:flex-row gap-4 p-4 rounded-xl border transition-all duration-200 ${appt.status === 'Cancelado' ? 'bg-slate-900/30 border-slate-800 opacity-60' : 'bg-slate-800/80 border-slate-700 hover:border-slate-600 shadow-md'}`}>
-                            {/* Time Column */}
-                            <div className="flex md:flex-col items-center md:justify-center gap-2 md:w-24 border-b md:border-b-0 md:border-r border-slate-700/50 pb-2 md:pb-0 md:pr-4">
-                                <ClockIcon className="w-4 h-4 text-sky-400" />
-                                <span className="text-xl font-bold text-slate-200">{appt.time}</span>
-                            </div>
+                    
+                    <button 
+                        onClick={() => openNewApptModal()} 
+                        className="w-full md:w-auto bg-sky-600 hover:bg-sky-500 text-white font-semibold px-4 py-2 rounded-lg text-sm transition flex items-center justify-center gap-2 shadow-lg shadow-sky-900/20"
+                    >
+                        <PlusIcon className="w-4 h-4" /> Novo Agendamento
+                    </button>
+                </div>
 
-                            {/* Info Column */}
-                            <div className="flex-1 space-y-1">
-                                <div className="flex items-center justify-between">
-                                    <h3 className={`font-semibold text-lg flex items-center gap-2 ${appt.status === 'Realizado' ? 'text-green-400' : 'text-slate-100'}`}>
-                                        {appt.patientName}
-                                        {appt.status === 'Realizado' && <CheckIcon className="w-4 h-4" />}
-                                    </h3>
-                                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${appt.type === 'Particular' ? 'bg-amber-900/30 text-amber-200 border-amber-800' : 'bg-indigo-900/30 text-indigo-200 border-indigo-800'}`}>
-                                        {appt.type === 'Convênio' ? (appt.convenioName || 'Convênio') : 'Particular'}
-                                    </span>
-                                </div>
-                                <div className="flex items-center gap-2 text-sm text-slate-400">
-                                    <UserIcon className="w-3.5 h-3.5" />
-                                    <span>{appt.profissional}</span>
-                                </div>
-                                {appt.obs && <p className="text-xs text-slate-500 italic mt-1">Obs: {appt.obs}</p>}
-                            </div>
+                {/* Bottom Row: Filters & View Mode */}
+                <div className="flex flex-col md:flex-row gap-4 border-t border-slate-700/50 pt-4">
+                    <select 
+                        value={filterProfissional} 
+                        onChange={(e) => setFilterProfissional(e.target.value)}
+                        className="flex-1 bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 outline-none"
+                    >
+                        <option value="">Todos os profissionais</option>
+                        {profissionais.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
 
-                            {/* Actions */}
-                            <div className="flex md:flex-col items-center justify-center gap-2 border-t md:border-t-0 md:border-l border-slate-700/50 pt-2 md:pt-0 md:pl-4">
-                                {appt.status !== 'Cancelado' && (
-                                    <>
-                                        {appt.status !== 'Realizado' && (
-                                            <button onClick={() => handleStatusChange(appt, 'Realizado')} title="Marcar como realizado" className="p-2 text-slate-400 hover:text-green-400 hover:bg-green-900/20 rounded-lg transition">
-                                                <CheckIcon className="w-5 h-5" />
-                                            </button>
-                                        )}
-                                        <button onClick={() => handleStatusChange(appt, 'Cancelado')} title="Cancelar" className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-900/20 rounded-lg transition">
-                                            <XIcon className="w-5 h-5" />
-                                        </button>
-                                    </>
-                                )}
-                                <button onClick={() => onDeleteAppointment(appt.id)} title="Excluir permanentemente" className="p-2 text-slate-600 hover:text-slate-300 rounded-lg transition">
-                                    <TrashIcon className="w-4 h-4" />
-                                </button>
-                            </div>
-                        </div>
-                    ))
-                )}
+                    <div className="flex bg-slate-900/50 rounded-lg p-1 border border-slate-700">
+                        <button 
+                            onClick={() => setViewMode('list')}
+                            className={`px-4 py-1.5 text-xs font-medium rounded-md transition ${viewMode === 'list' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
+                        >
+                            Lista
+                        </button>
+                        <button 
+                            onClick={() => setViewMode('grid')}
+                            className={`px-4 py-1.5 text-xs font-medium rounded-md transition ${viewMode === 'grid' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
+                        >
+                            Grade Horária
+                        </button>
+                    </div>
+                </div>
             </div>
+
+            {/* CONTENT AREA */}
+            
+            {/* VIEW MODE: LIST */}
+            {viewMode === 'list' && (
+                <div className="grid gap-4">
+                    {filteredAppointments.length === 0 ? (
+                        <div className="text-center py-12 text-slate-500 bg-slate-900/30 rounded-2xl border border-slate-800 border-dashed">
+                            <CalendarIcon className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                            <p>Nenhum agendamento encontrado para os filtros selecionados.</p>
+                        </div>
+                    ) : (
+                        filteredAppointments.map(appt => (
+                            <AppointmentCard 
+                                key={appt.id} 
+                                appt={appt} 
+                                onStatusChange={handleStatusChange} 
+                                onDelete={onDeleteAppointment} 
+                            />
+                        ))
+                    )}
+                </div>
+            )}
+
+            {/* VIEW MODE: GRID (SLOTS) */}
+            {viewMode === 'grid' && (
+                <div className="space-y-2">
+                    {!filterProfissional ? (
+                        <div className="p-4 bg-amber-900/20 border border-amber-900/50 rounded-xl text-amber-200 text-center text-sm">
+                            Selecione um profissional acima para ver a grade de horários livres.
+                        </div>
+                    ) : (
+                        <div className="grid gap-3">
+                            {TIME_SLOTS.map(slotTime => {
+                                // Encontra agendamento neste horário para o profissional filtrado
+                                const slotAppt = filteredAppointments.find(a => a.time === slotTime && a.status !== 'Cancelado');
+                                
+                                return (
+                                    <div key={slotTime} className="flex items-center gap-4">
+                                        {/* Time Label */}
+                                        <div className="w-16 text-right font-mono text-slate-400 text-sm">{slotTime}</div>
+                                        
+                                        {/* Slot Content */}
+                                        <div className="flex-1">
+                                            {slotAppt ? (
+                                                <AppointmentCard 
+                                                    appt={slotAppt} 
+                                                    onStatusChange={handleStatusChange} 
+                                                    onDelete={onDeleteAppointment} 
+                                                    compact
+                                                />
+                                            ) : (
+                                                <button 
+                                                    onClick={() => openNewApptModal(slotTime)}
+                                                    className="w-full h-full min-h-[50px] border border-slate-700 border-dashed rounded-xl flex items-center justify-center text-slate-500 hover:text-sky-400 hover:border-sky-500/50 hover:bg-slate-800/50 transition group"
+                                                >
+                                                    <span className="text-sm font-medium group-hover:scale-105 transition-transform">+ Livre</span>
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Modal Form */}
             {showForm && (
                 <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                    <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-md p-6 shadow-2xl">
-                        <h3 className="text-xl font-bold text-slate-100 mb-4">Novo Agendamento</h3>
+                    <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-md p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-xl font-bold text-slate-100">Novo Agendamento</h3>
+                            <button onClick={() => setShowForm(false)} className="text-slate-400 hover:text-slate-200"><XIcon className="w-5 h-5" /></button>
+                        </div>
+                        
                         <form onSubmit={handleSubmit} className="space-y-4">
                             <div>
                                 <label className="block text-xs font-medium text-slate-400 mb-1">Paciente</label>
@@ -229,8 +309,8 @@ export const Agenda: React.FC<AgendaProps> = ({
                                 <label className="block text-xs font-medium text-slate-400 mb-1">Profissional</label>
                                 <select 
                                     required 
-                                    value={selectedProfissional} 
-                                    onChange={e => setSelectedProfissional(e.target.value)}
+                                    value={formProfissional} 
+                                    onChange={e => setFormProfissional(e.target.value)}
                                     className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 outline-none"
                                 >
                                     <option value="">Selecione...</option>
@@ -265,3 +345,60 @@ export const Agenda: React.FC<AgendaProps> = ({
         </div>
     );
 };
+
+// Sub-component para renderizar o card do agendamento (evita duplicação)
+const AppointmentCard = ({ appt, onStatusChange, onDelete, compact = false }: { 
+    appt: Appointment, 
+    onStatusChange: (a: Appointment, s: Appointment['status']) => void, 
+    onDelete: (id: string) => void,
+    compact?: boolean
+}) => {
+    return (
+        <div className={`relative flex flex-col md:flex-row gap-4 p-4 rounded-xl border transition-all duration-200 ${appt.status === 'Cancelado' ? 'bg-slate-900/30 border-slate-800 opacity-60' : 'bg-slate-800/80 border-slate-700 hover:border-slate-600 shadow-md'}`}>
+            {/* Time Column (only show in List mode, in Grid mode time is outside) */}
+            {!compact && (
+                <div className="flex md:flex-col items-center md:justify-center gap-2 md:w-24 border-b md:border-b-0 md:border-r border-slate-700/50 pb-2 md:pb-0 md:pr-4">
+                    <ClockIcon className="w-4 h-4 text-sky-400" />
+                    <span className="text-xl font-bold text-slate-200">{appt.time}</span>
+                </div>
+            )}
+
+            {/* Info Column */}
+            <div className="flex-1 space-y-1">
+                <div className="flex items-center justify-between">
+                    <h3 className={`font-semibold text-lg flex items-center gap-2 ${appt.status === 'Realizado' ? 'text-green-400' : 'text-slate-100'}`}>
+                        {appt.patientName}
+                        {appt.status === 'Realizado' && <CheckIcon className="w-4 h-4" />}
+                    </h3>
+                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${appt.type === 'Particular' ? 'bg-amber-900/30 text-amber-200 border-amber-800' : 'bg-indigo-900/30 text-indigo-200 border-indigo-800'}`}>
+                        {appt.type === 'Convênio' ? (appt.convenioName || 'Convênio') : 'Particular'}
+                    </span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-slate-400">
+                    <UserIcon className="w-3.5 h-3.5" />
+                    <span>{appt.profissional}</span>
+                </div>
+                {appt.obs && <p className="text-xs text-slate-500 italic mt-1">Obs: {appt.obs}</p>}
+            </div>
+
+            {/* Actions */}
+            <div className="flex md:flex-col items-center justify-center gap-2 border-t md:border-t-0 md:border-l border-slate-700/50 pt-2 md:pt-0 md:pl-4">
+                {appt.status !== 'Cancelado' && (
+                    <>
+                        {appt.status !== 'Realizado' && (
+                            <button onClick={() => onStatusChange(appt, 'Realizado')} title="Marcar como realizado" className="p-2 text-slate-400 hover:text-green-400 hover:bg-green-900/20 rounded-lg transition">
+                                <CheckIcon className="w-5 h-5" />
+                            </button>
+                        )}
+                        <button onClick={() => onStatusChange(appt, 'Cancelado')} title="Cancelar" className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-900/20 rounded-lg transition">
+                            <XIcon className="w-5 h-5" />
+                        </button>
+                    </>
+                )}
+                <button onClick={() => onDelete(appt.id)} title="Excluir permanentemente" className="p-2 text-slate-600 hover:text-slate-300 rounded-lg transition">
+                    <TrashIcon className="w-4 h-4" />
+                </button>
+            </div>
+        </div>
+    );
+}
