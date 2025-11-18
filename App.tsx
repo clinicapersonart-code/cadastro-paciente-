@@ -86,9 +86,10 @@ const App: React.FC = () => {
             const payload: BackupData = { pacientes: currentPatients, convenios, profissionais, especialidades, ts: new Date().toISOString() };
             const encrypted = await encryptJSON(payload, pass);
     
+            // IMPORTANTE: Content-Type deve ser text/plain para evitar Preflight OPTIONS request que o Google Script não suporta
             const res = await fetch(url, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                 body: JSON.stringify(encrypted)
             });
     
