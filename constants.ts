@@ -1,6 +1,7 @@
 
 export const STORAGE_KEYS = {
   PACIENTES: 'personart.pacientes.v1',
+  AGENDA: 'personart.agenda.v1',
   CONVENIOS: 'personart.convenios.v1',
   PROFISSIONAIS: 'personart.profissionais.v1',
   ESPECIALIDADES: 'personart.especialidades.v1',

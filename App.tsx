@@ -1,16 +1,20 @@
 
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { Patient, BrandConfig, BackupData, EncryptedPackage } from './types';
+import { Patient, BrandConfig, BackupData, EncryptedPackage, Appointment } from './types';
 import { STORAGE_KEYS, DEFAULT_CONVENIOS, DEFAULT_PROFISSIONAIS, DEFAULT_ESPECIALIDADES } from './constants';
 import useLocalStorage from './hooks/useLocalStorage';
 import { encryptJSON, decryptJSON } from './services/cryptoService';
 import { downloadFile, exportToCSV, readTextFromFile, readDataURLFromFile } from './services/fileService';
 import { PatientForm } from './components/PatientForm';
 import { PatientTable } from './components/PatientTable';
-import { DownloadIcon, UploadIcon, CloudIcon, TrashIcon, CloudDownloadIcon } from './components/icons';
+import { Agenda } from './components/Agenda';
+import { DownloadIcon, UploadIcon, CloudIcon, TrashIcon, CloudDownloadIcon, UserIcon, CalendarIcon } from './components/icons';
 
 const App: React.FC = () => {
+    const [activeTab, setActiveTab] = useState<'pacientes' | 'agenda'>('pacientes');
+    
     const [patients, setPatients] = useLocalStorage<Patient[]>(STORAGE_KEYS.PACIENTES, []);
+    const [appointments, setAppointments] = useLocalStorage<Appointment[]>(STORAGE_KEYS.AGENDA, []);
     const [convenios, setConvenios] = useLocalStorage<string[]>(STORAGE_KEYS.CONVENIOS, DEFAULT_CONVENIOS);
     const [profissionais, setProfissionais] = useLocalStorage<string[]>(STORAGE_KEYS.PROFISSIONAIS, DEFAULT_PROFISSIONAIS);
     const [especialidades, setEspecialidades] = useLocalStorage<string[]>(STORAGE_KEYS.ESPECIALIDADES, DEFAULT_ESPECIALIDADES);
@@ -31,12 +35,10 @@ const App: React.FC = () => {
         document.documentElement.style.setProperty('--brand-dark-color', brand.dark);
     }, [brand]);
 
-    // Ensure new default professionals (with CRP) are added to the list if missing
     useEffect(() => {
         const missing = DEFAULT_PROFISSIONAIS.filter(d => !profissionais.includes(d));
         if (missing.length > 0) {
             setProfissionais(prev => {
-                // Combine and remove duplicates just in case
                 const combined = [...prev, ...missing];
                 return Array.from(new Set(combined));
             });
@@ -48,7 +50,7 @@ const App: React.FC = () => {
     const sortedProfissionais = useMemo(() => [...profissionais].sort((a, b) => a.localeCompare(b, 'pt-BR')), [profissionais]);
     const sortedEspecialidades = useMemo(() => [...especialidades].sort((a, b) => a.localeCompare(b, 'pt-BR')), [especialidades]);
 
-    const performCloudSync = useCallback(async (currentPatients: Patient[], isManualTrigger: boolean) => {
+    const performCloudSync = useCallback(async (currentPatients: Patient[], currentAppointments: Appointment[], isManualTrigger: boolean) => {
         let url = cloudEndpoint;
         if (!url) {
             if (isManualTrigger) {
@@ -60,7 +62,6 @@ const App: React.FC = () => {
                 setCloudEndpoint(url);
             } else {
                 setSyncStatus({ msg: 'Endpoint da nuvem não configurado para backup automático.', isOk: false });
-                console.warn('Cloud endpoint not configured. Automatic sync skipped.');
                 return;
             }
         }
@@ -76,24 +77,30 @@ const App: React.FC = () => {
                 setCloudPass(pass);
             } else {
                 setSyncStatus({ msg: 'Senha da nuvem não configurada para backup automático.', isOk: false });
-                console.warn('Cloud password not configured. Automatic sync skipped.');
                 return;
             }
         }
     
         try {
             setSyncStatus({ msg: 'Sincronizando com a nuvem...', isOk: true });
-            const payload: BackupData = { pacientes: currentPatients, convenios, profissionais, especialidades, ts: new Date().toISOString() };
+            // Inclui appointments no payload
+            const payload: BackupData = { 
+                pacientes: currentPatients, 
+                agendamentos: currentAppointments,
+                convenios, 
+                profissionais, 
+                especialidades, 
+                ts: new Date().toISOString() 
+            };
             const encrypted = await encryptJSON(payload, pass);
     
-            // IMPORTANTE: Content-Type deve ser text/plain para evitar Preflight OPTIONS request que o Google Script não suporta
             const res = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                 body: JSON.stringify(encrypted)
             });
     
-            if (!res.ok) throw new Error(`Erro do servidor ${res.status}: ${res.statusText}. Verifique a URL do endpoint e as permissões do script.`);
+            if (!res.ok) throw new Error(`Erro do servidor ${res.status}: ${res.statusText}.`);
     
             const result = await res.json();
             if (result.status === 'error') throw new Error(result.message);
@@ -134,25 +141,21 @@ const App: React.FC = () => {
             
             const pkg = await res.json();
             
-            if (pkg.status === 'not_found') {
-                 throw new Error('Nenhum arquivo de backup encontrado no Google Drive.');
-            }
-            if (pkg.status === 'error') {
-                throw new Error(pkg.message);
-            }
+            if (pkg.status === 'not_found') throw new Error('Nenhum arquivo de backup encontrado no Google Drive.');
+            if (pkg.status === 'error') throw new Error(pkg.message);
 
             setSyncStatus({ msg: 'Backup encontrado. Descriptografando...', isOk: true });
             const data = await decryptJSON(pkg as EncryptedPackage, pass);
 
             setPatients(data.pacientes || []);
+            setAppointments(data.agendamentos || []); // Restaura agendamentos
             setConvenios(data.convenios || DEFAULT_CONVENIOS);
             setProfissionais(data.profissionais || DEFAULT_PROFISSIONAIS);
             setEspecialidades(data.especialidades || DEFAULT_ESPECIALIDADES);
             
-            const successMsg = `Dados sincronizados com sucesso do Google Drive. Total de ${data.pacientes.length} pacientes carregados.`;
+            const successMsg = `Dados sincronizados. ${data.pacientes.length} pacientes e ${(data.agendamentos || []).length} agendamentos carregados.`;
             setSyncStatus({ msg: successMsg, isOk: true });
             alert(successMsg);
-            // Save password for future auto-saves if successful
             setCloudPass(pass); 
 
         } catch (err) {
@@ -160,8 +163,9 @@ const App: React.FC = () => {
             setSyncStatus({ msg: errorMsg, isOk: false });
             alert(errorMsg);
         }
-    }, [cloudEndpoint, cloudPass, setCloudEndpoint, setCloudPass, setPatients, setConvenios, setProfissionais, setEspecialidades, patients.length]);
+    }, [cloudEndpoint, cloudPass, setCloudEndpoint, setCloudPass, setPatients, setAppointments, setConvenios, setProfissionais, setEspecialidades, patients.length]);
 
+    // --- Patient Actions ---
 
     const handleSavePatient = (patient: Patient) => {
         let updatedPatients;
@@ -172,11 +176,7 @@ const App: React.FC = () => {
         }
         setPatients(updatedPatients);
         setEditingPatient(null);
-
-        // Automatically trigger cloud backup in the background
-        performCloudSync(updatedPatients, false).catch(error => {
-            console.error("Falha no backup automático em segundo plano:", error);
-        });
+        performCloudSync(updatedPatients, appointments, false).catch(e => console.error("Erro auto-save:", e));
     };
 
     const handleEditPatient = (patient: Patient) => {
@@ -188,30 +188,42 @@ const App: React.FC = () => {
         if (window.confirm('Excluir este paciente?')) {
             const updatedPatients = patients.filter(p => p.id !== id);
             setPatients(updatedPatients);
-            performCloudSync(updatedPatients, false).catch(error => {
-                console.error("Falha no backup automático em segundo plano após exclusão:", error);
-            });
+            performCloudSync(updatedPatients, appointments, false).catch(e => console.error("Erro auto-save:", e));
         }
     };
 
-    const handleClearForm = () => {
-        setEditingPatient(null);
+    // --- Appointment Actions ---
+
+    const handleAddAppointment = (appt: Appointment) => {
+        const updated = [...appointments, appt];
+        setAppointments(updated);
+        performCloudSync(patients, updated, false).catch(e => console.error("Erro auto-save agenda:", e));
     };
+
+    const handleUpdateAppointment = (appt: Appointment) => {
+        const updated = appointments.map(a => a.id === appt.id ? appt : a);
+        setAppointments(updated);
+        performCloudSync(patients, updated, false).catch(e => console.error("Erro auto-save agenda:", e));
+    };
+
+    const handleDeleteAppointment = (id: string) => {
+        if (window.confirm('Remover este agendamento?')) {
+            const updated = appointments.filter(a => a.id !== id);
+            setAppointments(updated);
+            performCloudSync(patients, updated, false).catch(e => console.error("Erro auto-save agenda:", e));
+        }
+    };
+
+    // --- Generic Actions ---
 
     const handleAddNewItem = (list: string[], setList: (list: string[]) => void, item: string) => {
         const trimmed = item.trim();
-        if (trimmed && !list.some(i => i.toLowerCase() === trimmed.toLowerCase())) {
-            setList([...list, trimmed]);
-        }
+        if (trimmed && !list.some(i => i.toLowerCase() === trimmed.toLowerCase())) setList([...list, trimmed]);
     };
     
     const handleRemoveItem = (list: string[], setList: (list: string[]) => void, item: string) => {
         if (!item) return;
-        // Remove from the list of options. This does NOT remove it from existing patients, 
-        // because existing patients store the string value directly.
-        if (window.confirm(`Tem certeza que deseja remover "${item}" da lista de opções?\n\nIsso NÃO apaga a informação dos pacientes que já possuem esse registro.`)) {
-            setList(list.filter(i => i !== item));
-        }
+        if (window.confirm(`Remover "${item}" da lista de opções? (Não afeta históricos)`)) setList(list.filter(i => i !== item));
     };
     
     const filteredPatients = useMemo(() => {
@@ -233,18 +245,15 @@ const App: React.FC = () => {
     const handleExport = () => downloadFile('pacientes_personart.csv', exportToCSV(patients), 'text/csv;charset=utf-8');
 
     const handleEncryptedBackup = async () => {
-        let pass = cloudPass;
-        if (!pass) {
-            pass = prompt('Defina a senha do backup criptografado (será salva neste navegador)');
-            if (!pass) return;
-            setCloudPass(pass);
-        }
+        let pass = cloudPass || prompt('Senha para backup local:');
+        if (!pass) return;
+        setCloudPass(pass);
         try {
-            const payload: BackupData = { pacientes: patients, convenios, profissionais, especialidades, ts: new Date().toISOString() };
+            const payload: BackupData = { pacientes: patients, agendamentos: appointments, convenios, profissionais, especialidades, ts: new Date().toISOString() };
             const pkg = await encryptJSON(payload, pass);
             downloadFile('backup_personart.enc.json', JSON.stringify(pkg), 'application/json');
         } catch (err) {
-            alert(`Falha ao criptografar: ${err instanceof Error ? err.message : String(err)}`);
+            alert(`Falha: ${err instanceof Error ? err.message : String(err)}`);
         }
     };
     
@@ -253,12 +262,12 @@ const App: React.FC = () => {
         if (!file) return;
         try {
             const text = await readTextFromFile(file);
-            let data: BackupData | {pacientes: Patient[]};
+            let data: any;
             try {
                 const pkg = JSON.parse(text);
                 if (pkg && pkg.format === 'personart-aesgcm-v1') {
                     let pass = cloudPass || prompt('Arquivo criptografado. Digite a senha:');
-                    if (!pass) throw new Error('Senha não informada');
+                    if (!pass) throw new Error('Senha obrigatória');
                     data = await decryptJSON(pkg as EncryptedPackage, pass);
                 } else {
                     data = pkg;
@@ -267,113 +276,124 @@ const App: React.FC = () => {
                 data = JSON.parse(text);
             }
 
-            if ('pacientes' in data && Array.isArray(data.pacientes)) {
+            if (data && Array.isArray(data.pacientes)) {
                 setPatients(data.pacientes);
-                if ('convenios' in data && Array.isArray(data.convenios)) setConvenios(data.convenios);
-                if ('profissionais' in data && Array.isArray(data.profissionais)) setProfissionais(data.profissionais);
-                if ('especialidades' in data && Array.isArray(data.especialidades)) setEspecialidades(data.especialidades);
+                if (data.agendamentos) setAppointments(data.agendamentos);
+                if (data.convenios) setConvenios(data.convenios);
+                if (data.profissionais) setProfissionais(data.profissionais);
+                if (data.especialidades) setEspecialidades(data.especialidades);
                 alert('Backup importado com sucesso.');
-            } else if (Array.isArray(data)) {
-                 setPatients(data as Patient[]);
-                 alert('Backup (legado) importado com sucesso.');
             } else {
-                throw new Error('Formato de backup inválido');
+                throw new Error('Formato inválido');
             }
         } catch (err) {
-            alert(`Falha ao importar: ${err instanceof Error ? err.message : String(err)}`);
+            alert(`Falha: ${err instanceof Error ? err.message : String(err)}`);
         } finally {
-            e.target.value = ''; // Reset file input
+            e.target.value = ''; 
         }
     };
     
-    const handleSyncClick = () => {
-        performCloudSync(patients, true);
-    };
+    const handleSyncClick = () => performCloudSync(patients, appointments, true);
 
     return (
-        <div className="min-h-screen">
-            <header className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-                <div className="flex items-center gap-4">
-                    {brand.logo && <img src={brand.logo} alt="Logo da clínica" className="h-12 w-12 rounded-lg bg-slate-900 p-1 border border-slate-700" />}
-                    <div>
-                        <h1 className="text-2xl md:text-3xl font-bold" style={{ color: brand.color }}>{brand.name}</h1>
-                        <p className="text-sm text-slate-400">Registre pacientes, convênios e profissionais. Os dados ficam no seu navegador.</p>
+        <div className="min-h-screen pb-12">
+            <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-20 backdrop-blur-md bg-opacity-80">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="flex items-center gap-4">
+                        {brand.logo && <img src={brand.logo} alt="Logo" className="h-10 w-10 rounded-lg bg-slate-800 p-1" />}
+                        <div>
+                            <h1 className="text-xl font-bold" style={{ color: brand.color }}>{brand.name}</h1>
+                        </div>
                     </div>
+
+                    {/* Navigation Tabs */}
+                    <nav className="flex space-x-2 bg-slate-800 p-1 rounded-xl">
+                        <button 
+                            onClick={() => setActiveTab('pacientes')}
+                            className={`px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 ${activeTab === 'pacientes' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-700/50'}`}
+                        >
+                            <UserIcon className="w-4 h-4" /> Pacientes
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab('agenda')}
+                            className={`px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 ${activeTab === 'agenda' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-700/50'}`}
+                        >
+                            <CalendarIcon className="w-4 h-4" /> Agenda
+                        </button>
+                    </nav>
                 </div>
             </header>
 
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8 grid grid-cols-1 xl:grid-cols-2 gap-6">
-                <PatientForm
-                    editingPatient={editingPatient}
-                    onSave={handleSavePatient}
-                    onClear={handleClearForm}
-                    convenios={sortedConvenios}
-                    profissionais={sortedProfissionais}
-                    especialidades={sortedEspecialidades}
-                    onAddConvenio={(c) => handleAddNewItem(convenios, setConvenios, c)}
-                    onAddProfissional={(p) => handleAddNewItem(profissionais, setProfissionais, p)}
-                    onAddEspecialidade={(e) => handleAddNewItem(especialidades, setEspecialidades, e)}
-                    onRemoveConvenio={(c) => handleRemoveItem(convenios, setConvenios, c)}
-                    onRemoveProfissional={(p) => handleRemoveItem(profissionais, setProfissionais, p)}
-                    onRemoveEspecialidade={(e) => handleRemoveItem(especialidades, setEspecialidades, e)}
-                />
+            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
+                
+                {activeTab === 'pacientes' ? (
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                        <PatientForm
+                            editingPatient={editingPatient}
+                            onSave={handleSavePatient}
+                            onClear={() => setEditingPatient(null)}
+                            convenios={sortedConvenios}
+                            profissionais={sortedProfissionais}
+                            especialidades={sortedEspecialidades}
+                            onAddConvenio={(c) => handleAddNewItem(convenios, setConvenios, c)}
+                            onAddProfissional={(p) => handleAddNewItem(profissionais, setProfissionais, p)}
+                            onAddEspecialidade={(e) => handleAddNewItem(especialidades, setEspecialidades, e)}
+                            onRemoveConvenio={(c) => handleRemoveItem(convenios, setConvenios, c)}
+                            onRemoveProfissional={(p) => handleRemoveItem(profissionais, setProfissionais, p)}
+                            onRemoveEspecialidade={(e) => handleRemoveItem(especialidades, setEspecialidades, e)}
+                        />
 
-                <section className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6 shadow-2xl backdrop-blur-sm space-y-4">
-                    <h2 className="text-xl font-bold text-slate-100">Pacientes</h2>
-                    {/* Toolbar */}
-                    <div className="space-y-3">
-                      <input type="text" placeholder="Buscar por nome, responsável, contato..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition" />
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                        <select value={filters.convenio} onChange={e => setFilters(f => ({ ...f, convenio: e.target.value }))} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition">
-                          <option value="">Todos convênios</option>
-                          {sortedConvenios.map(c => <option key={c} value={c}>{c}</option>)}
-                        </select>
-                        <select value={filters.profissional} onChange={e => setFilters(f => ({ ...f, profissional: e.target.value }))} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition">
-                          <option value="">Todos profissionais</option>
-                          {sortedProfissionais.map(p => <option key={p} value={p}>{p}</option>)}
-                        </select>
-                        <select value={filters.faixa} onChange={e => setFilters(f => ({ ...f, faixa: e.target.value }))} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition">
-                          <option value="">Todas faixas</option>
-                          <option value="Criança">Criança</option>
-                          <option value="Adulto">Adulto</option>
-                        </select>
-                      </div>
-                      <div className="flex flex-wrap gap-2 items-center">
-                        <button onClick={() => setIsListVisible(true)} className="bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold px-3 py-1.5 rounded-md text-xs transition">Ver todos</button>
-                        <div className="flex-grow"></div>
-                        <button onClick={handleExport} className="bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold px-3 py-1.5 rounded-md text-xs transition flex items-center gap-1"><DownloadIcon className="w-3.5 h-3.5" />Exportar CSV</button>
-                        <button onClick={handleEncryptedBackup} className="bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold px-3 py-1.5 rounded-md text-xs transition flex items-center gap-1"><DownloadIcon className="w-3.5 h-3.5" />Backup Local</button>
-                        <label className="bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold px-3 py-1.5 rounded-md text-xs transition flex items-center gap-1 cursor-pointer"><UploadIcon className="w-3.5 h-3.5" />Importar<input ref={importFileInputRef} type="file" accept="application/json" className="hidden" onChange={handleImportBackup} /></label>
-                        <button onClick={handleCloudRestore} className="bg-teal-600 hover:bg-teal-500 text-white font-semibold px-3 py-1.5 rounded-md text-xs transition flex items-center gap-1"><CloudDownloadIcon className="w-3.5 h-3.5" />Sincronizar da Nuvem</button>
-                        <button onClick={handleSyncClick} className="bg-sky-600 hover:bg-sky-500 text-white font-semibold px-3 py-1.5 rounded-md text-xs transition flex items-center gap-1"><CloudIcon className="w-3.5 h-3.5" />Salvar no Google Drive</button>
-                        <button onClick={() => { if(window.confirm('APAGAR TODOS OS DADOS?')) { setPatients([]); performCloudSync([], true).catch(e => console.error(e)); } }} className="bg-red-800/80 hover:bg-red-700/80 text-red-200 font-semibold px-3 py-1.5 rounded-md text-xs transition flex items-center gap-1"><TrashIcon className="w-3.5 h-3.5" />Zerar Dados</button>
-                      </div>
-                      {syncStatus && <p className={`text-xs mt-2 ${syncStatus.isOk ? 'text-green-400' : 'text-red-400'}`}>{syncStatus.msg}</p>}
-                    </div>
+                        <section className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6 shadow-2xl backdrop-blur-sm space-y-4 flex flex-col h-fit">
+                            <h2 className="text-xl font-bold text-slate-100">Gerenciar Pacientes</h2>
+                            
+                            {/* Toolbar (Condensed) */}
+                            <div className="space-y-3">
+                                <input type="text" placeholder="Buscar..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 outline-none" />
+                                <div className="grid grid-cols-3 gap-2">
+                                    <select value={filters.convenio} onChange={e => setFilters(f => ({ ...f, convenio: e.target.value }))} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-2 py-2 text-xs outline-none"><option value="">Convênios</option>{sortedConvenios.map(c => <option key={c} value={c}>{c}</option>)}</select>
+                                    <select value={filters.profissional} onChange={e => setFilters(f => ({ ...f, profissional: e.target.value }))} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-2 py-2 text-xs outline-none"><option value="">Profissionais</option>{sortedProfissionais.map(p => <option key={p} value={p}>{p}</option>)}</select>
+                                    <select value={filters.faixa} onChange={e => setFilters(f => ({ ...f, faixa: e.target.value }))} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-2 py-2 text-xs outline-none"><option value="">Faixa</option><option value="Criança">Criança</option><option value="Adulto">Adulto</option></select>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    <button onClick={() => setIsListVisible(true)} className="bg-slate-700 text-slate-200 px-3 py-1.5 rounded text-xs">Listar Todos</button>
+                                    <div className="flex-grow"></div>
+                                    <button onClick={handleExport} title="CSV" className="bg-slate-700 text-slate-200 px-3 py-1.5 rounded text-xs"><DownloadIcon className="w-3.5 h-3.5" /></button>
+                                    <button onClick={handleEncryptedBackup} title="Backup Local" className="bg-slate-700 text-slate-200 px-3 py-1.5 rounded text-xs"><DownloadIcon className="w-3.5 h-3.5" /></button>
+                                    <label className="bg-slate-700 text-slate-200 px-3 py-1.5 rounded text-xs cursor-pointer"><UploadIcon className="w-3.5 h-3.5" /><input ref={importFileInputRef} type="file" className="hidden" onChange={handleImportBackup} /></label>
+                                    <button onClick={handleCloudRestore} title="Sincronizar" className="bg-teal-600 text-white px-3 py-1.5 rounded text-xs"><CloudDownloadIcon className="w-3.5 h-3.5" /></button>
+                                    <button onClick={handleSyncClick} title="Salvar Nuvem" className="bg-sky-600 text-white px-3 py-1.5 rounded text-xs"><CloudIcon className="w-3.5 h-3.5" /></button>
+                                </div>
+                                {syncStatus && <p className={`text-xs text-right ${syncStatus.isOk ? 'text-green-400' : 'text-red-400'}`}>{syncStatus.msg}</p>}
+                            </div>
 
-                    {showTable ? (
-                        <>
-                            <PatientTable patients={filteredPatients} onEdit={handleEditPatient} onDelete={handleDeletePatient} />
-                            <p className="text-sm text-slate-400 text-right">{filteredPatients.length} paciente(s) encontrado(s)</p>
-                        </>
-                    ) : (
-                         <div className="text-center py-10 text-slate-500 space-y-2">
-                            <p>A lista está oculta. Use a busca, filtros ou "Ver todos".</p>
-                            {patients.length === 0 && (
-                                <div className="p-4 bg-slate-900/50 rounded-lg border border-slate-700 inline-block mt-4 max-w-xs">
-                                    <p className="text-xs text-slate-300 mb-2">Se você está acessando em um novo computador e já possui dados salvos:</p>
-                                    <button 
-                                        onClick={handleCloudRestore}
-                                        className="bg-teal-600 hover:bg-teal-500 text-white font-bold py-1 px-3 rounded text-xs flex items-center gap-1 mx-auto"
-                                    >
-                                        <CloudDownloadIcon className="w-3 h-3" />
-                                        Clique aqui para baixar seus dados
-                                    </button>
+                            {showTable ? (
+                                <>
+                                    <PatientTable patients={filteredPatients} onEdit={handleEditPatient} onDelete={handleDeletePatient} />
+                                    <p className="text-xs text-slate-500 text-right">{filteredPatients.length} registros</p>
+                                </>
+                            ) : (
+                                <div className="text-center py-8 text-slate-500">
+                                    <p>Use a busca ou filtros para encontrar pacientes.</p>
+                                    {patients.length === 0 && <button onClick={handleCloudRestore} className="mt-4 text-teal-400 underline text-sm">Restaurar backup da nuvem?</button>}
                                 </div>
                             )}
+                        </section>
+                    </div>
+                ) : (
+                    <div className="max-w-4xl mx-auto">
+                        <Agenda 
+                            patients={patients}
+                            profissionais={sortedProfissionais}
+                            appointments={appointments}
+                            onAddAppointment={handleAddAppointment}
+                            onUpdateAppointment={handleUpdateAppointment}
+                            onDeleteAppointment={handleDeleteAppointment}
+                        />
+                        <div className="mt-6 flex justify-end">
+                             <button onClick={handleSyncClick} className="text-xs text-sky-500 hover:text-sky-400 flex items-center gap-1"><CloudIcon className="w-3 h-3" /> Forçar backup da agenda</button>
                         </div>
-                    )}
-                </section>
+                    </div>
+                )}
             </main>
         </div>
     );

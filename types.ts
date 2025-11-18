@@ -16,6 +16,19 @@ export interface Patient {
   origem?: string;
 }
 
+export interface Appointment {
+  id: string;
+  patientId: string;
+  patientName: string;
+  profissional: string;
+  date: string; // YYYY-MM-DD
+  time: string; // HH:MM
+  type: 'Convênio' | 'Particular';
+  convenioName?: string; // Nome do convênio se for convênio
+  status: 'Agendado' | 'Realizado' | 'Cancelado';
+  obs?: string;
+}
+
 export interface BrandConfig {
   color: string;
   dark: string;
@@ -25,6 +38,7 @@ export interface BrandConfig {
 
 export interface BackupData {
   pacientes: Patient[];
+  agendamentos?: Appointment[]; // Adicionado campo opcional para compatibilidade com backups antigos
   convenios: string[];
   profissionais: string[];
   especialidades: string[];
