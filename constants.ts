@@ -8,7 +8,8 @@ export const STORAGE_KEYS = {
   ESPECIALIDADES: 'personart.especialidades.v1',
   BRAND: 'personart.brand.v1',
   CLOUD_ENDPOINT: 'personart.cloud.endpoint',
-  CLOUD_PASS: 'personart.cloud.pass'
+  CLOUD_PASS: 'personart.cloud.pass',
+  ACCESS_PASS: 'personart.access.pass'
 };
 
 export const DEFAULT_CONVENIOS = ['Funserv', 'Danamed', 'Gama Saúde', 'Fusex', 'BlueSaúde', 'Unimed Campinas', 'Ossel', 'Ofebas'];

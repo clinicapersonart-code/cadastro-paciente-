@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Patient } from '../types';
-import { PlusIcon, XIcon, TrashIcon } from './icons';
+import { PlusIcon, XIcon, TrashIcon, CalendarIcon } from './icons';
 import { DEFAULT_ORIGINS } from '../constants';
 
 interface PatientFormProps {
@@ -39,6 +39,7 @@ export const PatientForm: React.FC<PatientFormProps> = ({
     onRemoveConvenio, onRemoveProfissional, onRemoveEspecialidade
 }) => {
     const [formData, setFormData] = useState<Patient>(emptyPatient);
+    const [activeTab, setActiveTab] = useState<'cadastro' | 'prontuario'>('cadastro');
     
     // States for adding new items
     const [novoProfissional, setNovoProfissional] = useState('');
@@ -51,7 +52,7 @@ export const PatientForm: React.FC<PatientFormProps> = ({
 
     useEffect(() => {
         setFormData(editingPatient ? { ...editingPatient } : { ...emptyPatient });
-        // Se editando, preenche o select de convênio com o valor atual, se existir
+        setActiveTab('cadastro'); // Reset tab on new patient load
         if (editingPatient?.convenio) {
             setSelectedConvenio(editingPatient.convenio);
         } else {
@@ -59,7 +60,6 @@ export const PatientForm: React.FC<PatientFormProps> = ({
         }
     }, [editingPatient]);
 
-    // Sincroniza o select de convênio com o formData
     const handleConvenioSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const val = e.target.value;
         setSelectedConvenio(val);
@@ -149,211 +149,262 @@ export const PatientForm: React.FC<PatientFormProps> = ({
 
     return (
         <section className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6 shadow-2xl backdrop-blur-sm">
-            <h2 className="text-xl font-bold mb-4 text-slate-100">{editingPatient ? 'Editar Paciente' : 'Novo Paciente'}</h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label htmlFor="nome" className="block text-sm font-medium text-slate-400 mb-1">Nome do paciente *</label>
-                        <input id="nome" name="nome" type="text" required placeholder="Ex.: Ana Silva" value={formData.nome} onChange={handleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition" />
-                    </div>
-                    <div>
-                        <label htmlFor="nascimento" className="block text-sm font-medium text-slate-400 mb-1">Data de nascimento</label>
-                        <input id="nascimento" name="nascimento" type="date" value={formData.nascimento || ''} onChange={handleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition appearance-none" />
-                        <div className="text-xs text-slate-500 mt-1">{ageHint()}</div>
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label htmlFor="contato" className="block text-sm font-medium text-slate-400 mb-1">Telefone/WhatsApp *</label>
-                        <input id="contato" name="contato" type="text" required placeholder="Ex.: (15) 99999-9999" value={formData.contato || ''} onChange={handleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition" />
-                    </div>
-                    <div>
-                        <label htmlFor="email" className="block text-sm font-medium text-slate-400 mb-1">E-mail</label>
-                        <input id="email" name="email" type="email" placeholder="email@exemplo.com" value={formData.email || ''} onChange={handleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition" />
-                    </div>
-                </div>
-
-                <div className="flex items-center gap-4 pt-1">
-                    <span className="text-sm text-slate-400">Faixa etária:</span>
-                    <label className="flex items-center gap-2 text-sm cursor-pointer">
-                        <input type="radio" name="faixa" value="Criança" checked={formData.faixa === 'Criança'} onChange={handleRadioChange} className="form-radio bg-slate-900 border-slate-600 text-sky-500 focus:ring-sky-500" /> Criança
-                    </label>
-                    <label className="flex items-center gap-2 text-sm cursor-pointer">
-                        <input type="radio" name="faixa" value="Adulto" checked={formData.faixa === 'Adulto'} onChange={handleRadioChange} className="form-radio bg-slate-900 border-slate-600 text-sky-500 focus:ring-sky-500" /> Adulto
-                    </label>
-                </div>
-
-                {formData.faixa === 'Criança' && (
-                    <div>
-                        <label htmlFor="responsavel" className="block text-sm font-medium text-slate-400 mb-1">Nome do responsável (obrigatório para criança)</label>
-                        <input id="responsavel" name="responsavel" type="text" placeholder="Ex.: Maria de Souza" value={formData.responsavel || ''} onChange={handleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition" />
+            <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold text-slate-100">{editingPatient ? 'Editar Paciente' : 'Novo Paciente'}</h2>
+                
+                {/* Tabs */}
+                {editingPatient && (
+                    <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-700">
+                        <button 
+                            type="button"
+                            onClick={() => setActiveTab('cadastro')} 
+                            className={`px-3 py-1 text-xs font-bold rounded transition ${activeTab === 'cadastro' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+                        >
+                            Cadastro
+                        </button>
+                        <button 
+                            type="button"
+                            onClick={() => setActiveTab('prontuario')} 
+                            className={`px-3 py-1 text-xs font-bold rounded transition ${activeTab === 'prontuario' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+                        >
+                            Prontuário
+                        </button>
                     </div>
                 )}
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label htmlFor="convenio" className="block text-sm font-medium text-slate-400 mb-1">Convênio</label>
-                        <div className="flex gap-2">
-                            <select 
-                                id="convenio" 
-                                name="convenio" 
-                                value={selectedConvenio} 
-                                onChange={handleConvenioSelect} 
-                                className="flex-1 w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition"
-                            >
-                                <option value="">Selecione...</option>
-                                {convenios.map(c => <option key={c} value={c}>{c}</option>)}
-                            </select>
-                            <button 
-                                type="button" 
-                                title="Excluir convênio selecionado da lista de opções (não apaga do paciente)" 
-                                onClick={() => {
-                                    if (selectedConvenio) {
-                                        onRemoveConvenio(selectedConvenio);
-                                        setSelectedConvenio('');
-                                        setFormData(prev => ({...prev, convenio: ''}));
-                                    }
-                                }} 
-                                className="bg-slate-700 hover:bg-red-900/50 hover:text-red-300 text-slate-200 px-2.5 rounded-lg text-sm transition"
-                            >
-                                <TrashIcon className="w-4 h-4" />
-                            </button>
-                            <button type="button" title="Criar novo convênio" onClick={() => {const n = prompt('Novo convênio:'); if (n) onAddConvenio(n);}} className="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 rounded-lg text-sm transition"><PlusIcon className="w-4 h-4" /></button>
+            </div>
+
+            {activeTab === 'cadastro' ? (
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label htmlFor="nome" className="block text-sm font-medium text-slate-400 mb-1">Nome do paciente *</label>
+                            <input id="nome" name="nome" type="text" required placeholder="Ex.: Ana Silva" value={formData.nome} onChange={handleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition" />
+                        </div>
+                        <div>
+                            <label htmlFor="nascimento" className="block text-sm font-medium text-slate-400 mb-1">Data de nascimento</label>
+                            <input id="nascimento" name="nascimento" type="date" value={formData.nascimento || ''} onChange={handleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition appearance-none" />
+                            <div className="text-xs text-slate-500 mt-1">{ageHint()}</div>
                         </div>
                     </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label htmlFor="contato" className="block text-sm font-medium text-slate-400 mb-1">Telefone/WhatsApp *</label>
+                            <input id="contato" name="contato" type="text" required placeholder="Ex.: (15) 99999-9999" value={formData.contato || ''} onChange={handleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition" />
+                        </div>
+                        <div>
+                            <label htmlFor="email" className="block text-sm font-medium text-slate-400 mb-1">E-mail</label>
+                            <input id="email" name="email" type="email" placeholder="email@exemplo.com" value={formData.email || ''} onChange={handleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition" />
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-4 pt-1">
+                        <span className="text-sm text-slate-400">Faixa etária:</span>
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                            <input type="radio" name="faixa" value="Criança" checked={formData.faixa === 'Criança'} onChange={handleRadioChange} className="form-radio bg-slate-900 border-slate-600 text-sky-500 focus:ring-sky-500" /> Criança
+                        </label>
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                            <input type="radio" name="faixa" value="Adulto" checked={formData.faixa === 'Adulto'} onChange={handleRadioChange} className="form-radio bg-slate-900 border-slate-600 text-sky-500 focus:ring-sky-500" /> Adulto
+                        </label>
+                    </div>
+
+                    {formData.faixa === 'Criança' && (
+                        <div>
+                            <label htmlFor="responsavel" className="block text-sm font-medium text-slate-400 mb-1">Nome do responsável (obrigatório para criança)</label>
+                            <input id="responsavel" name="responsavel" type="text" placeholder="Ex.: Maria de Souza" value={formData.responsavel || ''} onChange={handleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition" />
+                        </div>
+                    )}
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label htmlFor="convenio" className="block text-sm font-medium text-slate-400 mb-1">Convênio</label>
+                            <div className="flex gap-2">
+                                <select 
+                                    id="convenio" 
+                                    name="convenio" 
+                                    value={selectedConvenio} 
+                                    onChange={handleConvenioSelect} 
+                                    className="flex-1 w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition"
+                                >
+                                    <option value="">Selecione...</option>
+                                    {convenios.map(c => <option key={c} value={c}>{c}</option>)}
+                                </select>
+                                <button 
+                                    type="button" 
+                                    title="Excluir convênio selecionado da lista de opções (não apaga do paciente)" 
+                                    onClick={() => {
+                                        if (selectedConvenio) {
+                                            onRemoveConvenio(selectedConvenio);
+                                            setSelectedConvenio('');
+                                            setFormData(prev => ({...prev, convenio: ''}));
+                                        }
+                                    }} 
+                                    className="bg-slate-700 hover:bg-red-900/50 hover:text-red-300 text-slate-200 px-2.5 rounded-lg text-sm transition"
+                                >
+                                    <TrashIcon className="w-4 h-4" />
+                                </button>
+                                <button type="button" title="Criar novo convênio" onClick={() => {const n = prompt('Novo convênio:'); if (n) onAddConvenio(n);}} className="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 rounded-lg text-sm transition"><PlusIcon className="w-4 h-4" /></button>
+                            </div>
+                        </div>
+                        <div>
+                            <label htmlFor="carteirinha" className="block text-sm font-medium text-slate-400 mb-1">Número da carteirinha</label>
+                            <input id="carteirinha" name="carteirinha" type="text" placeholder="Ex.: 123456789" value={formData.carteirinha || ''} onChange={handleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition" />
+                        </div>
+                    </div>
+
+                    {/* Campo Origem */}
                     <div>
-                        <label htmlFor="carteirinha" className="block text-sm font-medium text-slate-400 mb-1">Número da carteirinha</label>
-                        <input id="carteirinha" name="carteirinha" type="text" placeholder="Ex.: 123456789" value={formData.carteirinha || ''} onChange={handleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition" />
+                        <label htmlFor="origem" className="block text-sm font-medium text-slate-400 mb-1">Origem (Como conheceu a clínica?)</label>
+                        <select 
+                            id="origem" 
+                            name="origem" 
+                            value={formData.origem || ''} 
+                            onChange={handleChange} 
+                            className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition"
+                        >
+                            <option value="">Selecione a origem...</option>
+                            {DEFAULT_ORIGINS.map(o => <option key={o} value={o}>{o}</option>)}
+                        </select>
                     </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-slate-400 mb-1">Profissionais</label>
+                        <div className="flex gap-2 mb-2">
+                        <select 
+                            id="profissional-select" 
+                            value={selectedProfissional}
+                            onChange={(e) => setSelectedProfissional(e.target.value)}
+                            className="flex-1 w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition"
+                        >
+                            <option value="">Selecione para adicionar ou excluir...</option>
+                            {profissionais.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
+                        <button 
+                            type="button" 
+                            title="Excluir profissional selecionado da lista de opções" 
+                            onClick={() => {
+                                if(selectedProfissional) {
+                                    onRemoveProfissional(selectedProfissional);
+                                    setSelectedProfissional('');
+                                }
+                            }} 
+                            className="bg-slate-700 hover:bg-red-900/50 hover:text-red-300 text-slate-200 px-3 rounded-lg text-sm transition"
+                        >
+                            <TrashIcon className="w-4 h-4" />
+                        </button>
+                        <button 
+                            type="button" 
+                            title="Adicionar profissional ao paciente" 
+                            onClick={() => {
+                                if (selectedProfissional) {
+                                    handleAddItem(formData.profissionais, (p) => setFormData(prev => ({...prev, profissionais: p})), selectedProfissional);
+                                }
+                            }} 
+                            className="bg-sky-600 hover:bg-sky-500 text-white font-semibold px-4 rounded-lg text-sm transition"
+                        >
+                            Adicionar
+                        </button>
+                        </div>
+                        <div className="flex gap-2">
+                            <input type="text" value={novoProfissional} onChange={(e) => setNovoProfissional(e.target.value)} placeholder="Criar novo profissional (Digite e clique em +)" className="flex-1 w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition" />
+                            <button type="button" onClick={() => { if (novoProfissional) { onAddProfissional(novoProfissional); setNovoProfissional(''); } }} className="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 rounded-lg text-sm transition"><PlusIcon className="w-4 h-4" /></button>
+                        </div>
+                        <div className="flex flex-wrap gap-2 mt-2">
+                            {formData.profissionais.map((p: string) => <span key={p}><Chip text={p} onRemove={() => handleRemoveItem(formData.profissionais, (pro) => setFormData(prev => ({...prev, profissionais: pro})), p)} /></span>)}
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-slate-400 mb-1">Especialidades</label>
+                        <div className="flex gap-2 mb-2">
+                        <select 
+                            id="especialidade-select" 
+                            value={selectedEspecialidade}
+                            onChange={(e) => setSelectedEspecialidade(e.target.value)}
+                            className="flex-1 w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition"
+                        >
+                            <option value="">Selecione para adicionar ou excluir...</option>
+                            {especialidades.map(e => <option key={e} value={e}>{e}</option>)}
+                        </select>
+                        <button 
+                            type="button" 
+                            title="Excluir especialidade selecionada da lista de opções" 
+                            onClick={() => {
+                                if(selectedEspecialidade) {
+                                    onRemoveEspecialidade(selectedEspecialidade);
+                                    setSelectedEspecialidade('');
+                                }
+                            }}
+                            className="bg-slate-700 hover:bg-red-900/50 hover:text-red-300 text-slate-200 px-3 rounded-lg text-sm transition"
+                        >
+                            <TrashIcon className="w-4 h-4" />
+                        </button>
+                        <button 
+                            type="button" 
+                            title="Adicionar especialidade ao paciente" 
+                            onClick={() => {
+                                if (selectedEspecialidade) {
+                                    handleAddItem(formData.especialidades, (e) => setFormData(prev => ({...prev, especialidades: e})), selectedEspecialidade);
+                                }
+                            }}
+                            className="bg-sky-600 hover:bg-sky-500 text-white font-semibold px-4 rounded-lg text-sm transition"
+                        >
+                            Adicionar
+                        </button>
+                        </div>
+                        <div className="flex gap-2">
+                            <input type="text" value={novaEspecialidade} onChange={(e) => setNovaEspecialidade(e.target.value)} placeholder="Criar nova especialidade (Digite e clique em +)" className="flex-1 w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition" />
+                            <button type="button" onClick={() => { if (novaEspecialidade) { onAddEspecialidade(novaEspecialidade); setNovaEspecialidade(''); } }} className="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 rounded-lg text-sm transition"><PlusIcon className="w-4 h-4" /></button>
+                        </div>
+                        <div className="flex flex-wrap gap-2 mt-2">
+                            {formData.especialidades.map((e: string) => <span key={e}><Chip text={e} onRemove={() => handleRemoveItem(formData.especialidades, (esp) => setFormData(prev => ({...prev, especialidades: esp})), e)} /></span>)}
+                        </div>
+                    </div>
+
+
+                    <div className="flex items-center gap-4 pt-1">
+                        <span className="text-sm text-slate-400">Tipo de atendimento:</span>
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                            <input type="radio" name="tipoAtendimento" value="Convencional" checked={formData.tipoAtendimento === 'Convencional'} onChange={handleRadioChange} className="form-radio bg-slate-900 border-slate-600 text-sky-500 focus:ring-sky-500" /> Convencional
+                        </label>
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                            <input type="radio" name="tipoAtendimento" value="ABA" checked={formData.tipoAtendimento === 'ABA'} onChange={handleRadioChange} className="form-radio bg-slate-900 border-slate-600 text-sky-500 focus:ring-sky-500" /> ABA
+                        </label>
+                    </div>
+
+
+                    <div className="flex gap-4">
+                        <button type="submit" className="bg-sky-600 hover:bg-sky-500 text-white font-semibold px-4 py-2 rounded-lg text-sm transition w-full sm:w-auto">Salvar paciente</button>
+                        <button type="button" onClick={onClear} className="bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold px-4 py-2 rounded-lg text-sm transition w-full sm:w-auto">Limpar formulário</button>
+                    </div>
+                </form>
+            ) : (
+                <div className="space-y-4">
+                     <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider">Histórico de Evoluções</h4>
+                     
+                     <div className="max-h-[400px] overflow-y-auto pr-2 space-y-3 bg-slate-900/30 rounded-xl p-2 border border-slate-700/50">
+                        {(!formData.evolutions || formData.evolutions.length === 0) ? (
+                            <p className="text-sm text-slate-500 text-center py-8">Nenhuma evolução registrada neste prontuário.</p>
+                        ) : (
+                            formData.evolutions
+                                .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                                .map(evo => (
+                                    <div key={evo.id} className="bg-slate-800 border border-slate-700 p-4 rounded-xl">
+                                        <div className="flex justify-between items-start mb-2">
+                                            <span className="flex items-center gap-2 text-sky-400 font-bold text-sm">
+                                                <CalendarIcon className="w-3 h-3" />
+                                                {new Date(evo.date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                            </span>
+                                            <span className="text-xs text-slate-500 bg-slate-900 px-2 py-0.5 rounded-full">{evo.professional}</span>
+                                        </div>
+                                        <p className="text-sm text-slate-300 whitespace-pre-wrap">{evo.content}</p>
+                                    </div>
+                                ))
+                        )}
+                     </div>
+                     <p className="text-xs text-slate-500 mt-2">* As evoluções são inseridas pelos profissionais através do Portal do Colaborador.</p>
                 </div>
-
-                {/* Campo Origem */}
-                <div>
-                    <label htmlFor="origem" className="block text-sm font-medium text-slate-400 mb-1">Origem (Como conheceu a clínica?)</label>
-                    <select 
-                        id="origem" 
-                        name="origem" 
-                        value={formData.origem || ''} 
-                        onChange={handleChange} 
-                        className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition"
-                    >
-                        <option value="">Selecione a origem...</option>
-                        {DEFAULT_ORIGINS.map(o => <option key={o} value={o}>{o}</option>)}
-                    </select>
-                </div>
-
-                <div>
-                    <label className="block text-sm font-medium text-slate-400 mb-1">Profissionais</label>
-                    <div className="flex gap-2 mb-2">
-                      <select 
-                          id="profissional-select" 
-                          value={selectedProfissional}
-                          onChange={(e) => setSelectedProfissional(e.target.value)}
-                          className="flex-1 w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition"
-                      >
-                          <option value="">Selecione para adicionar ou excluir...</option>
-                          {profissionais.map(p => <option key={p} value={p}>{p}</option>)}
-                      </select>
-                      <button 
-                        type="button" 
-                        title="Excluir profissional selecionado da lista de opções" 
-                        onClick={() => {
-                            if(selectedProfissional) {
-                                onRemoveProfissional(selectedProfissional);
-                                setSelectedProfissional('');
-                            }
-                        }} 
-                        className="bg-slate-700 hover:bg-red-900/50 hover:text-red-300 text-slate-200 px-3 rounded-lg text-sm transition"
-                      >
-                          <TrashIcon className="w-4 h-4" />
-                      </button>
-                      <button 
-                        type="button" 
-                        title="Adicionar profissional ao paciente" 
-                        onClick={() => {
-                            if (selectedProfissional) {
-                                handleAddItem(formData.profissionais, (p) => setFormData(prev => ({...prev, profissionais: p})), selectedProfissional);
-                            }
-                        }} 
-                        className="bg-sky-600 hover:bg-sky-500 text-white font-semibold px-4 rounded-lg text-sm transition"
-                      >
-                          Adicionar
-                      </button>
-                    </div>
-                    <div className="flex gap-2">
-                        <input type="text" value={novoProfissional} onChange={(e) => setNovoProfissional(e.target.value)} placeholder="Criar novo profissional (Digite e clique em +)" className="flex-1 w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition" />
-                        <button type="button" onClick={() => { if (novoProfissional) { onAddProfissional(novoProfissional); setNovoProfissional(''); } }} className="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 rounded-lg text-sm transition"><PlusIcon className="w-4 h-4" /></button>
-                    </div>
-                    <div className="flex flex-wrap gap-2 mt-2">
-                        {formData.profissionais.map((p: string) => <span key={p}><Chip text={p} onRemove={() => handleRemoveItem(formData.profissionais, (pro) => setFormData(prev => ({...prev, profissionais: pro})), p)} /></span>)}
-                    </div>
-                </div>
-
-                 <div>
-                    <label className="block text-sm font-medium text-slate-400 mb-1">Especialidades</label>
-                    <div className="flex gap-2 mb-2">
-                      <select 
-                        id="especialidade-select" 
-                        value={selectedEspecialidade}
-                        onChange={(e) => setSelectedEspecialidade(e.target.value)}
-                        className="flex-1 w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition"
-                      >
-                          <option value="">Selecione para adicionar ou excluir...</option>
-                          {especialidades.map(e => <option key={e} value={e}>{e}</option>)}
-                      </select>
-                      <button 
-                        type="button" 
-                        title="Excluir especialidade selecionada da lista de opções" 
-                        onClick={() => {
-                            if(selectedEspecialidade) {
-                                onRemoveEspecialidade(selectedEspecialidade);
-                                setSelectedEspecialidade('');
-                            }
-                        }}
-                        className="bg-slate-700 hover:bg-red-900/50 hover:text-red-300 text-slate-200 px-3 rounded-lg text-sm transition"
-                      >
-                          <TrashIcon className="w-4 h-4" />
-                      </button>
-                      <button 
-                        type="button" 
-                        title="Adicionar especialidade ao paciente" 
-                        onClick={() => {
-                            if (selectedEspecialidade) {
-                                handleAddItem(formData.especialidades, (e) => setFormData(prev => ({...prev, especialidades: e})), selectedEspecialidade);
-                            }
-                        }}
-                        className="bg-sky-600 hover:bg-sky-500 text-white font-semibold px-4 rounded-lg text-sm transition"
-                      >
-                          Adicionar
-                      </button>
-                    </div>
-                    <div className="flex gap-2">
-                        <input type="text" value={novaEspecialidade} onChange={(e) => setNovaEspecialidade(e.target.value)} placeholder="Criar nova especialidade (Digite e clique em +)" className="flex-1 w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition" />
-                        <button type="button" onClick={() => { if (novaEspecialidade) { onAddEspecialidade(novaEspecialidade); setNovaEspecialidade(''); } }} className="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 rounded-lg text-sm transition"><PlusIcon className="w-4 h-4" /></button>
-                    </div>
-                    <div className="flex flex-wrap gap-2 mt-2">
-                        {formData.especialidades.map((e: string) => <span key={e}><Chip text={e} onRemove={() => handleRemoveItem(formData.especialidades, (esp) => setFormData(prev => ({...prev, especialidades: esp})), e)} /></span>)}
-                    </div>
-                </div>
-
-
-                <div className="flex items-center gap-4 pt-1">
-                    <span className="text-sm text-slate-400">Tipo de atendimento:</span>
-                    <label className="flex items-center gap-2 text-sm cursor-pointer">
-                        <input type="radio" name="tipoAtendimento" value="Convencional" checked={formData.tipoAtendimento === 'Convencional'} onChange={handleRadioChange} className="form-radio bg-slate-900 border-slate-600 text-sky-500 focus:ring-sky-500" /> Convencional
-                    </label>
-                    <label className="flex items-center gap-2 text-sm cursor-pointer">
-                        <input type="radio" name="tipoAtendimento" value="ABA" checked={formData.tipoAtendimento === 'ABA'} onChange={handleRadioChange} className="form-radio bg-slate-900 border-slate-600 text-sky-500 focus:ring-sky-500" /> ABA
-                    </label>
-                </div>
-
-
-                <div className="flex gap-4">
-                    <button type="submit" className="bg-sky-600 hover:bg-sky-500 text-white font-semibold px-4 py-2 rounded-lg text-sm transition w-full sm:w-auto">Salvar paciente</button>
-                    <button type="button" onClick={onClear} className="bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold px-4 py-2 rounded-lg text-sm transition w-full sm:w-auto">Limpar formulário</button>
-                </div>
-            </form>
+            )}
         </section>
     );
 };

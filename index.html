@@ -1,23 +1,54 @@
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Clínica Personart - Gerenciador de Pacientes</title>
+  <title>Clínica Personart</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
+    /* Fontes Personart */
+    @font-face {
+      font-family: 'Glancyr';
+      src: url('/fonts/Glancyr-Regular.otf') format('opentype');
+      font-weight: 400;
+      font-style: normal;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: 'Glancyr';
+      src: url('/fonts/Glancyr-SemiBold.otf') format('opentype');
+      font-weight: 600;
+      font-style: normal;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: 'Glancyr';
+      src: url('/fonts/Glancyr-Bold.otf') format('opentype');
+      font-weight: 700;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    /* Cores Personart */
+    :root {
+      --personart-teal: #273e44;
+      --personart-gold: #e9c49e;
+    }
+
     body {
-      background: linear-gradient(180deg, #0b1220 0%, #0f172a 100%);
+      background-color: var(--personart-teal); /* Teal Background */
+      font-family: 'Glancyr', ui-sans-serif, system-ui, sans-serif;
     }
   </style>
 <script type="importmap">
 {
   "imports": {
-    "react": "https://aistudiocdn.com/react@^19.2.0",
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
     "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "vite": "https://aistudiocdn.com/vite@^7.2.2",
-    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1"
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
+    "vite": "https://aistudiocdn.com/vite@^7.2.4"
   }
 }
 </script>

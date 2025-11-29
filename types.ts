@@ -1,5 +1,13 @@
 
 
+export interface Evolution {
+    id: string;
+    date: string;
+    content: string;
+    professional: string;
+    timestamp: string;
+}
+
 export interface Patient {
   id: string;
   nome: string;
@@ -16,6 +24,7 @@ export interface Patient {
   especialidades: string[];
   crm?: string;
   origem?: string;
+  evolutions?: Evolution[];
 }
 
 export interface Appointment {

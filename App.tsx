@@ -1,7 +1,6 @@
 
-
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { Patient, BrandConfig, BackupData, EncryptedPackage, Appointment, PreCadastro } from './types';
+import { Patient, BrandConfig, BackupData, EncryptedPackage, Appointment, PreCadastro, Evolution } from './types';
 import { STORAGE_KEYS, DEFAULT_CONVENIOS, DEFAULT_PROFISSIONAIS, DEFAULT_ESPECIALIDADES } from './constants';
 import useLocalStorage from './hooks/useLocalStorage';
 import { encryptJSON, decryptJSON } from './services/cryptoService';
@@ -10,56 +9,65 @@ import { PatientForm } from './components/PatientForm';
 import { PatientTable } from './components/PatientTable';
 import { Agenda } from './components/Agenda';
 import { PublicRegistration } from './components/PublicRegistration';
-import { DownloadIcon, UploadIcon, CloudIcon, TrashIcon, CloudDownloadIcon, UserIcon, CalendarIcon, InboxIcon, CheckIcon, XIcon } from './components/icons';
+import { ProfessionalPortal } from './components/ProfessionalPortal';
+import { DownloadIcon, UploadIcon, CloudIcon, TrashIcon, CloudDownloadIcon, UserIcon, CalendarIcon, InboxIcon, CheckIcon, XIcon, LockIcon, ArrowRightIcon, ShieldIcon } from './components/icons';
 
 const App: React.FC = () => {
+    // --- HOOKS INITIALIZATION (MUST BE AT THE TOP) ---
     const [convenios, setConvenios] = useLocalStorage<string[]>(STORAGE_KEYS.CONVENIOS, DEFAULT_CONVENIOS);
-    
-    // Simple router check
-    const params = new URLSearchParams(window.location.search);
-    const mode = params.get('mode');
-    const isPublicRegistration = mode === 'cadastro';
-    const isPatientUpdate = mode === 'atualizacao';
-
-    const [activeTab, setActiveTab] = useState<'pacientes' | 'agenda'>('pacientes');
-    
     const [patients, setPatients] = useLocalStorage<Patient[]>(STORAGE_KEYS.PACIENTES, []);
     const [appointments, setAppointments] = useLocalStorage<Appointment[]>(STORAGE_KEYS.AGENDA, []);
-    // convenios is declared above to be available for PublicRegistration return check
     const [profissionais, setProfissionais] = useLocalStorage<string[]>(STORAGE_KEYS.PROFISSIONAIS, DEFAULT_PROFISSIONAIS);
     const [especialidades, setEspecialidades] = useLocalStorage<string[]>(STORAGE_KEYS.ESPECIALIDADES, DEFAULT_ESPECIALIDADES);
-    const [brand, setBrand] = useLocalStorage<BrandConfig>(STORAGE_KEYS.BRAND, { color: '#F2C8A0', dark: '#E3B189', logo: null, name: 'Clínica Personart' });
+    
+    // Updated Brand Colors from provided CSS (#273e44 Teal, #e9c49e Salmon)
+    const [brand, setBrand] = useLocalStorage<BrandConfig>(STORAGE_KEYS.BRAND, { 
+        color: '#e9c49e', // Salmão/Dourado (Accent)
+        dark: '#273e44',  // Teal (Primary/Background)
+        logo: null, 
+        name: 'Clínica Personart' 
+    });
+    
     const [cloudEndpoint, setCloudEndpoint] = useLocalStorage<string>(STORAGE_KEYS.CLOUD_ENDPOINT, 'https://script.google.com/macros/s/AKfycbyM5earqQA7H3Wuh601E4d1KpAIq7StzqfNNc0bMNbZHHsCdh63GgJiv03aclt8wcTxrQ/exec');
     const [cloudPass, setCloudPass] = useLocalStorage<string>(STORAGE_KEYS.CLOUD_PASS, '');
+    const [accessPass, setAccessPass] = useLocalStorage<string>(STORAGE_KEYS.ACCESS_PASS, 'personart');
 
     const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
+    const [activeTab, setActiveTab] = useState<'pacientes' | 'agenda'>('pacientes');
     const [searchTerm, setSearchTerm] = useState('');
     const [filters, setFilters] = useState({ convenio: '', profissional: '', faixa: '' });
     const [isListVisible, setIsListVisible] = useState(false);
     const [syncStatus, setSyncStatus] = useState<{ msg: string, isOk: boolean } | null>(null);
     
-    // Inbox State
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [view, setView] = useState<'landing' | 'login' | 'dashboard'>('landing');
+    const [loginInput, setLoginInput] = useState('');
+    
     const [inbox, setInbox] = useState<PreCadastro[]>([]);
     const [showInbox, setShowInbox] = useState(false);
 
     const importFileInputRef = useRef<HTMLInputElement>(null);
-    
+
+    // --- MEMOS ---
     const sortedConvenios = useMemo(() => [...convenios].sort((a, b) => a.localeCompare(b, 'pt-BR')), [convenios]);
+    const sortedProfissionais = useMemo(() => [...profissionais].sort((a, b) => a.localeCompare(b, 'pt-BR')), [profissionais]);
+    const sortedEspecialidades = useMemo(() => [...especialidades].sort((a, b) => a.localeCompare(b, 'pt-BR')), [especialidades]);
 
-    // If Public Mode, return early
-    if (isPublicRegistration || isPatientUpdate) {
-        return (
-            <PublicRegistration 
-                cloudEndpoint={cloudEndpoint} 
-                brandName={brand.name} 
-                brandColor={brand.color} 
-                brandLogo={brand.logo} 
-                isUpdateMode={isPatientUpdate}
-                convenios={sortedConvenios}
-            />
-        );
-    }
+    const filteredPatients = useMemo(() => {
+        return patients
+            .filter(p => {
+                const search = searchTerm.toLowerCase();
+                const blob = [p.nome, p.responsavel, p.contato, p.email, p.crm, p.origem, p.carteirinha, p.tipoAtendimento].filter(Boolean).join(' ').toLowerCase();
+                if (search && !blob.includes(search)) return false;
+                if (filters.convenio && p.convenio !== filters.convenio) return false;
+                if (filters.faixa && p.faixa !== filters.faixa) return false;
+                if (filters.profissional && !p.profissionais.includes(filters.profissional)) return false;
+                return true;
+            })
+            .sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'));
+    }, [patients, searchTerm, filters]);
 
+    // --- EFFECTS ---
     useEffect(() => {
         document.documentElement.style.setProperty('--brand-color', brand.color);
         document.documentElement.style.setProperty('--brand-dark-color', brand.dark);
@@ -76,11 +84,9 @@ const App: React.FC = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    // --- ACTION HANDLERS ---
     
-    const sortedProfissionais = useMemo(() => [...profissionais].sort((a, b) => a.localeCompare(b, 'pt-BR')), [profissionais]);
-    const sortedEspecialidades = useMemo(() => [...especialidades].sort((a, b) => a.localeCompare(b, 'pt-BR')), [especialidades]);
-
-    const performCloudSync = useCallback(async (currentPatients: Patient[], currentAppointments: Appointment[], isManualTrigger: boolean) => {
+    const performCloudSync = async (currentPatients: Patient[], currentAppointments: Appointment[], isManualTrigger: boolean) => {
         let url = cloudEndpoint;
         if (!url) {
             if (isManualTrigger) {
@@ -146,10 +152,23 @@ const App: React.FC = () => {
             if (isManualTrigger) alert(errorMsg);
             throw err;
         }
-    }, [cloudEndpoint, cloudPass, convenios, profissionais, especialidades, setCloudEndpoint, setCloudPass]);
+    };
+    
+    const handleSaveEvolution = async (patientId: string, evolution: Evolution) => {
+        const updatedPatients = patients.map(p => {
+            if (p.id === patientId) {
+                const currentEvos = p.evolutions || [];
+                return { ...p, evolutions: [...currentEvos, evolution] };
+            }
+            return p;
+        });
+        setPatients(updatedPatients);
+        // Await sync to confirm save to portal user
+        await performCloudSync(updatedPatients, appointments, false);
+    };
 
-    const handleCloudRestore = useCallback(async () => {
-        if (patients.length > 0 && !window.confirm('Isso substituirá TODOS os dados locais pelo backup do Google Drive. Deseja continuar?')) {
+    const handleCloudRestore = async () => {
+        if (patients.length > 0 && !window.confirm('Isso substituirá TODOS os dados locais deste dispositivo pelo backup do Google Drive. Deseja continuar?')) {
             return;
         }
 
@@ -162,13 +181,12 @@ const App: React.FC = () => {
     
         let pass = cloudPass;
         if (!pass) {
-            pass = prompt('Digite a senha do backup na nuvem:');
+            pass = prompt('Digite a senha do backup na nuvem para desbloquear os dados:');
             if (!pass) return;
         }
 
         try {
             setSyncStatus({ msg: 'Buscando backup na nuvem...', isOk: true });
-            // Add parameter to specifically ask for backup
             const res = await fetch(`${url}?action=get_backup`);
             if (!res.ok) throw new Error(`Erro do servidor ${res.status}: ${res.statusText}.`);
             
@@ -186,7 +204,7 @@ const App: React.FC = () => {
             setProfissionais(data.profissionais || DEFAULT_PROFISSIONAIS);
             setEspecialidades(data.especialidades || DEFAULT_ESPECIALIDADES);
             
-            const successMsg = `Dados sincronizados. ${data.pacientes.length} pacientes e ${(data.agendamentos || []).length} agendamentos carregados.`;
+            const successMsg = `Dados sincronizados. ${data.pacientes.length} pacientes carregados.`;
             setSyncStatus({ msg: successMsg, isOk: true });
             alert(successMsg);
             setCloudPass(pass); 
@@ -195,11 +213,11 @@ const App: React.FC = () => {
             const errorMsg = `Erro ao restaurar da nuvem: ${err instanceof Error ? err.message : String(err)}`;
             setSyncStatus({ msg: errorMsg, isOk: false });
             alert(errorMsg);
+            throw err;
         }
-    }, [cloudEndpoint, cloudPass, setCloudEndpoint, setCloudPass, setPatients, setAppointments, setConvenios, setProfissionais, setEspecialidades, patients.length]);
+    };
 
-    // --- Inbox Logic ---
-
+    // --- OTHER HANDLERS ---
     const checkInbox = async () => {
         if (!cloudEndpoint) return;
         try {
@@ -226,9 +244,6 @@ const App: React.FC = () => {
 
     const handleImportInboxItem = (item: PreCadastro) => {
         const age = new Date().getFullYear() - new Date(item.nascimento).getFullYear();
-        
-        // Check if patient already exists to update or create new
-        // Simple check by name for now, could be improved
         const existing = patients.find(p => p.nome.toLowerCase() === item.nome.toLowerCase());
 
         const newPatient: Patient = {
@@ -246,11 +261,11 @@ const App: React.FC = () => {
             profissionais: existing ? existing.profissionais : [],
             especialidades: existing ? existing.especialidades : [],
             origem: item.origem || (existing ? existing.origem : 'Site'),
-            crm: existing ? existing.crm : ''
+            crm: existing ? existing.crm : '',
+            evolutions: existing ? existing.evolutions : []
         };
         setEditingPatient(newPatient);
         setShowInbox(false);
-        // Remove from inbox list locally (real removal from server should happen, but for now we just ignore)
         setInbox(prev => prev.filter(i => i.id !== item.id));
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
@@ -260,9 +275,6 @@ const App: React.FC = () => {
             setInbox(prev => prev.filter(i => i.id !== id));
          }
     };
-
-
-    // --- Patient Actions ---
 
     const handleSavePatient = (patient: Patient) => {
         let updatedPatients;
@@ -289,12 +301,22 @@ const App: React.FC = () => {
         }
     };
 
-    // --- Appointment Actions ---
-
     const handleAddAppointment = (appt: Appointment) => {
         const updated = [...appointments, appt];
         setAppointments(updated);
-        performCloudSync(patients, updated, false).catch(e => console.error("Erro auto-save agenda:", e));
+        // Auto-link professional to patient if not already linked
+        const patient = patients.find(p => p.id === appt.patientId);
+        if (patient && !patient.profissionais.includes(appt.profissional)) {
+            const updatedPatients = patients.map(p => 
+                p.id === appt.patientId 
+                ? { ...p, profissionais: [...p.profissionais, appt.profissional] }
+                : p
+            );
+            setPatients(updatedPatients);
+            performCloudSync(updatedPatients, updated, false).catch(e => console.error("Erro auto-save agenda:", e));
+        } else {
+            performCloudSync(patients, updated, false).catch(e => console.error("Erro auto-save agenda:", e));
+        }
     };
 
     const handleUpdateAppointment = (appt: Appointment) => {
@@ -311,8 +333,6 @@ const App: React.FC = () => {
         }
     };
 
-    // --- Generic Actions ---
-
     const handleAddNewItem = (list: string[], setList: (list: string[]) => void, item: string) => {
         const trimmed = item.trim();
         if (trimmed && !list.some(i => i.toLowerCase() === trimmed.toLowerCase())) setList([...list, trimmed]);
@@ -322,22 +342,6 @@ const App: React.FC = () => {
         if (!item) return;
         if (window.confirm(`Remover "${item}" da lista de opções? (Não afeta históricos)`)) setList(list.filter(i => i !== item));
     };
-    
-    const filteredPatients = useMemo(() => {
-        return patients
-            .filter(p => {
-                const search = searchTerm.toLowerCase();
-                const blob = [p.nome, p.responsavel, p.contato, p.email, p.crm, p.origem, p.carteirinha, p.tipoAtendimento].filter(Boolean).join(' ').toLowerCase();
-                if (search && !blob.includes(search)) return false;
-                if (filters.convenio && p.convenio !== filters.convenio) return false;
-                if (filters.faixa && p.faixa !== filters.faixa) return false;
-                if (filters.profissional && !p.profissionais.includes(filters.profissional)) return false;
-                return true;
-            })
-            .sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'));
-    }, [patients, searchTerm, filters]);
-
-    const showTable = isListVisible || searchTerm || filters.convenio || filters.profissional || filters.faixa;
 
     const handleExport = () => downloadFile('pacientes_personart.csv', exportToCSV(patients), 'text/csv;charset=utf-8');
 
@@ -391,21 +395,141 @@ const App: React.FC = () => {
     };
     
     const handleSyncClick = () => performCloudSync(patients, appointments, true);
+    
+    const handleLogin = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (loginInput === accessPass) {
+            setIsAuthenticated(true);
+            setView('dashboard');
+        } else {
+            alert('Senha incorreta.');
+        }
+    };
+    
+    const handleChangeAccessPass = () => {
+        const newPass = prompt('Defina a nova senha de acesso ao sistema (esta senha fica salva apenas neste computador):');
+        if (newPass) {
+            setAccessPass(newPass);
+            alert('Senha de acesso atualizada.');
+        }
+    };
 
-    // --- RENDER ---
+    // --- CONDITIONAL RENDERING (MUST BE AT THE END) ---
+
+    // 1. External Routes
+    const params = new URLSearchParams(window.location.search);
+    const mode = params.get('mode');
+    
+    if (mode === 'cadastro' || mode === 'atualizacao') {
+        return (
+            <PublicRegistration 
+                cloudEndpoint={cloudEndpoint} 
+                brandName={brand.name} 
+                brandColor={brand.color} 
+                brandLogo={brand.logo} 
+                isUpdateMode={mode === 'atualizacao'}
+                convenios={sortedConvenios}
+            />
+        );
+    }
+    
+    if (mode === 'profissional') {
+        return (
+            <ProfessionalPortal 
+                patients={patients}
+                profissionais={profissionais}
+                brandName={brand.name}
+                brandColor={brand.color}
+                onSaveEvolution={handleSaveEvolution}
+                onSync={handleCloudRestore}
+            />
+        );
+    }
+
+    // 2. Landing Page
+    if (view === 'landing') {
+        return (
+            <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden" style={{ backgroundColor: brand.dark }}>
+                {/* Background Decor */}
+                <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-800/20 via-slate-900/50 to-black/80 opacity-50 z-0"></div>
+                
+                <div className="relative z-10 max-w-4xl w-full flex flex-col items-center flex-1 justify-center animate-fade-in">
+                    {brand.logo && <img src={brand.logo} alt="Logo" className="h-32 w-32 rounded-3xl mb-8 shadow-2xl" />}
+                    <h1 className="text-4xl md:text-7xl font-bold text-center mb-6 tracking-tight font-serif" style={{ color: brand.color }}>{brand.name}</h1>
+                    <p className="text-slate-300 text-lg md:text-xl text-center max-w-lg leading-relaxed font-light">
+                        Psicologia e Bem-estar.<br/>
+                        <span className="text-sm opacity-80 mt-2 block">Cuidando de você com excelência e dedicação.</span>
+                    </p>
+                </div>
+                
+                <footer className="relative z-10 mt-12 mb-6 flex flex-col items-center gap-4">
+                     <button 
+                        onClick={() => setView('login')}
+                        className="text-slate-400 hover:text-white text-xs uppercase tracking-widest transition flex items-center gap-2 border border-slate-700/50 px-4 py-2 rounded-full hover:bg-slate-800/50"
+                    >
+                        <LockIcon className="w-3 h-3" /> Área Restrita
+                    </button>
+                    <div className="text-slate-500 text-[10px]">
+                        &copy; {new Date().getFullYear()} {brand.name}
+                    </div>
+                </footer>
+            </div>
+        );
+    }
+
+    // 3. Login
+    if (view === 'login') {
+        return (
+            <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: brand.dark }}>
+                <div className="bg-slate-800 border border-slate-700 p-8 rounded-2xl w-full max-w-md shadow-2xl">
+                    <div className="flex justify-center mb-6">
+                        <div className="p-4 bg-slate-900 rounded-full border border-slate-700">
+                             <LockIcon className="w-8 h-8" style={{ color: brand.color }} />
+                        </div>
+                    </div>
+                    <h2 className="text-2xl font-bold text-center text-white mb-2">Acesso Restrito</h2>
+                    <p className="text-center text-slate-400 mb-6">Digite a senha de acesso para continuar.</p>
+                    
+                    <form onSubmit={handleLogin} className="space-y-4">
+                        <div>
+                            <input 
+                                type="password" 
+                                placeholder="Senha de acesso" 
+                                autoFocus
+                                value={loginInput}
+                                onChange={(e) => setLoginInput(e.target.value)}
+                                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white text-center text-lg focus:ring-2 focus:ring-sky-500 outline-none transition"
+                            />
+                        </div>
+                        <button 
+                            type="submit" 
+                            className="w-full text-slate-900 font-bold py-3 rounded-xl transition shadow-lg hover:opacity-90"
+                            style={{ backgroundColor: brand.color }}
+                        >
+                            Entrar no Sistema
+                        </button>
+                        <button type="button" onClick={() => setView('landing')} className="w-full text-slate-500 hover:text-slate-300 py-2 text-sm">Voltar ao início</button>
+                    </form>
+                    <p className="mt-4 text-xs text-center text-slate-600">Senha padrão inicial: personart</p>
+                </div>
+            </div>
+        );
+    }
+
+    // 4. Dashboard (Main App)
+    const showTable = isListVisible || searchTerm || filters.convenio || filters.profissional || filters.faixa;
 
     return (
-        <div className="min-h-screen pb-12">
-            <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-20 backdrop-blur-md bg-opacity-80">
+        <div className="min-h-screen pb-12 bg-slate-900">
+            <header className="bg-slate-900/90 border-b border-slate-800 sticky top-0 z-20 backdrop-blur-md">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-4 cursor-pointer" onClick={() => setView('landing')}>
                         {brand.logo && <img src={brand.logo} alt="Logo" className="h-10 w-10 rounded-lg bg-slate-800 p-1" />}
                         <div>
-                            <h1 className="text-xl font-bold" style={{ color: brand.color }}>{brand.name}</h1>
+                            <h1 className="text-xl font-bold font-serif" style={{ color: brand.color }}>{brand.name}</h1>
                         </div>
                     </div>
 
-                    {/* Navigation Tabs */}
                     <nav className="flex space-x-2 bg-slate-800 p-1 rounded-xl overflow-x-auto max-w-full">
                         <button 
                             onClick={() => setActiveTab('pacientes')}
@@ -421,7 +545,8 @@ const App: React.FC = () => {
                         </button>
                         <button 
                             onClick={checkInbox}
-                            className="px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 text-sky-400 hover:text-sky-300 hover:bg-slate-700/50 whitespace-nowrap border border-slate-700"
+                            className="px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 hover:text-white hover:bg-slate-700/50 whitespace-nowrap border border-slate-700"
+                            style={{ color: brand.color }}
                         >
                             <InboxIcon className="w-4 h-4" /> Pré-cadastros
                         </button>
@@ -451,7 +576,6 @@ const App: React.FC = () => {
                         <section className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6 shadow-2xl backdrop-blur-sm space-y-4 flex flex-col h-fit">
                             <h2 className="text-xl font-bold text-slate-100">Gerenciar Pacientes</h2>
                             
-                            {/* Toolbar (Condensed) */}
                             <div className="space-y-3">
                                 <input type="text" placeholder="Buscar..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 outline-none" />
                                 <div className="grid grid-cols-3 gap-2">
@@ -494,7 +618,8 @@ const App: React.FC = () => {
                             onUpdateAppointment={handleUpdateAppointment}
                             onDeleteAppointment={handleDeleteAppointment}
                         />
-                        <div className="mt-6 flex justify-end">
+                        <div className="mt-6 flex justify-between items-center border-t border-slate-800 pt-4">
+                             <button onClick={handleChangeAccessPass} className="text-xs text-slate-500 hover:text-slate-300 flex items-center gap-1"><LockIcon className="w-3 h-3" /> Alterar senha de acesso</button>
                              <button onClick={handleSyncClick} className="text-xs text-sky-500 hover:text-sky-400 flex items-center gap-1"><CloudIcon className="w-3 h-3" /> Forçar backup da agenda</button>
                         </div>
                     </div>
@@ -506,7 +631,7 @@ const App: React.FC = () => {
                 <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                     <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
                         <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-xl font-bold text-slate-100 flex items-center gap-2"><InboxIcon className="w-5 h-5 text-sky-400"/> Novos Pré-cadastros</h3>
+                            <h3 className="text-xl font-bold text-slate-100 flex items-center gap-2"><InboxIcon className="w-5 h-5" style={{ color: brand.color }}/> Novos Pré-cadastros</h3>
                             <button onClick={() => setShowInbox(false)} className="text-slate-400 hover:text-slate-200"><XIcon className="w-5 h-5" /></button>
                         </div>
                         <div className="space-y-4">
@@ -517,7 +642,7 @@ const App: React.FC = () => {
                                         <p className="text-sm text-slate-400">Nasc: {item.nascimento} • Resp: {item.responsavel || 'N/A'}</p>
                                         <p className="text-sm text-slate-400">{item.contato} • {item.email}</p>
                                         <p className="text-sm text-slate-500 mt-1">{item.convenio ? `${item.convenio} (${item.carteirinha})` : 'Particular'}</p>
-                                        {item.origem && <p className="text-xs text-sky-400 mt-1">Origem: {item.origem}</p>}
+                                        {item.origem && <p className="text-xs mt-1" style={{ color: brand.color }}>Origem: {item.origem}</p>}
                                         <p className="text-xs text-slate-600 mt-1">Enviado em: {new Date(item.dataEnvio).toLocaleDateString()}</p>
                                     </div>
                                     <div className="flex gap-2">

@@ -607,13 +607,21 @@ export const Agenda: React.FC<AgendaProps> = ({
     );
 };
 
+interface AppointmentCardProps {
+    appt: Appointment;
+    onStatusChange: (a: Appointment, s: Appointment['status']) => void;
+    onDelete: (id: string) => void;
+    onEdit: (appt: Appointment) => void;
+    compact?: boolean;
+}
+
 // Sub-component para renderizar o card do agendamento
-const AppointmentCard = ({ appt, onStatusChange, onDelete, onEdit, compact = false }: { 
-    appt: Appointment, 
-    onStatusChange: (a: Appointment, s: Appointment['status']) => void, 
-    onDelete: (id: string) => void,
-    onEdit: (appt: Appointment) => void,
-    compact?: boolean
+const AppointmentCard: React.FC<AppointmentCardProps> = ({ 
+    appt, 
+    onStatusChange, 
+    onDelete, 
+    onEdit, 
+    compact = false 
 }) => {
     // Generate dynamic color accent border
     const accentColor = stringToColor(appt.profissional);
