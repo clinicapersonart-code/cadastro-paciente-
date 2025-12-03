@@ -9,7 +9,8 @@ import { PatientTable } from './components/PatientTable';
 import { Agenda } from './components/Agenda';
 import { PublicRegistration } from './components/PublicRegistration';
 import { ProfessionalPortal } from './components/ProfessionalPortal';
-import { DownloadIcon, UploadIcon, CloudIcon, TrashIcon, CloudDownloadIcon, UserIcon, CalendarIcon, InboxIcon, CheckIcon, XIcon, LockIcon, ArrowRightIcon, ShieldIcon } from './components/icons';
+import { FunservManager } from './components/FunservManager';
+import { DownloadIcon, UploadIcon, CloudIcon, TrashIcon, CloudDownloadIcon, UserIcon, CalendarIcon, InboxIcon, CheckIcon, XIcon, LockIcon, ArrowRightIcon, ShieldIcon, FileTextIcon } from './components/icons';
 
 const App: React.FC = () => {
     // --- HOOKS INITIALIZATION (MUST BE AT THE TOP) ---
@@ -32,7 +33,7 @@ const App: React.FC = () => {
     const [accessPass, setAccessPass] = useLocalStorage<string>(STORAGE_KEYS.ACCESS_PASS, 'personart');
 
     const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
-    const [activeTab, setActiveTab] = useState<'pacientes' | 'agenda'>('pacientes');
+    const [activeTab, setActiveTab] = useState<'pacientes' | 'agenda' | 'funserv'>('pacientes');
     const [searchTerm, setSearchTerm] = useState('');
     const [filters, setFilters] = useState({ convenio: '', profissional: '', faixa: '' });
     const [isListVisible, setIsListVisible] = useState(false);
@@ -543,6 +544,12 @@ const App: React.FC = () => {
                             <CalendarIcon className="w-4 h-4" /> Agenda
                         </button>
                         <button 
+                            onClick={() => setActiveTab('funserv')}
+                            className={`px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 whitespace-nowrap ${activeTab === 'funserv' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-700/50'}`}
+                        >
+                            <FileTextIcon className="w-4 h-4" /> Gestão Funserv
+                        </button>
+                        <button 
                             onClick={checkInbox}
                             className="px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 hover:text-white hover:bg-slate-700/50 whitespace-nowrap border border-slate-700"
                             style={{ color: brand.color }}
@@ -555,7 +562,7 @@ const App: React.FC = () => {
 
             <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
                 
-                {activeTab === 'pacientes' ? (
+                {activeTab === 'pacientes' && (
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
                         <PatientForm
                             editingPatient={editingPatient}
@@ -607,7 +614,9 @@ const App: React.FC = () => {
                             )}
                         </section>
                     </div>
-                ) : (
+                )}
+
+                {activeTab === 'agenda' && (
                     <div className="max-w-4xl mx-auto">
                         <Agenda 
                             patients={patients}
@@ -621,6 +630,12 @@ const App: React.FC = () => {
                              <button onClick={handleChangeAccessPass} className="text-xs text-slate-500 hover:text-slate-300 flex items-center gap-1"><LockIcon className="w-3 h-3" /> Alterar senha de acesso</button>
                              <button onClick={handleSyncClick} className="text-xs text-sky-500 hover:text-sky-400 flex items-center gap-1"><CloudIcon className="w-3 h-3" /> Forçar backup da agenda</button>
                         </div>
+                    </div>
+                )}
+
+                {activeTab === 'funserv' && (
+                    <div className="max-w-6xl mx-auto">
+                        <FunservManager patients={patients} onSavePatient={handleSavePatient} />
                     </div>
                 )}
             </main>
