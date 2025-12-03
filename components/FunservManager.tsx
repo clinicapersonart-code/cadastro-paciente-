@@ -50,16 +50,12 @@ const FunservCard: React.FC<FunservCardProps> = ({ patient, onSave }) => {
 
     const handleConfigChange = (field: keyof FunservConfig, value: any) => {
         const newConfig = { ...config, [field]: value };
-        // Se mudar o total manualmente, recalcula? Não, mantemos simples.
         onSave({ ...patient, funservConfig: newConfig });
     };
 
     const handleAddSession = () => {
         if (!sessionDate) return alert('Selecione uma data.');
         
-        // Formatar data para exibição DD/MM/AAAA (para salvar no historico) ou manter ISO?
-        // Vamos manter ISO para ordenação e formatar na exibição, ou formatar direto pt-BR.
-        // O usuario pediu "data que teve sessão". Vamos salvar pt-BR para consistência visual rápida.
         const [y, m, d] = sessionDate.split('-');
         const formattedDate = `${d}/${m}/${y}`;
 

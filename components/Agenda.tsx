@@ -452,7 +452,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                                 <tr key={timeSlot}>
                                     <td className="p-2 border-b border-r border-slate-700 bg-slate-800/50 text-xs font-mono text-slate-400 text-center">{timeSlot}</td>
                                     {currentWeekDays.map(dateIso => {
-                                        // Filtrar agendamentos para este dia e hora
+                                        // Filtrar agendamentos para este dia e hora, RESPEITANDO O FILTRO GLOBAL
                                         const slotAppts = appointments.filter(a => 
                                             a.date === dateIso && 
                                             a.time === timeSlot && 
