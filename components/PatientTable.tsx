@@ -1,5 +1,3 @@
-
-
 import React from 'react';
 import { Patient } from '../types';
 import { EditIcon, TrashIcon } from './icons';

@@ -1,4 +1,3 @@
-
 import { BackupData, EncryptedPackage } from '../types';
 
 function base64FromBytes(bytes: Uint8Array): string {

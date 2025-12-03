@@ -1,5 +1,3 @@
-
-
 export interface Evolution {
     id: string;
     date: string;

@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { Patient, Evolution } from '../types';
 import { UserIcon, ClockIcon, CheckIcon, PlusIcon, CalendarIcon, CloudDownloadIcon, LockIcon } from './icons';

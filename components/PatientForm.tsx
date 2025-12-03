@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { Patient, FunservConfig } from '../types';
 import { PlusIcon, XIcon, TrashIcon, CalendarIcon, CheckIcon, RepeatIcon } from './icons';

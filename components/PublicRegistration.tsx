@@ -1,5 +1,3 @@
-
-
 import React, { useState } from 'react';
 import { PreCadastro } from '../types';
 import { CheckIcon, StarIcon } from './icons';

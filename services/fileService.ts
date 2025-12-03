@@ -1,4 +1,3 @@
-
 import { Patient } from '../types';
 
 export function downloadFile(filename: string, content: string, type = 'text/plain') {

@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { Appointment, Patient } from '../types';
 import { CalendarIcon, PlusIcon, TrashIcon, ClockIcon, UserIcon, CheckIcon, XIcon, RepeatIcon, EditIcon } from './icons';

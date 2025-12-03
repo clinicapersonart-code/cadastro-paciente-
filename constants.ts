@@ -1,5 +1,3 @@
-
-
 export const STORAGE_KEYS = {
   PACIENTES: 'personart.pacientes.v1',
   AGENDA: 'personart.agenda.v1',
