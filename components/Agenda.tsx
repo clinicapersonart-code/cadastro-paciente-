@@ -114,7 +114,6 @@ export const Agenda: React.FC<AgendaProps> = ({
             );
 
             if (conflict) {
-                // Se for série, avisar mas continuar? Por segurança, retornamos false.
                 return false;
             }
 
@@ -166,8 +165,6 @@ export const Agenda: React.FC<AgendaProps> = ({
 
                 while (nextDate <= endDate) {
                     const isoDate = nextDate.toISOString().split('T')[0];
-                    // Tenta criar, se der conflito pula silenciosamente ou poderia avisar
-                    // Aqui vamos apenas adicionar um sufixo random ao ID
                     const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
                     
                     const conflict = appointments.find(
@@ -189,7 +186,6 @@ export const Agenda: React.FC<AgendaProps> = ({
                         };
                         onAddAppointment(apptData);
                     }
-                    
                     nextDate.setDate(nextDate.getDate() + increment);
                 }
                 alert('Agendamentos recorrentes criados com sucesso (conflitos foram pulados).');
@@ -218,10 +214,11 @@ export const Agenda: React.FC<AgendaProps> = ({
         setShowForm(true);
     };
 
+    // Filter appointments based on selected filters (Professional, Date, Status)
     const filteredAppointments = useMemo(() => {
         return appointments
             .filter(a => a.date === selectedDate)
-            .filter(a => !filterProfissional || a.profissional === filterProfissional)
+            .filter(a => !filterProfissional || a.profissional.trim() === filterProfissional.trim())
             .filter(a => filterStatus === 'Todos' || a.status === filterStatus)
             .sort((a, b) => a.time.localeCompare(b.time));
     }, [appointments, selectedDate, filterProfissional, filterStatus]);
@@ -460,7 +457,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                                             a.date === dateIso && 
                                             a.time === timeSlot && 
                                             a.status !== 'Cancelado' &&
-                                            (!filterProfissional || a.profissional === filterProfissional) &&
+                                            (!filterProfissional || a.profissional.trim() === filterProfissional.trim()) &&
                                             (filterStatus === 'Todos' || a.status === filterStatus)
                                         );
 
