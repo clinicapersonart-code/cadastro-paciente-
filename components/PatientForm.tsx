@@ -1,8 +1,8 @@
 
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Patient } from '../types';
-import { PlusIcon, XIcon, TrashIcon, CalendarIcon } from './icons';
+import { Patient, FunservConfig } from '../types';
+import { PlusIcon, XIcon, TrashIcon, CalendarIcon, CheckIcon, RepeatIcon } from './icons';
 import { DEFAULT_ORIGINS } from '../constants';
 
 interface PatientFormProps {
@@ -63,7 +63,22 @@ export const PatientForm: React.FC<PatientFormProps> = ({
     const handleConvenioSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const val = e.target.value;
         setSelectedConvenio(val);
-        setFormData(prev => ({ ...prev, convenio: val }));
+        setFormData(prev => {
+            const updated = { ...prev, convenio: val };
+            // Se mudou para Funserv e não tem config, inicializa
+            if (val === 'Funserv' && !updated.funservConfig) {
+                updated.funservConfig = {
+                    active: true,
+                    totalSessions: 10,
+                    usedSessions: 0,
+                    startDate: new Date().toISOString().split('T')[0],
+                    frequency: '1x Semana',
+                    alertEmail: prev.email || '',
+                    history: []
+                };
+            }
+            return updated;
+        });
     };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -87,6 +102,73 @@ export const PatientForm: React.FC<PatientFormProps> = ({
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value as Patient['faixa'] | Patient['tipoAtendimento'] }));
     };
+
+    // --- FUNSERV LOGIC ---
+    const handleFunservChange = (field: keyof FunservConfig, value: any) => {
+        setFormData(prev => ({
+            ...prev,
+            funservConfig: prev.funservConfig ? { ...prev.funservConfig, [field]: value } : undefined
+        }));
+    };
+
+    const handleRegisterSession = () => {
+        if (!formData.funservConfig) return;
+        const today = new Date().toLocaleDateString('pt-BR');
+        
+        // Verifica se já não registrou hoje para evitar duplo clique acidental
+        if (formData.funservConfig.history.includes(today)) {
+            if(!confirm('Já consta uma sessão registrada na data de hoje. Deseja registrar outra mesmo assim?')) return;
+        }
+
+        const newUsed = formData.funservConfig.usedSessions + 1;
+        if (newUsed > formData.funservConfig.totalSessions) {
+            alert('Atenção: O número de sessões realizadas excederá o total liberado na guia!');
+        }
+
+        setFormData(prev => ({
+            ...prev,
+            funservConfig: prev.funservConfig ? {
+                ...prev.funservConfig,
+                usedSessions: newUsed,
+                history: [today, ...prev.funservConfig.history]
+            } : undefined
+        }));
+    };
+
+    const handleRenewGuia = () => {
+        if (!confirm('Deseja realmente renovar a guia? Isso zerará a contagem de sessões realizadas.')) return;
+        setFormData(prev => ({
+            ...prev,
+            funservConfig: prev.funservConfig ? {
+                ...prev.funservConfig,
+                usedSessions: 0,
+                startDate: new Date().toISOString().split('T')[0],
+                history: [] // Limpa histórico da guia anterior ou mantém? O pedido foi "reiniciar". Vamos limpar o contador.
+            } : undefined
+        }));
+    };
+
+    const handleSendAlertEmail = (remaining: number) => {
+        if (!formData.funservConfig?.alertEmail) {
+            alert('Por favor, cadastre um e-mail para alerta no campo abaixo.');
+            return;
+        }
+        
+        const subject = `Alerta de Guia Funserv - ${formData.nome}`;
+        let body = `Olá,\n\nInformamos que restam apenas ${remaining} sessões autorizadas para o(a) paciente ${formData.nome} pelo convênio Funserv.\n\n`;
+        
+        if (remaining === 0) {
+             body = `Olá,\n\nInformamos que as sessões autorizadas para o(a) paciente ${formData.nome} pelo convênio Funserv se ESGOTARAM.\n\nÉ necessário providenciar um novo encaminhamento/guia imediatamente.\n\n`;
+        }
+        
+        body += `Data de início da guia atual: ${new Date(formData.funservConfig.startDate).toLocaleDateString('pt-BR')}\n`;
+        body += `Frequência: ${formData.funservConfig.frequency}\n\n`;
+        body += `Att,\nClínica Personart`;
+
+        window.open(`mailto:${formData.funservConfig.alertEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
+    };
+
+    // --- END FUNSERV LOGIC ---
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -231,7 +313,7 @@ export const PatientForm: React.FC<PatientFormProps> = ({
                                 </select>
                                 <button 
                                     type="button" 
-                                    title="Excluir convênio selecionado da lista de opções (não apaga do paciente)" 
+                                    title="Excluir convênio selecionado da lista de opções" 
                                     onClick={() => {
                                         if (selectedConvenio) {
                                             onRemoveConvenio(selectedConvenio);
@@ -251,6 +333,115 @@ export const PatientForm: React.FC<PatientFormProps> = ({
                             <input id="carteirinha" name="carteirinha" type="text" placeholder="Ex.: 123456789" value={formData.carteirinha || ''} onChange={handleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition" />
                         </div>
                     </div>
+
+                    {/* --- FUNSERV CONTROL PANEL --- */}
+                    {formData.convenio === 'Funserv' && formData.funservConfig && (
+                        <div className="bg-slate-800 border-2 border-teal-700/50 rounded-xl p-4 mt-2 animate-fade-in">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-teal-400 font-bold flex items-center gap-2">
+                                    <CheckIcon className="w-5 h-5" /> Controle de Guia Funserv
+                                </h3>
+                                <button 
+                                    type="button"
+                                    onClick={handleRenewGuia}
+                                    className="text-xs flex items-center gap-1 bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded text-slate-200 transition"
+                                >
+                                    <RepeatIcon className="w-3 h-3" /> Renovar Guia
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-400 mb-1">Total Sessões Liberadas</label>
+                                    <input 
+                                        type="number" 
+                                        value={formData.funservConfig.totalSessions} 
+                                        onChange={(e) => handleFunservChange('totalSessions', Number(e.target.value))}
+                                        className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-teal-500 outline-none" 
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-400 mb-1">Data Início Guia</label>
+                                    <input 
+                                        type="date" 
+                                        value={formData.funservConfig.startDate} 
+                                        onChange={(e) => handleFunservChange('startDate', e.target.value)}
+                                        className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-teal-500 outline-none" 
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-400 mb-1">Frequência</label>
+                                    <select 
+                                        value={formData.funservConfig.frequency} 
+                                        onChange={(e) => handleFunservChange('frequency', e.target.value)}
+                                        className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                                    >
+                                        <option value="1x Semana">1x Semana</option>
+                                        <option value="2x Semana">2x Semana</option>
+                                        <option value="Quinzenal">Quinzenal</option>
+                                        <option value="Outro">Outro</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <label className="block text-xs font-medium text-slate-400 mb-1">E-mail para Alerta de Guia</label>
+                                <input 
+                                    type="email" 
+                                    value={formData.funservConfig.alertEmail} 
+                                    onChange={(e) => handleFunservChange('alertEmail', e.target.value)}
+                                    placeholder="Ex: paciente@email.com ou recepcao@clinica.com"
+                                    className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-teal-500 outline-none mb-4" 
+                                />
+                            </div>
+
+                            {/* COUNTER & ACTIONS */}
+                            <div className="bg-slate-900/80 rounded-lg p-4 flex flex-col items-center">
+                                <div className="flex justify-between w-full text-sm mb-2 text-slate-400">
+                                    <span>Usadas: {formData.funservConfig.usedSessions}</span>
+                                    <span>Total: {formData.funservConfig.totalSessions}</span>
+                                </div>
+                                
+                                <div className="w-full bg-slate-700 rounded-full h-4 mb-4 overflow-hidden">
+                                    <div 
+                                        className={`h-full transition-all duration-500 ${formData.funservConfig.usedSessions >= formData.funservConfig.totalSessions ? 'bg-red-500' : 'bg-teal-500'}`} 
+                                        style={{ width: `${Math.min((formData.funservConfig.usedSessions / formData.funservConfig.totalSessions) * 100, 100)}%` }}
+                                    ></div>
+                                </div>
+
+                                <div className="text-center mb-4">
+                                    <span className="text-3xl font-bold text-white">{formData.funservConfig.totalSessions - formData.funservConfig.usedSessions}</span>
+                                    <p className="text-xs text-slate-400 uppercase tracking-widest">Sessões Restantes</p>
+                                </div>
+
+                                <button 
+                                    type="button"
+                                    onClick={handleRegisterSession}
+                                    className="w-full bg-teal-600 hover:bg-teal-500 text-white font-bold py-2 rounded-lg transition shadow-lg mb-2 flex items-center justify-center gap-2"
+                                >
+                                    <CheckIcon className="w-4 h-4" /> Registrar Sessão Realizada
+                                </button>
+
+                                {/* ALERT LOGIC */}
+                                {(formData.funservConfig.totalSessions - formData.funservConfig.usedSessions) <= 6 && (
+                                    <div className="w-full mt-2 animate-pulse">
+                                        <button 
+                                            type="button"
+                                            onClick={() => handleSendAlertEmail(formData.funservConfig!.totalSessions - formData.funservConfig!.usedSessions)}
+                                            className="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 rounded-lg transition text-xs border border-amber-400"
+                                        >
+                                            ⚠️ Alerta: Restam {formData.funservConfig.totalSessions - formData.funservConfig.usedSessions} sessões. Enviar E-mail.
+                                        </button>
+                                        {(formData.funservConfig.totalSessions - formData.funservConfig.usedSessions) === 0 && (
+                                             <p className="text-red-400 text-xs text-center mt-2 font-bold">GUIA ENCERRADA. NECESSÁRIO NOVO ENCAMINHAMENTO.</p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                    {/* --- END FUNSERV CONTROL PANEL --- */}
+
 
                     {/* Campo Origem */}
                     <div>

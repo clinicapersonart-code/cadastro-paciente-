@@ -8,6 +8,16 @@ export interface Evolution {
     timestamp: string;
 }
 
+export interface FunservConfig {
+    active: boolean;
+    totalSessions: number;
+    usedSessions: number;
+    startDate: string;
+    frequency: '1x Semana' | '2x Semana' | 'Quinzenal' | 'Outro';
+    alertEmail: string;
+    history: string[]; // Datas das sessões realizadas
+}
+
 export interface Patient {
   id: string;
   nome: string;
@@ -25,6 +35,7 @@ export interface Patient {
   crm?: string;
   origem?: string;
   evolutions?: Evolution[];
+  funservConfig?: FunservConfig;
 }
 
 export interface Appointment {
