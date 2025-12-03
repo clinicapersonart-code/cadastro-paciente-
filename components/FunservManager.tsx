@@ -110,8 +110,8 @@ const FunservCard: React.FC<FunservCardProps> = ({ patient, onSave }) => {
             alert('Cadastre um e-mail para este paciente primeiro.');
             return;
         }
-        const subject = `Renovação de Guia Funserv - ${patient.nome}`;
-        const body = `Olá,\n\nInformamos que restam apenas ${remaining} sessões para o paciente ${patient.nome}.\nFavor providenciar nova guia.\n\nClínica Personart.`;
+        const subject = `Solicitação de Nova Guia Funserv - ${patient.nome}`;
+        const body = `Olá,\n\nInformamos que restam apenas ${remaining} sessões autorizadas para o(a) paciente ${patient.nome}.\n\nPor favor, realize o pedido de liberação de novas sessões junto ao convênio para darmos continuidade ao tratamento sem interrupções.\n\nAtenciosamente,\nClínica Personart.`;
         window.open(`mailto:${config.alertEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
     };
 
