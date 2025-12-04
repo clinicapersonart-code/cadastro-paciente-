@@ -107,12 +107,16 @@ const FunservCard: React.FC<FunservCardProps> = ({ patient, onSave }) => {
 
     const handleSendEmail = () => {
         if (!config.alertEmail) {
-            alert('Cadastre um e-mail para este paciente primeiro.');
+            alert('Cadastre um e-mail para este paciente primeiro (no campo abaixo).');
             return;
         }
         const subject = `Solicitação de Nova Guia Funserv - ${patient.nome}`;
         const body = `Olá,\n\nInformamos que restam apenas ${remaining} sessões autorizadas para o(a) paciente ${patient.nome}.\n\nPor favor, realize o pedido de liberação de novas sessões junto ao convênio para darmos continuidade ao tratamento sem interrupções.\n\nAtenciosamente,\nClínica Personart.`;
-        window.open(`mailto:${config.alertEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
+        
+        // Constrói a URL para abrir especificamente o Gmail no navegador
+        const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(config.alertEmail)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+        
+        window.open(gmailUrl, '_blank');
     };
 
     return (
@@ -220,10 +224,10 @@ const FunservCard: React.FC<FunservCardProps> = ({ patient, onSave }) => {
                     {remaining <= 6 && (
                         <button 
                             onClick={handleSendEmail}
-                            title="Enviar e-mail de alerta"
+                            title="Abrir Gmail com alerta"
                             className="flex-1 bg-amber-600/20 hover:bg-amber-600/40 text-amber-400 border border-amber-600/50 py-1.5 rounded-lg text-xs font-medium transition"
                         >
-                            Alerta
+                            Gmail
                         </button>
                     )}
                     <button 
@@ -237,7 +241,7 @@ const FunservCard: React.FC<FunservCardProps> = ({ patient, onSave }) => {
                 
                 <input 
                     type="email" 
-                    placeholder="E-mail para alerta..." 
+                    placeholder="E-mail destinatário (Profissional/Pac)..." 
                     value={config.alertEmail || ''}
                     onChange={e => handleConfigChange('alertEmail', e.target.value)}
                     className="w-full bg-transparent border-b border-slate-700 text-xs py-1 text-slate-400 focus:border-teal-500 outline-none text-center"

@@ -46,6 +46,10 @@ const App: React.FC = () => {
     const [inbox, setInbox] = useState<PreCadastro[]>([]);
     const [showInbox, setShowInbox] = useState(false);
     
+    // Password Change Modal State
+    const [showPasswordModal, setShowPasswordModal] = useState(false);
+    const [newPasswordInput, setNewPasswordInput] = useState('');
+    
     // Toast Notification State
     const [toast, setToast] = useState<{ msg: string, type: 'success' | 'error' | 'info' } | null>(null);
 
@@ -228,6 +232,9 @@ const App: React.FC = () => {
 
     // --- OTHER HANDLERS ---
     const checkInbox = async () => {
+        // Sempre abre o modal para que o usuário possa ver o link de cadastro, mesmo se vazio
+        setShowInbox(true);
+
         if (!cloudEndpoint) return;
         try {
             setSyncStatus({ msg: 'Verificando novos cadastros...', isOk: true });
@@ -238,11 +245,9 @@ const App: React.FC = () => {
             if (data && Array.isArray(data.submissions)) {
                 setInbox(data.submissions);
                 if (data.submissions.length > 0) {
-                    setShowInbox(true);
                     setSyncStatus({ msg: `${data.submissions.length} novos pré-cadastros encontrados.`, isOk: true });
                     showToast(`${data.submissions.length} novos pré-cadastros!`, 'info');
                 } else {
-                    showToast('Nenhum pré-cadastro novo encontrado.', 'info');
                     setSyncStatus({ msg: 'Caixa de entrada vazia.', isOk: true });
                 }
             }
@@ -431,13 +436,16 @@ const App: React.FC = () => {
         }
     };
     
-    const handleChangeAccessPass = () => {
-        const newPass = prompt('Defina a nova senha de acesso ao sistema (esta senha fica salva apenas neste computador):');
-        if (newPass) {
-            setAccessPass(newPass);
-            setTimeout(() => {
-                showToast('Senha de acesso atualizada. Guarde-a bem!', 'success');
-            }, 500);
+    const handleSaveNewPassword = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (newPasswordInput && newPasswordInput.length >= 4) {
+            setAccessPass(newPasswordInput);
+            setLoginInput(newPasswordInput); // Atualiza para não deslogar se recarregar
+            setShowPasswordModal(false);
+            setNewPasswordInput('');
+            showToast('Senha de acesso atualizada com sucesso!', 'success');
+        } else {
+            alert('A senha deve ter pelo menos 4 caracteres.');
         }
     };
 
@@ -668,7 +676,7 @@ const App: React.FC = () => {
                             onDeleteAppointment={handleDeleteAppointment}
                         />
                         <div className="mt-6 flex justify-between items-center border-t border-slate-800 pt-4">
-                             <button onClick={handleChangeAccessPass} className="text-xs text-slate-500 hover:text-slate-300 flex items-center gap-1"><LockIcon className="w-3 h-3" /> Alterar senha de acesso</button>
+                             <button onClick={() => setShowPasswordModal(true)} className="text-xs text-slate-500 hover:text-slate-300 flex items-center gap-1"><LockIcon className="w-3 h-3" /> Alterar senha de acesso</button>
                              <button onClick={handleSyncClick} className="text-xs text-sky-500 hover:text-sky-400 flex items-center gap-1"><CloudIcon className="w-3 h-3" /> Forçar backup da agenda</button>
                         </div>
                     </div>
@@ -700,23 +708,65 @@ const App: React.FC = () => {
                                 </button>
                             </div>
 
-                            {inbox.map(item => (
-                                <div key={item.id} className="bg-slate-900/50 border border-slate-700 rounded-xl p-4 flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
-                                    <div>
-                                        <h4 className="font-bold text-white">{item.nome}</h4>
-                                        <p className="text-sm text-slate-400">Nasc: {item.nascimento} • Resp: {item.responsavel || 'N/A'}</p>
-                                        <p className="text-sm text-slate-400">{item.contato} • {item.email}</p>
-                                        <p className="text-sm text-slate-500 mt-1">{item.convenio ? `${item.convenio} (${item.carteirinha})` : 'Particular'}</p>
-                                        {item.origem && <p className="text-xs mt-1" style={{ color: brand.color }}>Origem: {item.origem}</p>}
-                                        <p className="text-xs text-slate-600 mt-1">Enviado em: {new Date(item.dataEnvio).toLocaleDateString()}</p>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <button onClick={() => handleDismissInboxItem(item.id)} className="p-2 hover:bg-red-900/30 text-red-400 rounded-lg transition text-sm">Ignorar</button>
-                                        <button onClick={() => handleImportInboxItem(item)} className="py-2 px-4 bg-sky-600 hover:bg-sky-500 text-white rounded-lg transition text-sm font-semibold">Importar</button>
-                                    </div>
+                            {inbox.length === 0 ? (
+                                <div className="text-center py-8 text-slate-500">
+                                    <InboxIcon className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                                    <p>Nenhum pré-cadastro novo encontrado.</p>
                                 </div>
-                            ))}
+                            ) : (
+                                inbox.map(item => (
+                                    <div key={item.id} className="bg-slate-900/50 border border-slate-700 rounded-xl p-4 flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+                                        <div>
+                                            <h4 className="font-bold text-white">{item.nome}</h4>
+                                            <p className="text-sm text-slate-400">Nasc: {item.nascimento} • Resp: {item.responsavel || 'N/A'}</p>
+                                            <p className="text-sm text-slate-400">{item.contato} • {item.email}</p>
+                                            <p className="text-sm text-slate-500 mt-1">{item.convenio ? `${item.convenio} (${item.carteirinha})` : 'Particular'}</p>
+                                            {item.origem && <p className="text-xs mt-1" style={{ color: brand.color }}>Origem: {item.origem}</p>}
+                                            <p className="text-xs text-slate-600 mt-1">Enviado em: {new Date(item.dataEnvio).toLocaleDateString()}</p>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button onClick={() => handleDismissInboxItem(item.id)} className="p-2 hover:bg-red-900/30 text-red-400 rounded-lg transition text-sm">Ignorar</button>
+                                            <button onClick={() => handleImportInboxItem(item)} className="py-2 px-4 bg-sky-600 hover:bg-sky-500 text-white rounded-lg transition text-sm font-semibold">Importar</button>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
                         </div>
+                    </div>
+                </div>
+            )}
+            
+            {/* Password Change Modal */}
+            {showPasswordModal && (
+                <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                    <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-sm p-6 shadow-2xl">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-xl font-bold text-slate-100 flex items-center gap-2">
+                                <LockIcon className="w-5 h-5 text-sky-400"/> Alterar Senha
+                            </h3>
+                            <button onClick={() => setShowPasswordModal(false)} className="text-slate-400 hover:text-slate-200"><XIcon className="w-5 h-5" /></button>
+                        </div>
+                        <form onSubmit={handleSaveNewPassword} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-400 mb-1">Nova Senha</label>
+                                <input 
+                                    type="password" 
+                                    required
+                                    value={newPasswordInput}
+                                    onChange={e => setNewPasswordInput(e.target.value)}
+                                    className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-sky-500 outline-none"
+                                    placeholder="Digite a nova senha..."
+                                    autoFocus
+                                />
+                            </div>
+                            <button 
+                                type="submit" 
+                                className="w-full bg-sky-600 hover:bg-sky-500 text-white font-bold py-2 rounded-lg transition"
+                            >
+                                Salvar Nova Senha
+                            </button>
+                             <p className="text-xs text-slate-500 text-center">Atenção: A senha fica salva apenas neste navegador/dispositivo.</p>
+                        </form>
                     </div>
                 </div>
             )}
