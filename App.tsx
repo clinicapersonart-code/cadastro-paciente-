@@ -45,6 +45,9 @@ const App: React.FC = () => {
     
     const [inbox, setInbox] = useState<PreCadastro[]>([]);
     const [showInbox, setShowInbox] = useState(false);
+    
+    // Toast Notification State
+    const [toast, setToast] = useState<{ msg: string, type: 'success' | 'error' | 'info' } | null>(null);
 
     const importFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -84,6 +87,12 @@ const App: React.FC = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    // --- HELPERS ---
+    const showToast = (msg: string, type: 'success' | 'error' | 'info' = 'success') => {
+        setToast({ msg, type });
+        setTimeout(() => setToast(null), 4000);
+    };
+
     // --- ACTION HANDLERS ---
     
     const performCloudSync = async (currentPatients: Patient[], currentAppointments: Appointment[], isManualTrigger: boolean) => {
@@ -92,7 +101,7 @@ const App: React.FC = () => {
             if (isManualTrigger) {
                 url = prompt('Para sincronizar, cole a URL do seu Apps Script para o Google Drive:') || '';
                 if (!url) {
-                    alert('Endpoint não informado. Sincronização cancelada.');
+                    showToast('Endpoint não informado. Cancelado.', 'info');
                     return;
                 }
                 setCloudEndpoint(url);
@@ -107,7 +116,7 @@ const App: React.FC = () => {
             if (isManualTrigger) {
                 pass = prompt('Defina a senha para criptografar o backup na nuvem (ficará salva neste navegador):');
                 if (!pass) {
-                    alert('Senha não informada. Sincronização cancelada.');
+                    showToast('Senha não informada. Cancelado.', 'error');
                     return;
                 }
                 setCloudPass(pass);
@@ -145,11 +154,11 @@ const App: React.FC = () => {
 
             const statusMsg = `Backup salvo no Google Drive.`;
             setSyncStatus({ msg: statusMsg, isOk: true });
-            if (isManualTrigger) alert(statusMsg);
+            if (isManualTrigger) showToast(statusMsg, 'success');
         } catch (err) {
             const errorMsg = `Erro ao sincronizar: ${err instanceof Error ? err.message : String(err)}`;
             setSyncStatus({ msg: errorMsg, isOk: false });
-            if (isManualTrigger) alert(errorMsg);
+            if (isManualTrigger) showToast(errorMsg, 'error');
             throw err;
         }
     };
@@ -206,13 +215,13 @@ const App: React.FC = () => {
             
             const successMsg = `Dados sincronizados. ${data.pacientes.length} pacientes carregados.`;
             setSyncStatus({ msg: successMsg, isOk: true });
-            alert(successMsg);
+            showToast(successMsg, 'success');
             setCloudPass(pass); 
 
         } catch (err) {
             const errorMsg = `Erro ao restaurar da nuvem: ${err instanceof Error ? err.message : String(err)}`;
             setSyncStatus({ msg: errorMsg, isOk: false });
-            alert(errorMsg);
+            showToast(errorMsg, 'error');
             throw err;
         }
     };
@@ -231,8 +240,9 @@ const App: React.FC = () => {
                 if (data.submissions.length > 0) {
                     setShowInbox(true);
                     setSyncStatus({ msg: `${data.submissions.length} novos pré-cadastros encontrados.`, isOk: true });
+                    showToast(`${data.submissions.length} novos pré-cadastros!`, 'info');
                 } else {
-                    alert('Nenhum pré-cadastro novo encontrado.');
+                    showToast('Nenhum pré-cadastro novo encontrado.', 'info');
                     setSyncStatus({ msg: 'Caixa de entrada vazia.', isOk: true });
                 }
             }
@@ -267,12 +277,14 @@ const App: React.FC = () => {
         setEditingPatient(newPatient);
         setShowInbox(false);
         setInbox(prev => prev.filter(i => i.id !== item.id));
+        showToast('Dados importados. Revise e salve.', 'success');
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     const handleDismissInboxItem = (id: string) => {
          if(window.confirm("Ignorar este pré-cadastro?")) {
             setInbox(prev => prev.filter(i => i.id !== id));
+            showToast('Pré-cadastro ignorado.', 'info');
          }
     };
 
@@ -285,6 +297,7 @@ const App: React.FC = () => {
         }
         setPatients(updatedPatients);
         setEditingPatient(null);
+        showToast('Dados do paciente salvos com sucesso!', 'success');
         performCloudSync(updatedPatients, appointments, false).catch(e => console.error("Erro auto-save:", e));
     };
 
@@ -297,6 +310,7 @@ const App: React.FC = () => {
         if (window.confirm('Excluir este paciente?')) {
             const updatedPatients = patients.filter(p => p.id !== id);
             setPatients(updatedPatients);
+            showToast('Paciente removido com sucesso.', 'success');
             performCloudSync(updatedPatients, appointments, false).catch(e => console.error("Erro auto-save:", e));
         }
     };
@@ -304,6 +318,7 @@ const App: React.FC = () => {
     const handleAddAppointment = (appt: Appointment) => {
         const updated = [...appointments, appt];
         setAppointments(updated);
+        showToast('Agendamento criado com sucesso!', 'success');
         // Auto-link professional to patient if not already linked
         const patient = patients.find(p => p.id === appt.patientId);
         if (patient && !patient.profissionais.includes(appt.profissional)) {
@@ -322,6 +337,7 @@ const App: React.FC = () => {
     const handleUpdateAppointment = (appt: Appointment) => {
         const updated = appointments.map(a => a.id === appt.id ? appt : a);
         setAppointments(updated);
+        showToast('Agendamento atualizado.', 'success');
         performCloudSync(patients, updated, false).catch(e => console.error("Erro auto-save agenda:", e));
     };
 
@@ -329,18 +345,25 @@ const App: React.FC = () => {
         if (window.confirm('Remover este agendamento?')) {
             const updated = appointments.filter(a => a.id !== id);
             setAppointments(updated);
+            showToast('Agendamento removido.', 'success');
             performCloudSync(patients, updated, false).catch(e => console.error("Erro auto-save agenda:", e));
         }
     };
 
     const handleAddNewItem = (list: string[], setList: (list: string[]) => void, item: string) => {
         const trimmed = item.trim();
-        if (trimmed && !list.some(i => i.toLowerCase() === trimmed.toLowerCase())) setList([...list, trimmed]);
+        if (trimmed && !list.some(i => i.toLowerCase() === trimmed.toLowerCase())) {
+            setList([...list, trimmed]);
+            showToast('Item adicionado à lista.', 'success');
+        }
     };
     
     const handleRemoveItem = (list: string[], setList: (list: string[]) => void, item: string) => {
         if (!item) return;
-        if (window.confirm(`Remover "${item}" da lista de opções? (Não afeta históricos)`)) setList(list.filter(i => i !== item));
+        if (window.confirm(`Remover "${item}" da lista de opções? (Não afeta históricos)`)) {
+            setList(list.filter(i => i !== item));
+            showToast('Item removido da lista.', 'success');
+        }
     };
 
     const handleExport = () => downloadFile('pacientes_personart.csv', exportToCSV(patients), 'text/csv;charset=utf-8');
@@ -353,8 +376,9 @@ const App: React.FC = () => {
             const payload: BackupData = { pacientes: patients, agendamentos: appointments, convenios, profissionais, especialidades, ts: new Date().toISOString() };
             const pkg = await encryptJSON(payload, pass);
             downloadFile('backup_personart.enc.json', JSON.stringify(pkg), 'application/json');
+            showToast('Backup local gerado com sucesso.', 'success');
         } catch (err) {
-            alert(`Falha: ${err instanceof Error ? err.message : String(err)}`);
+            showToast(`Falha no backup: ${err instanceof Error ? err.message : String(err)}`, 'error');
         }
     };
     
@@ -383,12 +407,12 @@ const App: React.FC = () => {
                 if (data.convenios) setConvenios(data.convenios);
                 if (data.profissionais) setProfissionais(data.profissionais);
                 if (data.especialidades) setEspecialidades(data.especialidades);
-                alert('Backup importado com sucesso.');
+                showToast('Backup importado com sucesso!', 'success');
             } else {
                 throw new Error('Formato inválido');
             }
         } catch (err) {
-            alert(`Falha: ${err instanceof Error ? err.message : String(err)}`);
+            showToast(`Falha na importação: ${err instanceof Error ? err.message : String(err)}`, 'error');
         } finally {
             e.target.value = ''; 
         }
@@ -401,8 +425,9 @@ const App: React.FC = () => {
         if (loginInput === accessPass) {
             setIsAuthenticated(true);
             setView('dashboard');
+            showToast(`Bem-vindo, ${brand.name}!`, 'success');
         } else {
-            alert('Senha incorreta.');
+            showToast('Senha incorreta.', 'error');
         }
     };
     
@@ -410,8 +435,17 @@ const App: React.FC = () => {
         const newPass = prompt('Defina a nova senha de acesso ao sistema (esta senha fica salva apenas neste computador):');
         if (newPass) {
             setAccessPass(newPass);
-            alert('Senha de acesso atualizada.');
+            setTimeout(() => {
+                showToast('Senha de acesso atualizada. Guarde-a bem!', 'success');
+            }, 500);
         }
+    };
+
+    const copyPublicLink = () => {
+        const url = `${window.location.origin}${window.location.pathname}?mode=cadastro`;
+        navigator.clipboard.writeText(url).then(() => {
+            showToast('Link de pré-cadastro copiado!', 'success');
+        });
     };
 
     // --- CONDITIONAL RENDERING (MUST BE AT THE END) ---
@@ -512,6 +546,13 @@ const App: React.FC = () => {
                     </form>
                     <p className="mt-4 text-xs text-center text-slate-600">Senha padrão inicial: personart</p>
                 </div>
+                {/* Toast Render for Login Screen */}
+                {toast && (
+                    <div className={`fixed top-4 right-4 z-50 px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 animate-fade-in border ${toast.type === 'success' ? 'bg-green-900/90 border-green-700 text-green-100' : (toast.type === 'error' ? 'bg-red-900/90 border-red-700 text-red-100' : 'bg-sky-900/90 border-sky-700 text-sky-100')}`}>
+                        {toast.type === 'success' ? <CheckIcon className="w-6 h-6" /> : (toast.type === 'error' ? <XIcon className="w-6 h-6" /> : <InboxIcon className="w-6 h-6" />)}
+                        <span className="font-medium text-sm">{toast.msg}</span>
+                    </div>
+                )}
             </div>
         );
     }
@@ -649,6 +690,16 @@ const App: React.FC = () => {
                             <button onClick={() => setShowInbox(false)} className="text-slate-400 hover:text-slate-200"><XIcon className="w-5 h-5" /></button>
                         </div>
                         <div className="space-y-4">
+                            <div className="bg-sky-900/20 border border-sky-800 p-3 rounded-lg flex justify-between items-center mb-4">
+                                <div>
+                                    <p className="text-xs text-sky-300 font-medium">Link público para cadastro:</p>
+                                    <p className="text-[10px] text-slate-400 break-all">{window.location.origin}{window.location.pathname}?mode=cadastro</p>
+                                </div>
+                                <button onClick={copyPublicLink} className="text-xs bg-sky-700 hover:bg-sky-600 text-white px-2 py-1 rounded transition whitespace-nowrap">
+                                    Copiar Link
+                                </button>
+                            </div>
+
                             {inbox.map(item => (
                                 <div key={item.id} className="bg-slate-900/50 border border-slate-700 rounded-xl p-4 flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
                                     <div>
@@ -667,6 +718,14 @@ const App: React.FC = () => {
                             ))}
                         </div>
                     </div>
+                </div>
+            )}
+
+            {/* Toast Notifications */}
+            {toast && (
+                <div className={`fixed top-4 right-4 z-50 px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 animate-fade-in border ${toast.type === 'success' ? 'bg-green-900/90 border-green-700 text-green-100' : (toast.type === 'error' ? 'bg-red-900/90 border-red-700 text-red-100' : 'bg-sky-900/90 border-sky-700 text-sky-100')}`}>
+                    {toast.type === 'success' ? <CheckIcon className="w-6 h-6" /> : (toast.type === 'error' ? <XIcon className="w-6 h-6" /> : <InboxIcon className="w-6 h-6" />)}
+                    <span className="font-medium text-sm">{toast.msg}</span>
                 </div>
             )}
         </div>
