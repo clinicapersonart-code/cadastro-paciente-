@@ -8,6 +8,10 @@ export const STORAGE_KEYS = {
   ACCESS_PASS: 'personart.access.pass'
 };
 
+// As chaves são carregadas das variáveis de ambiente (.env ou Vercel)
+export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? '';
+export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? '';
+
 export const DEFAULT_CONVENIOS = ['Funserv', 'Danamed', 'Gama Saúde', 'Fusex', 'BlueSaúde', 'Unimed Campinas', 'Ossel', 'Ofebas'];
 
 export const DEFAULT_PROFISSIONAIS = [
