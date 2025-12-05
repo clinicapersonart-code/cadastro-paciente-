@@ -1,4 +1,14 @@
 
+// Função segura para ler variáveis de ambiente sem quebrar a aplicação
+const getEnv = (key: string) => {
+  try {
+    // @ts-ignore
+    return (import.meta && import.meta.env && import.meta.env[key]) ? import.meta.env[key] : '';
+  } catch (e) {
+    return '';
+  }
+};
+
 export const STORAGE_KEYS = {
   // Mantemos alguns itens locais, como preferências de visualização e listas simples
   CONVENIOS: 'personart.convenios.v1',
@@ -8,9 +18,10 @@ export const STORAGE_KEYS = {
   ACCESS_PASS: 'personart.access.pass'
 };
 
-// COLOQUE AQUI AS CHAVES DO SEU PROJETO SUPABASE
-export const SUPABASE_URL = ''; // Ex: https://xyzcompany.supabase.co
-export const SUPABASE_ANON_KEY = ''; // Ex: eyJhbGciOiJIUzI1NiIsInR5c...
+// --- CONFIGURAÇÃO DO SUPABASE ---
+// Estamos fixando as chaves aqui para garantir que funcione na Vercel e Localmente sem configurar variáveis extras.
+export const SUPABASE_URL = 'https://yufcolmdbvxdpszlrvgk.supabase.co'; 
+export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl1ZmNvbG1kYnZ4ZHBzemxydmdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ4OTE2MTQsImV4cCI6MjA4MDQ2NzYxNH0.hsOfipaRH7RZCmT6rZ9842-0FBvgncROoCwdjyKsL_8';
 
 export const DEFAULT_CONVENIOS = ['Funserv', 'Danamed', 'Gama Saúde', 'Fusex', 'BlueSaúde', 'Unimed Campinas', 'Ossel', 'Ofebas'];
 
