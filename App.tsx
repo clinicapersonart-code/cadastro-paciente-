@@ -33,6 +33,7 @@ const App: React.FC = () => {
     
     const [isLoading, setIsLoading] = useState(true);
     const [dbError, setDbError] = useState('');
+    const [connectionStatus, setConnectionStatus] = useState<'checking' | 'connected' | 'error'>('checking');
 
     // --- UI STATES ---
     const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
@@ -49,6 +50,26 @@ const App: React.FC = () => {
     const [showPasswordModal, setShowPasswordModal] = useState(false);
     const [newPasswordInput, setNewPasswordInput] = useState('');
     const [toast, setToast] = useState<{ msg: string, type: 'success' | 'error' | 'info' } | null>(null);
+
+    // --- INITIAL CONNECTION TEST ---
+    useEffect(() => {
+        const testConnection = async () => {
+            if (!isSupabaseConfigured()) {
+                setConnectionStatus('error');
+                return;
+            }
+            try {
+                // Tenta uma consulta leve para verificar conectividade
+                const { error } = await supabase!.from('patients').select('id').limit(1);
+                if (error) throw error;
+                setConnectionStatus('connected');
+            } catch (err) {
+                console.error("Erro de conexão inicial:", err);
+                setConnectionStatus('error');
+            }
+        };
+        testConnection();
+    }, []);
 
     // --- INITIAL DATA FETCH ---
     useEffect(() => {
@@ -408,6 +429,29 @@ const App: React.FC = () => {
                         <input type="password" placeholder="Senha de acesso" autoFocus value={loginInput} onChange={(e) => setLoginInput(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white text-center text-lg focus:ring-2 focus:ring-sky-500 outline-none" />
                         <button type="submit" className="w-full text-slate-900 font-bold py-3 rounded-xl hover:opacity-90" style={{ backgroundColor: brand.color }}>Entrar</button>
                     </form>
+                    
+                    {/* INDICADOR DE CONEXÃO COM SUPABASE */}
+                    <div className="mt-6 pt-6 border-t border-slate-700 text-center">
+                        {connectionStatus === 'checking' && (
+                            <p className="text-xs text-slate-500 flex items-center justify-center gap-2">
+                                <span className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></span> Verificando conexão...
+                            </p>
+                        )}
+                        {connectionStatus === 'connected' && (
+                            <p className="text-xs text-green-400 flex items-center justify-center gap-2 bg-green-900/20 py-1.5 rounded-lg border border-green-800/50">
+                                <span className="w-2 h-2 bg-green-500 rounded-full"></span> Banco de Dados: Online
+                            </p>
+                        )}
+                        {connectionStatus === 'error' && (
+                            <div className="bg-red-900/20 py-2 rounded-lg border border-red-800/50">
+                                <p className="text-xs text-red-400 flex items-center justify-center gap-2 mb-1">
+                                    <span className="w-2 h-2 bg-red-500 rounded-full"></span> Erro de Conexão
+                                </p>
+                                <p className="text-[10px] text-red-300 opacity-80">Verifique se as tabelas foram criadas no Supabase.</p>
+                            </div>
+                        )}
+                    </div>
+
                     {toast && <div className="mt-4 text-center text-red-400">{toast.msg}</div>}
                 </div>
             </div>
