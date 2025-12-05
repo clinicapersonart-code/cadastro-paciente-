@@ -17,13 +17,21 @@ function bytesFromBase64(b64: string): Uint8Array {
 
 async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey> {
     const enc = new TextEncoder();
-    const baseKey = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
+    // Correção: Uso explícito do objeto de algoritmo e cast para KeyUsage[]
+    const baseKey = await crypto.subtle.importKey(
+        'raw', 
+        enc.encode(password), 
+        { name: 'PBKDF2' }, 
+        false, 
+        ['deriveKey'] as KeyUsage[]
+    );
+    
     return crypto.subtle.deriveKey(
         { name: 'PBKDF2', salt, iterations: 250000, hash: 'SHA-256' },
         baseKey,
         { name: 'AES-GCM', length: 256 },
         false,
-        ['encrypt', 'decrypt']
+        ['encrypt', 'decrypt'] as KeyUsage[]
     );
 }
 
@@ -33,12 +41,15 @@ export async function encryptJSON(obj: BackupData, password: string): Promise<En
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const key = await deriveKey(password, salt);
     const data = enc.encode(JSON.stringify(obj));
-    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, data);
+    
+    const ctBuffer = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, data);
+    const ct = new Uint8Array(ctBuffer);
+
     return {
         format: 'personart-aesgcm-v1',
         iv: base64FromBytes(iv),
         salt: base64FromBytes(salt),
-        ct: base64FromBytes(new Uint8Array(ct))
+        ct: base64FromBytes(ct)
     };
 }
 
@@ -51,6 +62,8 @@ export async function decryptJSON(pkg: EncryptedPackage, password: string): Prom
     const iv = bytesFromBase64(pkg.iv);
     const key = await deriveKey(password, salt);
     const ct = bytesFromBase64(pkg.ct);
-    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
-    return JSON.parse(dec.decode(pt));
+    
+    const ptBuffer = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
+    
+    return JSON.parse(dec.decode(ptBuffer));
 }
