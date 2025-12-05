@@ -10,10 +10,18 @@ interface PublicRegistrationProps {
     brandColor: string;
     brandLogo: string | null;
     isUpdateMode?: boolean;
+    isVipMode?: boolean;
     convenios: string[];
 }
 
-export const PublicRegistration: React.FC<PublicRegistrationProps> = ({ brandName, brandColor, brandLogo, isUpdateMode = false, convenios }) => {
+export const PublicRegistration: React.FC<PublicRegistrationProps> = ({ 
+    brandName, 
+    brandColor, 
+    brandLogo, 
+    isUpdateMode = false, 
+    isVipMode = false,
+    convenios 
+}) => {
     const [formData, setFormData] = useState({
         nome: '',
         nascimento: '',
@@ -97,6 +105,41 @@ export const PublicRegistration: React.FC<PublicRegistrationProps> = ({ brandNam
     };
 
     if (status === 'success') {
+        if (isVipMode) {
+             return (
+                <div className="min-h-screen flex items-center justify-center p-4 bg-slate-900">
+                    <div className="bg-slate-800 p-8 rounded-2xl text-center max-w-md w-full shadow-2xl border border-slate-700 animate-fade-in relative overflow-hidden">
+                        {/* Efeito de brilho no fundo */}
+                        <div className="absolute -top-10 -right-10 w-32 h-32 bg-amber-500/10 rounded-full blur-3xl"></div>
+
+                        <div className="w-16 h-16 bg-amber-900/30 text-amber-400 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg shadow-amber-900/20">
+                            <StarIcon className="w-8 h-8" />
+                        </div>
+                        <h2 className="text-2xl font-bold text-white mb-4">Atualização Recebida!</h2>
+                        <p className="text-slate-300 text-sm leading-relaxed mb-6">
+                            Você é muito importante para o nosso crescimento. Obrigado por fazer parte da nossa história!
+                            <br/><br/>
+                            Se puder, nos ajude ainda mais nos avaliando com 5 estrelas no Google. Isso faz toda a diferença para nós.
+                        </p>
+                        
+                        <a 
+                            href="https://g.page/r/CeVIkm6xjD-zEAE/review" 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="block w-full bg-slate-100 hover:bg-white text-slate-900 font-bold py-3 rounded-xl transition shadow-lg transform hover:scale-[1.02] flex items-center justify-center gap-2 mb-4"
+                        >
+                            <img src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg" alt="Google" className="w-5 h-5"/>
+                            Avaliar no Google
+                        </a>
+
+                        <button onClick={() => window.location.reload()} className="text-xs text-slate-500 hover:text-slate-300 underline">
+                            Voltar ao início
+                        </button>
+                    </div>
+                </div>
+             );
+        }
+
         return (
             <div className="min-h-screen flex items-center justify-center p-4 bg-slate-900">
                 <div className="bg-slate-800 p-8 rounded-2xl text-center max-w-md w-full shadow-2xl border border-slate-700 animate-fade-in">
@@ -117,7 +160,7 @@ export const PublicRegistration: React.FC<PublicRegistrationProps> = ({ brandNam
                     {brandLogo && <img src={brandLogo} alt="Logo" className="h-16 w-16 rounded-xl mx-auto mb-3" />}
                     <h1 className="text-2xl font-bold" style={{ color: brandColor }}>{brandName}</h1>
                     <p className="text-slate-400 text-sm mt-1">
-                        {isUpdateMode ? 'Atualização de Cadastro' : 'Formulário de Pré-cadastro'}
+                        {isUpdateMode || isVipMode ? 'Atualização de Cadastro' : 'Formulário de Pré-cadastro'}
                     </p>
                 </div>
 
@@ -193,27 +236,29 @@ export const PublicRegistration: React.FC<PublicRegistrationProps> = ({ brandNam
                         </div>
                     </div>
 
-                    <div className="border-t border-slate-700 pt-4 mt-2">
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Sugestão de Agendamento</p>
-                        <div className="grid grid-cols-2 gap-4">
-                             <div>
-                                <label className="block text-sm font-medium text-slate-400 mb-1">Data Preferencial</label>
-                                <input type="date" name="data" value={formData.agendamento.data} onChange={handleScheduleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-3 text-white focus:ring-2 focus:ring-sky-500 outline-none transition" />
-                             </div>
-                             <div>
-                                <label className="block text-sm font-medium text-slate-400 mb-1">Horário Preferencial</label>
-                                <input type="time" name="hora" value={formData.agendamento.hora} onChange={handleScheduleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-3 text-white focus:ring-2 focus:ring-sky-500 outline-none transition" />
-                             </div>
-                             <div className="col-span-2">
-                                <label className="block text-sm font-medium text-slate-400 mb-1">Frequência Desejada</label>
-                                <select name="frequencia" value={formData.agendamento.frequencia} onChange={handleScheduleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-3 text-white focus:ring-2 focus:ring-sky-500 outline-none transition">
-                                    <option>Semanal</option>
-                                    <option>Quinzenal</option>
-                                    <option>Mensal</option>
-                                </select>
-                             </div>
+                    {!isVipMode && (
+                        <div className="border-t border-slate-700 pt-4 mt-2">
+                            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Sugestão de Agendamento</p>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-400 mb-1">Data Preferencial</label>
+                                    <input type="date" name="data" value={formData.agendamento.data} onChange={handleScheduleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-3 text-white focus:ring-2 focus:ring-sky-500 outline-none transition" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-400 mb-1">Horário Preferencial</label>
+                                    <input type="time" name="hora" value={formData.agendamento.hora} onChange={handleScheduleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-3 text-white focus:ring-2 focus:ring-sky-500 outline-none transition" />
+                                </div>
+                                <div className="col-span-2">
+                                    <label className="block text-sm font-medium text-slate-400 mb-1">Frequência Desejada</label>
+                                    <select name="frequencia" value={formData.agendamento.frequencia} onChange={handleScheduleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-3 text-white focus:ring-2 focus:ring-sky-500 outline-none transition">
+                                        <option>Semanal</option>
+                                        <option>Quinzenal</option>
+                                        <option>Mensal</option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     <div className="pt-2">
                          <label className="block text-sm font-medium text-slate-400 mb-1">Como conheceu a clínica?</label>
@@ -225,7 +270,7 @@ export const PublicRegistration: React.FC<PublicRegistrationProps> = ({ brandNam
 
                     <div className="pt-4">
                         <button type="submit" disabled={status === 'submitting'} className="w-full bg-sky-600 hover:bg-sky-500 disabled:bg-slate-600 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-sky-900/20">
-                            {status === 'submitting' ? 'Enviando...' : 'Enviar Cadastro'}
+                            {status === 'submitting' ? 'Enviando...' : (isVipMode ? 'Atualizar Dados' : 'Enviar Cadastro')}
                         </button>
                     </div>
                 </form>

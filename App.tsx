@@ -9,7 +9,7 @@ import { PatientTable } from './components/PatientTable';
 import { Agenda } from './components/Agenda';
 import { PublicRegistration } from './components/PublicRegistration';
 import { FunservManager } from './components/FunservManager';
-import { DownloadIcon, CloudIcon, UserIcon, CalendarIcon, InboxIcon, CheckIcon, XIcon, LockIcon, FileTextIcon } from './components/icons';
+import { DownloadIcon, CloudIcon, UserIcon, CalendarIcon, InboxIcon, CheckIcon, XIcon, LockIcon, FileTextIcon, StarIcon } from './components/icons';
 
 const App: React.FC = () => {
     // --- LOCAL SETTINGS (Mantidos no navegador) ---
@@ -381,8 +381,8 @@ const App: React.FC = () => {
         }
     };
 
-    const copyPublicLink = () => {
-        const url = `${window.location.origin}${window.location.pathname}?mode=cadastro`;
+    const copyPublicLink = (mode: string) => {
+        const url = `${window.location.origin}${window.location.pathname}?mode=${mode}`;
         navigator.clipboard.writeText(url).then(() => showToast('Link copiado!', 'success'));
     };
 
@@ -391,8 +391,8 @@ const App: React.FC = () => {
     const params = new URLSearchParams(window.location.search);
     const mode = params.get('mode');
     
-    // MODO PÚBLICO (Cadastro)
-    if (mode === 'cadastro' || mode === 'atualizacao') {
+    // MODO PÚBLICO (Cadastro, Atualização ou VIP)
+    if (mode === 'cadastro' || mode === 'atualizacao' || mode === 'vip') {
         if (!isSupabaseConfigured()) return <div className="p-8 text-center text-white">Erro: Banco de dados não configurado.</div>;
         return (
             <PublicRegistration 
@@ -401,6 +401,7 @@ const App: React.FC = () => {
                 brandColor={brand.color} 
                 brandLogo={brand.logo} 
                 isUpdateMode={mode === 'atualizacao'}
+                isVipMode={mode === 'vip'}
                 convenios={sortedConvenios}
             />
         );
@@ -569,13 +570,28 @@ const App: React.FC = () => {
                             <button onClick={() => setShowInbox(false)} className="text-slate-400 hover:text-slate-200"><XIcon className="w-5 h-5" /></button>
                         </div>
                         <div className="space-y-4">
-                            <div className="bg-sky-900/20 border border-sky-800 p-3 rounded-lg flex justify-between items-center mb-4">
+                            
+                            {/* Link Padrão */}
+                            <div className="bg-sky-900/20 border border-sky-800 p-3 rounded-lg flex justify-between items-center">
                                 <div>
-                                    <p className="text-xs text-sky-300 font-medium">Link público para cadastro:</p>
+                                    <p className="text-xs text-sky-300 font-medium">Link para Novos Pacientes:</p>
                                     <p className="text-[10px] text-slate-400 break-all">{window.location.origin}{window.location.pathname}?mode=cadastro</p>
                                 </div>
-                                <button onClick={copyPublicLink} className="text-xs bg-sky-700 hover:bg-sky-600 text-white px-2 py-1 rounded transition whitespace-nowrap">Copiar Link</button>
+                                <button onClick={() => copyPublicLink('cadastro')} className="text-xs bg-sky-700 hover:bg-sky-600 text-white px-2 py-1 rounded transition whitespace-nowrap">Copiar</button>
                             </div>
+
+                            {/* Link VIP */}
+                            <div className="bg-amber-900/20 border border-amber-800 p-3 rounded-lg flex justify-between items-center">
+                                <div>
+                                    <div className="flex items-center gap-1">
+                                        <p className="text-xs text-amber-300 font-medium">Link para Pacientes Antigos (VIP):</p>
+                                        <StarIcon className="w-3 h-3 text-amber-400" />
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 break-all">{window.location.origin}{window.location.pathname}?mode=vip</p>
+                                </div>
+                                <button onClick={() => copyPublicLink('vip')} className="text-xs bg-amber-700 hover:bg-amber-600 text-white px-2 py-1 rounded transition whitespace-nowrap">Copiar</button>
+                            </div>
+
                             {inbox.length === 0 ? (
                                 <div className="text-center py-8 text-slate-500"><p>Nenhum pré-cadastro novo encontrado.</p></div>
                             ) : (
