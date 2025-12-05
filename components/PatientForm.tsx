@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Patient, FunservConfig } from '../types';
-import { PlusIcon, XIcon, TrashIcon, CalendarIcon, CheckIcon, RepeatIcon, ArrowRightIcon } from './icons';
+import { PlusIcon, XIcon, TrashIcon, CalendarIcon, CheckIcon, RepeatIcon, ArrowRightIcon, ClockIcon, UserIcon } from './icons';
 import { DEFAULT_ORIGINS } from '../constants';
 
 interface PatientFormProps {
     editingPatient: Patient | null;
-    onSave: (patient: Patient) => void;
+    onSave: (patient: Patient, initialAppointment?: { date: string, time: string, professional: string, recurrence: string, type: 'Convênio' | 'Particular' }) => void;
     onClear: () => void;
     convenios: string[];
     profissionais: string[];
@@ -43,10 +43,17 @@ export const PatientForm: React.FC<PatientFormProps> = ({
     const [novoProfissional, setNovoProfissional] = useState('');
     const [novaEspecialidade, setNovaEspecialidade] = useState('');
 
-    // States for the select dropdowns (to enable deletion of selected item)
+    // States for the select dropdowns
     const [selectedProfissional, setSelectedProfissional] = useState('');
     const [selectedEspecialidade, setSelectedEspecialidade] = useState('');
     const [selectedConvenio, setSelectedConvenio] = useState('');
+
+    // --- ESTADOS PARA AGENDAMENTO INICIAL ---
+    const [scheduleInitial, setScheduleInitial] = useState(false);
+    const [apptDate, setApptDate] = useState(new Date().toISOString().split('T')[0]);
+    const [apptTime, setApptTime] = useState('08:00');
+    const [apptProf, setApptProf] = useState('');
+    const [apptRecurrence, setApptRecurrence] = useState('none'); // none, weekly, biweekly, monthly
 
     useEffect(() => {
         setFormData(editingPatient ? { ...editingPatient } : { ...emptyPatient });
@@ -56,14 +63,23 @@ export const PatientForm: React.FC<PatientFormProps> = ({
         } else {
             setSelectedConvenio('');
         }
+        // Reset scheduling fields when form resets
+        setScheduleInitial(false);
+        setApptRecurrence('none');
     }, [editingPatient]);
+
+    // Atualiza o profissional do agendamento se adicionar um ao paciente
+    useEffect(() => {
+        if (scheduleInitial && !apptProf && formData.profissionais.length > 0) {
+            setApptProf(formData.profissionais[0]);
+        }
+    }, [formData.profissionais, scheduleInitial, apptProf]);
 
     const handleConvenioSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const val = e.target.value;
         setSelectedConvenio(val);
         setFormData(prev => {
             const updated = { ...prev, convenio: val };
-            // Initialize Funserv config silently if selected, but UI is handled in separate tab
             if (val === 'Funserv' && !updated.funservConfig) {
                 updated.funservConfig = {
                     active: true,
@@ -119,7 +135,24 @@ export const PatientForm: React.FC<PatientFormProps> = ({
             alert('Informe o nome do responsável para pacientes criança.');
             return;
         }
-        onSave(formData);
+
+        // Validação Agendamento
+        let initialAppointment = undefined;
+        if (scheduleInitial) {
+            if (!apptProf || !apptDate || !apptTime) {
+                alert('Para realizar o agendamento inicial, preencha Profissional, Data e Hora.');
+                return;
+            }
+            initialAppointment = {
+                date: apptDate,
+                time: apptTime,
+                professional: apptProf,
+                recurrence: apptRecurrence,
+                type: formData.convenio ? 'Convênio' as const : 'Particular' as const
+            };
+        }
+
+        onSave(formData, initialAppointment);
     };
 
     const handleAddItem = (
@@ -404,9 +437,63 @@ export const PatientForm: React.FC<PatientFormProps> = ({
                         </label>
                     </div>
 
+                    {/* SEÇÃO AGENDAMENTO INICIAL */}
+                    <div className="bg-slate-900/50 border border-slate-700 rounded-xl p-4 mt-2">
+                        <div className="flex items-center gap-2 mb-3">
+                             <input 
+                                type="checkbox" 
+                                id="scheduleInitial" 
+                                checked={scheduleInitial} 
+                                onChange={(e) => setScheduleInitial(e.target.checked)}
+                                className="w-4 h-4 text-sky-600 rounded bg-slate-800 border-slate-600 focus:ring-sky-500"
+                             />
+                             <label htmlFor="scheduleInitial" className="text-sm font-bold text-slate-200 cursor-pointer flex items-center gap-2">
+                                <CalendarIcon className="w-4 h-4 text-sky-400"/>
+                                Agendar primeira consulta agora?
+                             </label>
+                        </div>
 
-                    <div className="flex gap-4">
-                        <button type="submit" className="bg-sky-600 hover:bg-sky-500 text-white font-semibold px-4 py-2 rounded-lg text-sm transition w-full sm:w-auto">Salvar paciente</button>
+                        {scheduleInitial && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pl-6 border-l-2 border-slate-700 animate-fade-in">
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-400 mb-1">Data</label>
+                                    <input type="date" value={apptDate} onChange={e => setApptDate(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:ring-1 focus:ring-sky-500 outline-none" />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-400 mb-1">Horário</label>
+                                    <input type="time" value={apptTime} onChange={e => setApptTime(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:ring-1 focus:ring-sky-500 outline-none" />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-400 mb-1">Profissional</label>
+                                    <select value={apptProf} onChange={e => setApptProf(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:ring-1 focus:ring-sky-500 outline-none">
+                                        <option value="">Selecione...</option>
+                                        {/* Use patient's selected professionals first, then fallback to full list if none */}
+                                        {formData.profissionais.length > 0 
+                                            ? formData.profissionais.map(p => <option key={p} value={p}>{p}</option>)
+                                            : profissionais.map(p => <option key={p} value={p}>{p}</option>)
+                                        }
+                                        {/* If user selects from full list that isn't in patient list yet, it's fine */}
+                                        {formData.profissionais.length > 0 && <option disabled>──────────</option>}
+                                        {formData.profissionais.length > 0 && profissionais.filter(p => !formData.profissionais.includes(p)).map(p => <option key={p} value={p}>{p}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-400 mb-1">Recorrência</label>
+                                    <select value={apptRecurrence} onChange={e => setApptRecurrence(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:ring-1 focus:ring-sky-500 outline-none">
+                                        <option value="none">Apenas uma vez</option>
+                                        <option value="weekly">Semanal (4 sessões)</option>
+                                        <option value="biweekly">Quinzenal (2 sessões)</option>
+                                        <option value="monthly">Mensal (6 meses)</option>
+                                    </select>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="flex gap-4 pt-4">
+                        <button type="submit" className="bg-sky-600 hover:bg-sky-500 text-white font-semibold px-4 py-2 rounded-lg text-sm transition w-full sm:w-auto">
+                            {scheduleInitial ? 'Salvar Paciente & Agendar' : 'Salvar Paciente'}
+                        </button>
                         <button type="button" onClick={onClear} className="bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold px-4 py-2 rounded-lg text-sm transition w-full sm:w-auto">Limpar formulário</button>
                     </div>
                 </form>

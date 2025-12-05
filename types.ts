@@ -76,7 +76,13 @@ export interface PreCadastro {
   convenio: string;
   carteirinha: string;
   origem?: string;
+  profissional?: string; // Campo novo
   dataEnvio: string;
+  agendamento?: { // Tornando opcional para evitar erros com dados antigos
+      data: string;
+      hora: string;
+      frequencia: string;
+  }
 }
 
 export interface EncryptedPackage {

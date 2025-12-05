@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Patient, FunservConfig } from '../types';
 import { CheckIcon, RepeatIcon, StarIcon, TrashIcon, CalendarIcon, UserIcon } from './icons';
 
@@ -12,6 +12,15 @@ interface FunservCardProps {
     onSave: (p: Patient) => void;
 }
 
+// Mapeamento de e-mails dos profissionais para preenchimento automático
+const PROFESSIONAL_EMAILS: Record<string, string> = {
+    'Bruno': 'psi.brunoalx@gmail.com',
+    'Drieli': 'guimaraes.drieli@gmail.com',
+    'Simone': 'simoneagrela.psico@gmail.com',
+    'Geovana': 'georafaeladuarte@gmail.com',
+    'Soraia': 'soraiasouzapsicologa@gmail.com'
+};
+
 // Sub-componente para gerenciar o estado local de cada card (input de data)
 const FunservCard: React.FC<FunservCardProps> = ({ patient, onSave }) => {
     const config = patient.funservConfig || {
@@ -20,6 +29,31 @@ const FunservCard: React.FC<FunservCardProps> = ({ patient, onSave }) => {
     
     // Estado local para a data da sessão a ser adicionada
     const [sessionDate, setSessionDate] = useState(new Date().toISOString().split('T')[0]);
+
+    // Efeito para preencher automaticamente o e-mail do profissional se estiver vazio
+    useEffect(() => {
+        if (!config.alertEmail && patient.profissionais.length > 0) {
+            const firstProf = patient.profissionais[0];
+            const firstName = firstProf.split(' ')[0]; // Pega o primeiro nome (ex: Bruno, Drieli)
+            
+            // Verifica mapeamento exato ou pelo primeiro nome
+            const email = PROFESSIONAL_EMAILS[firstName];
+            
+            if (email) {
+                // Atualiza a config sem salvar no banco imediatamente para evitar loop, 
+                // mas o input refletirá o valor e será salvo na próxima interação.
+                // Porém, para garantir que fique salvo, chamamos o onSave.
+                // Usamos setTimeout para evitar atualização durante renderização.
+                const newConfig = { ...config, alertEmail: email };
+                // Pequeno delay para garantir que não colida com renderização inicial
+                const timer = setTimeout(() => {
+                    onSave({ ...patient, funservConfig: newConfig });
+                }, 500);
+                return () => clearTimeout(timer);
+            }
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // Executa apenas na montagem do componente
 
     const remaining = config.totalSessions - config.usedSessions;
     const progress = Math.min((config.usedSessions / config.totalSessions) * 100, 100);

@@ -1,14 +1,16 @@
+
 export const STORAGE_KEYS = {
-  PACIENTES: 'personart.pacientes.v1',
-  AGENDA: 'personart.agenda.v1',
+  // Mantemos alguns itens locais, como preferências de visualização e listas simples
   CONVENIOS: 'personart.convenios.v1',
   PROFISSIONAIS: 'personart.profissionais.v1',
   ESPECIALIDADES: 'personart.especialidades.v1',
   BRAND: 'personart.brand.v1',
-  CLOUD_ENDPOINT: 'personart.cloud.endpoint',
-  CLOUD_PASS: 'personart.cloud.pass',
   ACCESS_PASS: 'personart.access.pass'
 };
+
+// COLOQUE AQUI AS CHAVES DO SEU PROJETO SUPABASE
+export const SUPABASE_URL = ''; // Ex: https://xyzcompany.supabase.co
+export const SUPABASE_ANON_KEY = ''; // Ex: eyJhbGciOiJIUzI1NiIsInR5c...
 
 export const DEFAULT_CONVENIOS = ['Funserv', 'Danamed', 'Gama Saúde', 'Fusex', 'BlueSaúde', 'Unimed Campinas', 'Ossel', 'Ofebas'];
 
