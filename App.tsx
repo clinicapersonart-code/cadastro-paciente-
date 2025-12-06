@@ -237,17 +237,16 @@ const App: React.FC = () => {
             newAppointments.push(createAppointment(date));
 
             if (recurrence !== 'none') {
-                // CORREÇÃO DATA: Usa componentes da data para evitar fuso horário
                 const [y, m, d] = date.split('-').map(Number);
                 const currentDate = new Date(y, m - 1, d);
                 
                 let count = 0;
-                let max = 4; // Default weekly/monthly count
+                let max = 4; // Default
                 let daysToAdd = 0;
 
-                if (recurrence === 'weekly') { max = 3; daysToAdd = 7; } // 3 more = 4 total
-                if (recurrence === 'biweekly') { max = 1; daysToAdd = 14; } // 1 more = 2 total
-                if (recurrence === 'monthly') { max = 5; } // 5 more = 6 months total
+                if (recurrence === 'weekly') { max = 3; daysToAdd = 7; } 
+                if (recurrence === 'biweekly') { max = 1; daysToAdd = 14; }
+                if (recurrence === 'monthly') { max = 5; }
 
                 for(let i = 0; i < max; i++) {
                     if (recurrence === 'monthly') {
@@ -256,7 +255,6 @@ const App: React.FC = () => {
                         currentDate.setDate(currentDate.getDate() + daysToAdd);
                     }
                     
-                    // Formata manual para evitar UTC conversion issues
                     const ny = currentDate.getFullYear();
                     const nm = String(currentDate.getMonth() + 1).padStart(2, '0');
                     const nd = String(currentDate.getDate()).padStart(2, '0');
@@ -266,7 +264,6 @@ const App: React.FC = () => {
                 }
             }
 
-            // Update UI & DB for appointments
             const allAppointments = [...appointments, ...newAppointments];
             setAppointments(allAppointments);
             
@@ -289,27 +286,44 @@ const App: React.FC = () => {
 
     const handleEditPatient = (patient: Patient) => {
         setEditingPatient(patient);
-        setActiveTab('pacientes'); // Garante que a aba correta abra
+        setActiveTab('pacientes');
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     const handleDeletePatient = async (id: string) => {
-         // A confirmação agora é feita dentro do componente PatientTable
          setPatients(patients.filter(p => p.id !== id));
          await deletePatientFromDb(id);
          showToast('Paciente removido.', 'success');
     };
 
     const handleAddAppointment = async (appt: Appointment) => {
-        setAppointments([...appointments, appt]);
+        setAppointments(prev => [...prev, appt]);
         await saveAppointmentToDb(appt);
         showToast('Agendado!', 'success');
         
-        // Auto-link professional
         const patient = patients.find(p => p.id === appt.patientId);
         if (patient && !patient.profissionais.includes(appt.profissional)) {
             patient.profissionais.push(appt.profissional);
-            setPatients([...patients]); // Re-render logic would need explicit map, but mutation works for simple notify
+            await savePatientToDb(patient);
+        }
+    };
+
+    const handleAddBatchAppointments = async (newAppts: Appointment[]) => {
+        if (newAppts.length === 0) return;
+        
+        // Atualiza UI de uma vez
+        setAppointments(prev => [...prev, ...newAppts]);
+        
+        // Salva no banco em paralelo
+        await Promise.all(newAppts.map(appt => saveAppointmentToDb(appt)));
+        
+        showToast(`Agendados ${newAppts.length} horários!`, 'success');
+
+        // Linkar profissional se necessário (apenas do primeiro, pois é o mesmo para todos)
+        const appt = newAppts[0];
+        const patient = patients.find(p => p.id === appt.patientId);
+        if (patient && !patient.profissionais.includes(appt.profissional)) {
+            patient.profissionais.push(appt.profissional);
             await savePatientToDb(patient);
         }
     };
@@ -333,7 +347,7 @@ const App: React.FC = () => {
         const age = new Date().getFullYear() - new Date(item.nascimento).getFullYear();
         
         const newPatient: Patient = {
-            id: '', // Will be generated on save
+            id: '',
             nome: item.nome,
             nascimento: item.nascimento,
             faixa: age < 18 ? 'Criança' : 'Adulto',
@@ -344,7 +358,6 @@ const App: React.FC = () => {
             convenio: item.convenio || '',
             carteirinha: item.carteirinha || '',
             tipoAtendimento: '',
-            // Se houver profissional selecionado no pré-cadastro, adiciona na lista
             profissionais: item.profissional ? [item.profissional] : [],
             especialidades: [],
             origem: item.origem || 'Site',
@@ -426,12 +439,11 @@ const App: React.FC = () => {
     const params = new URLSearchParams(window.location.search);
     const mode = params.get('mode');
     
-    // MODO PÚBLICO (Cadastro, Atualização ou VIP)
     if (mode === 'cadastro' || mode === 'atualizacao' || mode === 'vip') {
         if (!isSupabaseConfigured()) return <div className="p-8 text-center text-white">Erro: Banco de dados não configurado.</div>;
         return (
             <PublicRegistration 
-                cloudEndpoint="" // Não usado com supabase
+                cloudEndpoint=""
                 brandName={brand.name} 
                 brandColor={brand.color} 
                 brandLogo={brand.logo} 
@@ -442,7 +454,6 @@ const App: React.FC = () => {
         );
     }
     
-    // LANDING
     if (view === 'landing') {
         return (
             <div className="min-h-screen flex flex-col items-center justify-center p-6 relative" style={{ backgroundColor: brand.dark }}>
@@ -455,7 +466,6 @@ const App: React.FC = () => {
         );
     }
 
-    // LOGIN
     if (view === 'login') {
         return (
             <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: brand.dark }}>
@@ -466,7 +476,6 @@ const App: React.FC = () => {
                         <button type="submit" className="w-full text-slate-900 font-bold py-3 rounded-xl hover:opacity-90" style={{ backgroundColor: brand.color }}>Entrar</button>
                     </form>
                     
-                    {/* INDICADOR DE CONEXÃO COM SUPABASE */}
                     <div className="mt-6 pt-6 border-t border-slate-700 text-center">
                         {connectionStatus === 'checking' && (
                             <p className="text-xs text-slate-500 flex items-center justify-center gap-2">
@@ -494,7 +503,6 @@ const App: React.FC = () => {
         );
     }
 
-    // DASHBOARD
     const showTable = isListVisible || searchTerm || filters.convenio || filters.profissional || filters.faixa;
 
     if (dbError) {
@@ -584,7 +592,15 @@ const App: React.FC = () => {
 
                 {!isLoading && activeTab === 'agenda' && (
                     <div className="max-w-4xl mx-auto">
-                        <Agenda patients={patients} profissionais={sortedProfissionais} appointments={appointments} onAddAppointment={handleAddAppointment} onUpdateAppointment={handleUpdateAppointment} onDeleteAppointment={handleDeleteAppointment} />
+                        <Agenda 
+                            patients={patients} 
+                            profissionais={sortedProfissionais} 
+                            appointments={appointments} 
+                            onAddAppointment={handleAddAppointment} 
+                            onAddBatchAppointments={handleAddBatchAppointments}
+                            onUpdateAppointment={handleUpdateAppointment} 
+                            onDeleteAppointment={handleDeleteAppointment} 
+                        />
                         <div className="mt-6 flex justify-between items-center border-t border-slate-800 pt-4">
                              <button onClick={() => setShowPasswordModal(true)} className="text-xs text-slate-500 hover:text-slate-300 flex items-center gap-1"><LockIcon className="w-3 h-3" /> Alterar senha de acesso</button>
                              <div className="flex items-center gap-1 text-xs text-green-500"><CloudIcon className="w-3 h-3"/> Banco de Dados Conectado</div>
@@ -599,7 +615,6 @@ const App: React.FC = () => {
                 )}
             </main>
 
-            {/* Inbox Modal */}
             {showInbox && (
                 <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                     <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -608,8 +623,6 @@ const App: React.FC = () => {
                             <button onClick={() => setShowInbox(false)} className="text-slate-400 hover:text-slate-200"><XIcon className="w-5 h-5" /></button>
                         </div>
                         <div className="space-y-4">
-                            
-                            {/* Link Padrão */}
                             <div className="bg-sky-900/20 border border-sky-800 p-3 rounded-lg flex justify-between items-center">
                                 <div>
                                     <p className="text-xs text-sky-300 font-medium">Link para Novos Pacientes:</p>
@@ -617,8 +630,6 @@ const App: React.FC = () => {
                                 </div>
                                 <button onClick={() => copyPublicLink('cadastro')} className="text-xs bg-sky-700 hover:bg-sky-600 text-white px-2 py-1 rounded transition whitespace-nowrap">Copiar</button>
                             </div>
-
-                            {/* Link VIP */}
                             <div className="bg-amber-900/20 border border-amber-800 p-3 rounded-lg flex justify-between items-center">
                                 <div>
                                     <div className="flex items-center gap-1">
@@ -657,7 +668,6 @@ const App: React.FC = () => {
                 </div>
             )}
 
-            {/* Password Modal */}
             {showPasswordModal && (
                 <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                     <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-sm p-6 shadow-2xl">

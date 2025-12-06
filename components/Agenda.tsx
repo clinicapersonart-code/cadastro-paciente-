@@ -8,6 +8,7 @@ interface AgendaProps {
     profissionais: string[];
     appointments: Appointment[];
     onAddAppointment: (appt: Appointment) => void;
+    onAddBatchAppointments?: (appts: Appointment[]) => void; // Nova função para Batch
     onUpdateAppointment: (appt: Appointment) => void;
     onDeleteAppointment: (id: string) => void;
 }
@@ -17,15 +18,12 @@ const TIME_SLOTS = [
     '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00'
 ];
 
-// Função para gerar cor pastel baseada no nome (hash)
 const stringToColor = (str: string) => {
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
         hash = str.charCodeAt(i) + ((hash << 5) - hash);
     }
-    // Matiz 0-360
     const h = Math.abs(hash % 360);
-    // Saturação alta, Luminosidade alta para ser pastel e legível com texto escuro
     return `hsl(${h}, 70%, 85%)`; 
 };
 
@@ -35,7 +33,7 @@ const getDarkerColor = (str: string) => {
         hash = str.charCodeAt(i) + ((hash << 5) - hash);
     }
     const h = Math.abs(hash % 360);
-    return `hsl(${h}, 70%, 30%)`; // Versão escura para borda/texto
+    return `hsl(${h}, 70%, 30%)`; 
 };
 
 export const Agenda: React.FC<AgendaProps> = ({
@@ -43,10 +41,10 @@ export const Agenda: React.FC<AgendaProps> = ({
     profissionais,
     appointments,
     onAddAppointment,
+    onAddBatchAppointments,
     onUpdateAppointment,
     onDeleteAppointment
 }) => {
-    // Persistência da Data e Modo de Visualização da Agenda
     const [selectedDate, setSelectedDate] = useLocalStorage<string>('personart.agenda.date', new Date().toISOString().split('T')[0]);
     const [viewMode, setViewMode] = useLocalStorage<'list' | 'grid' | 'weekly'>('personart.agenda.view', 'list');
     
@@ -55,7 +53,7 @@ export const Agenda: React.FC<AgendaProps> = ({
     const [showForm, setShowForm] = useState(false);
     
     // Form State
-    const [formId, setFormId] = useState<string | null>(null); // Se preenchido, é edição
+    const [formId, setFormId] = useState<string | null>(null);
     const [selectedPatientId, setSelectedPatientId] = useState('');
     const [formProfissional, setFormProfissional] = useState('');
     const [formDate, setFormDate] = useState('');
@@ -67,10 +65,8 @@ export const Agenda: React.FC<AgendaProps> = ({
     const [recurrence, setRecurrence] = useState<'none' | 'weekly' | 'biweekly'>('none');
     const [recurrenceCount, setRecurrenceCount] = useState<number>(4);
 
-    // Reset form when opening
     useEffect(() => {
         if (showForm && !formId) {
-            // Se for novo cadastro, reseta. Se for edição, mantém os dados carregados.
             setObs('');
             setRecurrence('none');
             setRecurrenceCount(4);
@@ -78,14 +74,12 @@ export const Agenda: React.FC<AgendaProps> = ({
         }
     }, [showForm, formId, selectedDate]);
 
-    // Se mudar o filtro de profissional, muda o form
     useEffect(() => {
         if (filterProfissional) {
             setFormProfissional(filterProfissional);
         }
     }, [filterProfissional]);
 
-    // Auto-fill professional/type when patient is selected
     useEffect(() => {
         if (selectedPatientId && !formId) {
             const p = patients.find(pt => pt.id === selectedPatientId);
@@ -109,98 +103,84 @@ export const Agenda: React.FC<AgendaProps> = ({
         const patient = patients.find(p => p.id === selectedPatientId);
         if (!patient) return;
 
-        // Função auxiliar para criar/atualizar
-        const processAppointment = (dateStr: string, isUpdate: boolean, originalId?: string) => {
-            // Verificar conflito (exceto com ele mesmo se for update)
-            const conflict = appointments.find(
-                a => a.date === dateStr && a.time === time && a.profissional === formProfissional && a.status !== 'Cancelado' && a.id !== originalId
-            );
+        // Função de criação de objeto (com ID opcional)
+        const createAppointmentObj = (dateStr: string, idStr?: string, suffix?: string): Appointment => ({
+            id: idStr || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            patientId: patient.id,
+            patientName: patient.nome,
+            profissional: formProfissional,
+            date: dateStr,
+            time,
+            type,
+            convenioName: type === 'Convênio' ? patient.convenio : undefined,
+            status: 'Agendado',
+            obs: suffix ? (obs ? `${obs} (${suffix})` : suffix) : obs
+        });
 
-            if (conflict) {
-                return false;
-            }
-
-            const apptData: Appointment = {
-                id: originalId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                patientId: patient.id,
-                patientName: patient.nome,
-                profissional: formProfissional,
-                date: dateStr,
-                time,
-                type,
-                convenioName: type === 'Convênio' ? patient.convenio : undefined,
-                status: 'Agendado',
-                obs
-            };
-
-            if (isUpdate) {
-                onUpdateAppointment(apptData);
-            } else {
-                onAddAppointment(apptData);
-            }
-            return true;
-        };
-
-        // Modo Edição
+        // 1. Edição Simples
         if (formId) {
-            const success = processAppointment(formDate, true, formId);
-            if (!success) {
+            const conflict = appointments.find(
+                a => a.date === formDate && a.time === time && a.profissional === formProfissional && a.status !== 'Cancelado' && a.id !== formId
+            );
+            if (conflict) {
                 alert('Já existe um agendamento neste horário para este profissional.');
                 return;
             }
-        } 
-        // Modo Criação
-        else {
-            const success = processAppointment(formDate, false);
-            if (!success) {
-                alert(`Conflito de horário em ${formDate}.`);
-                return;
+            onUpdateAppointment(createAppointmentObj(formDate, formId));
+            closeForm();
+            return;
+        }
+
+        // 2. Criação (Única ou Recorrente)
+        const newBatch: Appointment[] = [];
+        const [y, m, d] = formDate.split('-').map(Number);
+        
+        // Data base para cálculo (Meio dia para evitar problemas de fuso horário em pt-BR)
+        // Mas para manipulação de data simples, usaremos o objeto Date apenas como calculadora de dias
+        const currentDateCalculator = new Date(y, m - 1, d); 
+
+        const totalToCreate = (recurrence !== 'none') ? recurrenceCount : 1;
+        const intervalDays = recurrence === 'weekly' ? 7 : 14;
+
+        for (let i = 0; i < totalToCreate; i++) {
+            // Formata data atual do loop
+            const cy = currentDateCalculator.getFullYear();
+            const cm = String(currentDateCalculator.getMonth() + 1).padStart(2, '0');
+            const cd = String(currentDateCalculator.getDate()).padStart(2, '0');
+            const isoDate = `${cy}-${cm}-${cd}`;
+
+            // Checa conflito
+            const conflict = appointments.find(
+                 a => a.date === isoDate && a.time === time && a.profissional === formProfissional && a.status !== 'Cancelado'
+            );
+
+            if (!conflict) {
+                const suffix = i > 0 ? `Sessão ${i + 1}` : '';
+                newBatch.push(createAppointmentObj(isoDate, undefined, suffix));
             }
 
-            // Lógica de Recorrência (Baseada em Quantidade)
-            if (recurrence !== 'none' && recurrenceCount > 1) {
-                // Usa os componentes da data localmente para evitar problemas de fuso horário
-                const [y, m, d] = formDate.split('-').map(Number);
-                const currentDate = new Date(y, m - 1, d);
-
-                const increment = recurrence === 'weekly' ? 7 : 14;
-                
-                // Loop para criar as próximas sessões (começa do zero até count - 1, pois a primeira já foi criada)
-                for (let i = 0; i < recurrenceCount - 1; i++) {
-                    currentDate.setDate(currentDate.getDate() + increment);
-                    
-                    // Formata manualmente para YYYY-MM-DD
-                    const ny = currentDate.getFullYear();
-                    const nm = String(currentDate.getMonth() + 1).padStart(2, '0');
-                    const nd = String(currentDate.getDate()).padStart(2, '0');
-                    const isoDate = `${ny}-${nm}-${nd}`;
-
-                    const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${i}`;
-                    
-                    const conflict = appointments.find(
-                         a => a.date === isoDate && a.time === time && a.profissional === formProfissional && a.status !== 'Cancelado'
-                    );
-
-                    if (!conflict) {
-                         const apptData: Appointment = {
-                            id: newId,
-                            patientId: patient.id,
-                            patientName: patient.nome,
-                            profissional: formProfissional,
-                            date: isoDate,
-                            time,
-                            type,
-                            convenioName: type === 'Convênio' ? patient.convenio : undefined,
-                            status: 'Agendado',
-                            obs: obs + ` (Sessão ${i + 2})`
-                        };
-                        onAddAppointment(apptData);
-                    }
-                }
-                alert(`Agendamento em série realizado! Foram processadas ${recurrenceCount} sessões.`);
+            // Avança para a próxima data (se for loop)
+            if (recurrence !== 'none') {
+                currentDateCalculator.setDate(currentDateCalculator.getDate() + intervalDays);
             }
         }
 
+        if (newBatch.length === 0) {
+            alert('Não foi possível agendar (conflito de horário).');
+            return;
+        }
+
+        if (onAddBatchAppointments) {
+            onAddBatchAppointments(newBatch);
+        } else {
+            // Fallback se a função batch não existir (compatibilidade)
+            newBatch.forEach(a => onAddAppointment(a));
+        }
+        
+        closeForm();
+    };
+
+    const closeForm = () => {
         setShowForm(false);
         setFormId(null);
         setSelectedPatientId('');
@@ -210,7 +190,6 @@ export const Agenda: React.FC<AgendaProps> = ({
         if (!filterProfissional) setFormProfissional('');
     };
 
-    // Helper para abrir edição
     const handleEditClick = (appt: Appointment) => {
         setFormId(appt.id);
         setSelectedPatientId(appt.patientId);
@@ -219,11 +198,10 @@ export const Agenda: React.FC<AgendaProps> = ({
         setTime(appt.time);
         setType(appt.type);
         setObs(appt.obs || '');
-        setRecurrence('none'); // Não editamos série, só individual
+        setRecurrence('none');
         setShowForm(true);
     };
 
-    // Filter appointments based on selected filters (Professional, Date, Status)
     const filteredAppointments = useMemo(() => {
         return appointments
             .filter(a => a.date === selectedDate)
@@ -244,16 +222,14 @@ export const Agenda: React.FC<AgendaProps> = ({
         setSelectedDate(d.toISOString().split('T')[0]);
     };
 
-    // Week Navigation
     const getWeekDays = (centerDateIso: string) => {
         const d = new Date(centerDateIso + 'T00:00:00');
-        const day = d.getDay(); // 0 (Sun) - 6 (Sat)
-        // Adjust to Monday start
+        const day = d.getDay();
         const diff = d.getDate() - day + (day === 0 ? -6 : 1);
         const monday = new Date(d.setDate(diff));
         
         const week = [];
-        for (let i = 0; i < 6; i++) { // Mon to Sat
+        for (let i = 0; i < 6; i++) {
             const current = new Date(monday);
             current.setDate(monday.getDate() + i);
             week.push(current.toISOString().split('T')[0]);
@@ -280,7 +256,7 @@ export const Agenda: React.FC<AgendaProps> = ({
     };
 
     const openNewApptModal = (preselectedTime?: string, preselectedDate?: string) => {
-        setFormId(null); // Garante que é create mode
+        setFormId(null);
         if (preselectedTime) setTime(preselectedTime);
         if (preselectedDate) setFormDate(preselectedDate);
         else setFormDate(selectedDate);
@@ -292,7 +268,6 @@ export const Agenda: React.FC<AgendaProps> = ({
         setShowForm(true);
     };
 
-    // Sort patients alphabetically for dropdown
     const sortedPatients = useMemo(() => [...patients].sort((a, b) => a.nome.localeCompare(b.nome)), [patients]);
 
     const formatDateDisplay = (iso: string) => {
@@ -312,10 +287,7 @@ export const Agenda: React.FC<AgendaProps> = ({
 
     return (
         <div className="space-y-6">
-            {/* Header & Controls */}
             <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-4 shadow-lg backdrop-blur-sm flex flex-col gap-4">
-                
-                {/* Top Row: Date & Add Button */}
                 <div className="flex flex-col md:flex-row items-center justify-between gap-4">
                     {viewMode === 'weekly' ? (
                         <div className="flex items-center gap-2">
@@ -349,7 +321,6 @@ export const Agenda: React.FC<AgendaProps> = ({
                     </button>
                 </div>
 
-                {/* Bottom Row: Filters & View Mode */}
                 <div className="flex flex-col md:flex-row gap-4 border-t border-slate-700/50 pt-4">
                     <select 
                         value={filterProfissional} 
@@ -379,9 +350,6 @@ export const Agenda: React.FC<AgendaProps> = ({
                 </div>
             </div>
 
-            {/* CONTENT AREA */}
-            
-            {/* VIEW MODE: LIST */}
             {viewMode === 'list' && (
                 <div className="grid gap-4">
                     {filteredAppointments.length === 0 ? (
@@ -403,7 +371,6 @@ export const Agenda: React.FC<AgendaProps> = ({
                 </div>
             )}
 
-            {/* VIEW MODE: GRID (SLOTS - DAILY) */}
             {viewMode === 'grid' && (
                 <div className="space-y-2">
                     {!filterProfissional ? (
@@ -437,7 +404,6 @@ export const Agenda: React.FC<AgendaProps> = ({
                 </div>
             )}
 
-            {/* VIEW MODE: WEEKLY */}
             {viewMode === 'weekly' && (
                 <div className="overflow-x-auto border border-slate-700 rounded-xl bg-slate-900/30">
                      <table className="w-full min-w-[1000px] border-collapse">
@@ -461,7 +427,6 @@ export const Agenda: React.FC<AgendaProps> = ({
                                 <tr key={timeSlot}>
                                     <td className="p-2 border-b border-r border-slate-700 bg-slate-800/50 text-xs font-mono text-slate-400 text-center">{timeSlot}</td>
                                     {currentWeekDays.map(dateIso => {
-                                        // Filtrar agendamentos para este dia e hora, RESPEITANDO O FILTRO GLOBAL
                                         const slotAppts = appointments.filter(a => 
                                             a.date === dateIso && 
                                             a.time === timeSlot && 
@@ -510,7 +475,6 @@ export const Agenda: React.FC<AgendaProps> = ({
                 </div>
             )}
 
-            {/* Modal Form */}
             {showForm && (
                 <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                     <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-md p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -526,7 +490,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                                     required 
                                     value={selectedPatientId} 
                                     onChange={e => setSelectedPatientId(e.target.value)}
-                                    disabled={!!formId} // Trava paciente na edição
+                                    disabled={!!formId}
                                     className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 outline-none disabled:opacity-50"
                                 >
                                     <option value="">Selecione o paciente...</option>
@@ -571,22 +535,21 @@ export const Agenda: React.FC<AgendaProps> = ({
                                 </label>
                             </div>
                             
-                            {/* Recorrência (Apenas na criação) */}
                             {!formId && (
                                 <div className="bg-slate-700/30 p-3 rounded-lg border border-slate-700/50">
                                     <label className="flex items-center gap-2 text-xs font-medium text-slate-300 mb-2">
-                                        <RepeatIcon className="w-3 h-3 text-sky-400" /> Repetição (Periódico)
+                                        <RepeatIcon className="w-3 h-3 text-sky-400" /> Repetição
                                     </label>
                                     <div className="grid grid-cols-2 gap-2">
                                         <select value={recurrence} onChange={e => setRecurrence(e.target.value as any)} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-sky-500 outline-none">
                                             <option value="none">Não repetir</option>
-                                            <option value="weekly">Semanal (7 dias)</option>
-                                            <option value="biweekly">Quinzenal (14 dias)</option>
+                                            <option value="weekly">Semanal</option>
+                                            <option value="biweekly">Quinzenal</option>
                                         </select>
                                         
                                         {recurrence !== 'none' ? (
                                             <div className="flex items-center gap-2 bg-slate-900/50 border border-slate-700 rounded-lg px-2 py-1.5">
-                                                <span className="text-[10px] text-slate-400 uppercase font-bold whitespace-nowrap">Qtd. Sessões:</span>
+                                                <span className="text-[10px] text-slate-400 uppercase font-bold whitespace-nowrap">Qtd:</span>
                                                 <input 
                                                     type="number" 
                                                     min="2"
@@ -630,7 +593,6 @@ interface AppointmentCardProps {
     compact?: boolean;
 }
 
-// Sub-component para renderizar o card do agendamento
 const AppointmentCard: React.FC<AppointmentCardProps> = ({ 
     appt, 
     onStatusChange, 
@@ -638,12 +600,10 @@ const AppointmentCard: React.FC<AppointmentCardProps> = ({
     onEdit, 
     compact = false 
 }) => {
-    // Generate dynamic color accent border
     const accentColor = stringToColor(appt.profissional);
 
     return (
         <div className={`relative flex flex-col md:flex-row gap-4 p-4 rounded-xl border transition-all duration-200 ${appt.status === 'Cancelado' ? 'bg-slate-900/30 border-slate-800 opacity-60' : 'bg-slate-800/80 border-slate-700 hover:border-slate-600 shadow-md'}`} style={{ borderLeft: `4px solid ${accentColor}`}}>
-            {/* Time Column (only show in List mode) */}
             {!compact && (
                 <div className="flex md:flex-col items-center md:justify-center gap-2 md:w-24 border-b md:border-b-0 md:border-r border-slate-700/50 pb-2 md:pb-0 md:pr-4">
                     <ClockIcon className="w-4 h-4 text-sky-400" />
@@ -652,7 +612,6 @@ const AppointmentCard: React.FC<AppointmentCardProps> = ({
                 </div>
             )}
 
-            {/* Info Column */}
             <div className="flex-1 space-y-1">
                 <div className="flex items-center justify-between">
                     <h3 className={`font-semibold text-lg flex items-center gap-2 ${appt.status === 'Realizado' ? 'text-green-400' : 'text-slate-100'}`}>
@@ -670,7 +629,6 @@ const AppointmentCard: React.FC<AppointmentCardProps> = ({
                 {appt.obs && <p className="text-xs text-slate-500 italic mt-1">Obs: {appt.obs}</p>}
             </div>
 
-            {/* Actions */}
             <div className="flex md:flex-col items-center justify-center gap-2 border-t md:border-t-0 md:border-l border-slate-700/50 pt-2 md:pt-0 md:pl-4">
                  {appt.status !== 'Cancelado' && (
                     <>
