@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Appointment, Patient } from '../types';
 import { CalendarIcon, PlusIcon, TrashIcon, ClockIcon, UserIcon, CheckIcon, XIcon, RepeatIcon, EditIcon } from './icons';
+import useLocalStorage from '../hooks/useLocalStorage';
 
 interface AgendaProps {
     patients: Patient[];
@@ -45,10 +46,12 @@ export const Agenda: React.FC<AgendaProps> = ({
     onUpdateAppointment,
     onDeleteAppointment
 }) => {
-    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+    // Persistência da Data e Modo de Visualização da Agenda
+    const [selectedDate, setSelectedDate] = useLocalStorage<string>('personart.agenda.date', new Date().toISOString().split('T')[0]);
+    const [viewMode, setViewMode] = useLocalStorage<'list' | 'grid' | 'weekly'>('personart.agenda.view', 'list');
+    
     const [filterProfissional, setFilterProfissional] = useState('');
     const [filterStatus, setFilterStatus] = useState<'Todos' | 'Agendado' | 'Realizado' | 'Cancelado'>('Todos');
-    const [viewMode, setViewMode] = useState<'list' | 'grid' | 'weekly'>('list');
     const [showForm, setShowForm] = useState(false);
     
     // Form State
@@ -62,7 +65,7 @@ export const Agenda: React.FC<AgendaProps> = ({
     
     // Recurrence State
     const [recurrence, setRecurrence] = useState<'none' | 'weekly' | 'biweekly'>('none');
-    const [recurrenceEnd, setRecurrenceEnd] = useState('');
+    const [recurrenceCount, setRecurrenceCount] = useState<number>(4);
 
     // Reset form when opening
     useEffect(() => {
@@ -70,7 +73,7 @@ export const Agenda: React.FC<AgendaProps> = ({
             // Se for novo cadastro, reseta. Se for edição, mantém os dados carregados.
             setObs('');
             setRecurrence('none');
-            setRecurrenceEnd('');
+            setRecurrenceCount(4);
             if(selectedDate) setFormDate(selectedDate);
         }
     }, [showForm, formId, selectedDate]);
@@ -154,18 +157,25 @@ export const Agenda: React.FC<AgendaProps> = ({
                 return;
             }
 
-            // Lógica de Recorrência
-            if (recurrence !== 'none' && recurrenceEnd) {
-                let nextDate = new Date(formDate + 'T00:00:00');
-                const endDate = new Date(recurrenceEnd + 'T00:00:00');
+            // Lógica de Recorrência (Baseada em Quantidade)
+            if (recurrence !== 'none' && recurrenceCount > 1) {
+                // Usa os componentes da data localmente para evitar problemas de fuso horário
+                const [y, m, d] = formDate.split('-').map(Number);
+                const currentDate = new Date(y, m - 1, d);
+
                 const increment = recurrence === 'weekly' ? 7 : 14;
                 
-                // Avança a primeira data
-                nextDate.setDate(nextDate.getDate() + increment);
+                // Loop para criar as próximas sessões (começa do zero até count - 1, pois a primeira já foi criada)
+                for (let i = 0; i < recurrenceCount - 1; i++) {
+                    currentDate.setDate(currentDate.getDate() + increment);
+                    
+                    // Formata manualmente para YYYY-MM-DD
+                    const ny = currentDate.getFullYear();
+                    const nm = String(currentDate.getMonth() + 1).padStart(2, '0');
+                    const nd = String(currentDate.getDate()).padStart(2, '0');
+                    const isoDate = `${ny}-${nm}-${nd}`;
 
-                while (nextDate <= endDate) {
-                    const isoDate = nextDate.toISOString().split('T')[0];
-                    const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                    const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${i}`;
                     
                     const conflict = appointments.find(
                          a => a.date === isoDate && a.time === time && a.profissional === formProfissional && a.status !== 'Cancelado'
@@ -182,13 +192,12 @@ export const Agenda: React.FC<AgendaProps> = ({
                             type,
                             convenioName: type === 'Convênio' ? patient.convenio : undefined,
                             status: 'Agendado',
-                            obs: obs + ' (Recorrente)'
+                            obs: obs + ` (Sessão ${i + 2})`
                         };
                         onAddAppointment(apptData);
                     }
-                    nextDate.setDate(nextDate.getDate() + increment);
                 }
-                alert('Agendamentos recorrentes criados com sucesso (conflitos foram pulados).');
+                alert(`Agendamento em série realizado! Foram processadas ${recurrenceCount} sessões.`);
             }
         }
 
@@ -197,7 +206,7 @@ export const Agenda: React.FC<AgendaProps> = ({
         setSelectedPatientId('');
         setObs('');
         setRecurrence('none');
-        setRecurrenceEnd('');
+        setRecurrenceCount(4);
         if (!filterProfissional) setFormProfissional('');
     };
 
@@ -279,7 +288,7 @@ export const Agenda: React.FC<AgendaProps> = ({
         if (filterProfissional) setFormProfissional(filterProfissional);
         setSelectedPatientId('');
         setRecurrence('none');
-        setRecurrenceEnd('');
+        setRecurrenceCount(4);
         setShowForm(true);
     };
 
@@ -574,14 +583,24 @@ export const Agenda: React.FC<AgendaProps> = ({
                                             <option value="weekly">Semanal (7 dias)</option>
                                             <option value="biweekly">Quinzenal (14 dias)</option>
                                         </select>
-                                        <input 
-                                            type="date" 
-                                            value={recurrenceEnd} 
-                                            onChange={e => setRecurrenceEnd(e.target.value)} 
-                                            disabled={recurrence === 'none'}
-                                            className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-sky-500 outline-none disabled:opacity-30" 
-                                            title="Repetir até..."
-                                        />
+                                        
+                                        {recurrence !== 'none' ? (
+                                            <div className="flex items-center gap-2 bg-slate-900/50 border border-slate-700 rounded-lg px-2 py-1.5">
+                                                <span className="text-[10px] text-slate-400 uppercase font-bold whitespace-nowrap">Qtd. Sessões:</span>
+                                                <input 
+                                                    type="number" 
+                                                    min="2"
+                                                    max="48"
+                                                    value={recurrenceCount} 
+                                                    onChange={e => setRecurrenceCount(Number(e.target.value))} 
+                                                    className="w-full bg-transparent text-sm text-white focus:outline-none text-right font-bold" 
+                                                />
+                                            </div>
+                                        ) : (
+                                            <div className="bg-slate-900/20 border border-slate-700/50 rounded-lg px-2 py-1.5 flex items-center justify-center opacity-50">
+                                                <span className="text-[10px] text-slate-500">Uma única vez</span>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             )}

@@ -17,6 +17,9 @@ const App: React.FC = () => {
     const [profissionais, setProfissionais] = useLocalStorage<string[]>(STORAGE_KEYS.PROFISSIONAIS, DEFAULT_PROFISSIONAIS);
     const [especialidades, setEspecialidades] = useLocalStorage<string[]>(STORAGE_KEYS.ESPECIALIDADES, DEFAULT_ESPECIALIDADES);
     
+    // Persistência da Aba Ativa
+    const [activeTab, setActiveTab] = useLocalStorage<'pacientes' | 'agenda' | 'funserv'>('personart.view.tab', 'pacientes');
+
     const [brand] = useLocalStorage<BrandConfig>(STORAGE_KEYS.BRAND, { 
         color: '#e9c49e', 
         dark: '#273e44', 
@@ -25,6 +28,9 @@ const App: React.FC = () => {
     });
     
     const [accessPass, setAccessPass] = useLocalStorage<string>(STORAGE_KEYS.ACCESS_PASS, 'personart');
+    
+    // Sessão de Login (Armazena timestamp do último login)
+    const [sessionAuth, setSessionAuth] = useLocalStorage<number | null>('personart.auth.session', null);
 
     // --- SUPABASE DATA STATES ---
     const [patients, setPatients] = useState<Patient[]>([]);
@@ -37,7 +43,6 @@ const App: React.FC = () => {
 
     // --- UI STATES ---
     const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
-    const [activeTab, setActiveTab] = useState<'pacientes' | 'agenda' | 'funserv'>('pacientes');
     const [searchTerm, setSearchTerm] = useState('');
     const [filters, setFilters] = useState({ convenio: '', profissional: '', faixa: '' });
     const [isListVisible, setIsListVisible] = useState(false);
@@ -51,15 +56,27 @@ const App: React.FC = () => {
     const [newPasswordInput, setNewPasswordInput] = useState('');
     const [toast, setToast] = useState<{ msg: string, type: 'success' | 'error' | 'info' } | null>(null);
 
-    // --- INITIAL CONNECTION TEST ---
+    // --- INITIAL CONNECTION & SESSION TEST ---
     useEffect(() => {
-        const testConnection = async () => {
+        const initSystem = async () => {
+            // 1. Verifica Sessão (Validade de 4 horas)
+            if (sessionAuth) {
+                const now = Date.now();
+                const fourHours = 4 * 60 * 60 * 1000;
+                if (now - sessionAuth < fourHours) {
+                    setIsAuthenticated(true);
+                    setView('dashboard');
+                } else {
+                    setSessionAuth(null); // Expired
+                }
+            }
+
+            // 2. Verifica Supabase
             if (!isSupabaseConfigured()) {
                 setConnectionStatus('error');
                 return;
             }
             try {
-                // Tenta uma consulta leve para verificar conectividade
                 const { error } = await supabase!.from('patients').select('id').limit(1);
                 if (error) throw error;
                 setConnectionStatus('connected');
@@ -68,8 +85,8 @@ const App: React.FC = () => {
                 setConnectionStatus('error');
             }
         };
-        testConnection();
-    }, []);
+        initSystem();
+    }, [sessionAuth, setSessionAuth]);
 
     // --- INITIAL DATA FETCH ---
     useEffect(() => {
@@ -220,21 +237,31 @@ const App: React.FC = () => {
             newAppointments.push(createAppointment(date));
 
             if (recurrence !== 'none') {
-                const startDate = new Date(date + 'T00:00:00');
+                // CORREÇÃO DATA: Usa componentes da data para evitar fuso horário
+                const [y, m, d] = date.split('-').map(Number);
+                const currentDate = new Date(y, m - 1, d);
+                
                 let count = 0;
-                let max = 0;
+                let max = 4; // Default weekly/monthly count
                 let daysToAdd = 0;
 
-                if (recurrence === 'weekly') { max = 3; daysToAdd = 7; } 
-                if (recurrence === 'biweekly') { max = 1; daysToAdd = 14; }
-                if (recurrence === 'monthly') { max = 5; }
+                if (recurrence === 'weekly') { max = 3; daysToAdd = 7; } // 3 more = 4 total
+                if (recurrence === 'biweekly') { max = 1; daysToAdd = 14; } // 1 more = 2 total
+                if (recurrence === 'monthly') { max = 5; } // 5 more = 6 months total
 
-                let nextDate = new Date(startDate);
                 for(let i = 0; i < max; i++) {
-                    if (recurrence === 'monthly') nextDate.setMonth(nextDate.getMonth() + 1);
-                    else nextDate.setDate(nextDate.getDate() + daysToAdd);
+                    if (recurrence === 'monthly') {
+                        currentDate.setMonth(currentDate.getMonth() + 1);
+                    } else {
+                        currentDate.setDate(currentDate.getDate() + daysToAdd);
+                    }
                     
-                    const isoDate = nextDate.toISOString().split('T')[0];
+                    // Formata manual para evitar UTC conversion issues
+                    const ny = currentDate.getFullYear();
+                    const nm = String(currentDate.getMonth() + 1).padStart(2, '0');
+                    const nd = String(currentDate.getDate()).padStart(2, '0');
+                    const isoDate = `${ny}-${nm}-${nd}`;
+                    
                     newAppointments.push(createAppointment(isoDate));
                 }
             }
@@ -262,15 +289,15 @@ const App: React.FC = () => {
 
     const handleEditPatient = (patient: Patient) => {
         setEditingPatient(patient);
+        setActiveTab('pacientes'); // Garante que a aba correta abra
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     const handleDeletePatient = async (id: string) => {
-        if (window.confirm('Excluir este paciente? Isso é irreversível.')) {
-            setPatients(patients.filter(p => p.id !== id));
-            await deletePatientFromDb(id);
-            showToast('Paciente removido.', 'success');
-        }
+         // A confirmação agora é feita dentro do componente PatientTable
+         setPatients(patients.filter(p => p.id !== id));
+         await deletePatientFromDb(id);
+         showToast('Paciente removido.', 'success');
     };
 
     const handleAddAppointment = async (appt: Appointment) => {
@@ -326,6 +353,7 @@ const App: React.FC = () => {
 
         setEditingPatient(newPatient);
         setShowInbox(false);
+        setActiveTab('pacientes');
         setInbox(prev => prev.filter(i => i.id !== item.id));
         await deleteInboxItemFromDb(item.id);
         
@@ -362,10 +390,17 @@ const App: React.FC = () => {
         e.preventDefault();
         if (loginInput === accessPass) {
             setIsAuthenticated(true);
+            setSessionAuth(Date.now()); // Salva sessão
             setView('dashboard');
         } else {
             showToast('Senha incorreta.', 'error');
         }
+    };
+
+    const handleLogout = () => {
+        setIsAuthenticated(false);
+        setSessionAuth(null);
+        setView('landing');
     };
     
     const handleSaveNewPassword = (e: React.FormEvent) => {
@@ -488,6 +523,9 @@ const App: React.FC = () => {
                         <button onClick={() => setShowInbox(true)} className="px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 hover:text-white border border-slate-700 relative" style={{ color: brand.color }}>
                             <InboxIcon className="w-4 h-4" /> Pré-cadastros
                             {inbox.length > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center">{inbox.length}</span>}
+                        </button>
+                        <button onClick={handleLogout} className="px-3 py-2 rounded-lg text-sm font-medium text-red-400 hover:bg-red-900/20 hover:text-red-300 ml-2 border border-transparent hover:border-red-900/50 transition" title="Sair">
+                            <LockIcon className="w-4 h-4" />
                         </button>
                     </nav>
                 </div>

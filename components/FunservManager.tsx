@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Patient, FunservConfig } from '../types';
-import { CheckIcon, RepeatIcon, StarIcon, TrashIcon, CalendarIcon, UserIcon } from './icons';
+import { CheckIcon, RepeatIcon, StarIcon, TrashIcon, CalendarIcon, UserIcon, CloudIcon } from './icons';
 
 interface FunservManagerProps {
     patients: Patient[];
@@ -255,15 +255,13 @@ const FunservCard: React.FC<FunservCardProps> = ({ patient, onSave }) => {
             {/* Ações Rodapé */}
             <div className="mt-auto pt-3 border-t border-slate-700/50 flex flex-col gap-2">
                 <div className="flex gap-2">
-                    {remaining <= 6 && (
-                        <button 
-                            onClick={handleSendEmail}
-                            title="Abrir Gmail com alerta"
-                            className="flex-1 bg-amber-600/20 hover:bg-amber-600/40 text-amber-400 border border-amber-600/50 py-1.5 rounded-lg text-xs font-medium transition"
-                        >
-                            Gmail
-                        </button>
-                    )}
+                    <button 
+                        onClick={handleSendEmail}
+                        title="Abrir Gmail com alerta"
+                        className="flex-1 bg-amber-600/20 hover:bg-amber-600/40 text-amber-400 border border-amber-600/50 py-1.5 rounded-lg text-xs font-medium transition"
+                    >
+                        Abrir Gmail
+                    </button>
                     <button 
                         onClick={handleRenewGuia}
                         title="Renovar Guia (Zerar contador)"
@@ -273,13 +271,22 @@ const FunservCard: React.FC<FunservCardProps> = ({ patient, onSave }) => {
                     </button>
                 </div>
                 
-                <input 
-                    type="email" 
-                    placeholder="E-mail destinatário (Profissional/Pac)..." 
-                    value={config.alertEmail || ''}
-                    onChange={e => handleConfigChange('alertEmail', e.target.value)}
-                    className="w-full bg-transparent border-b border-slate-700 text-xs py-1 text-slate-400 focus:border-teal-500 outline-none text-center"
-                />
+                <div className="flex gap-2">
+                    <input 
+                        type="email" 
+                        placeholder="E-mail destinatário..." 
+                        value={config.alertEmail || ''}
+                        onChange={e => handleConfigChange('alertEmail', e.target.value)}
+                        className="flex-1 bg-transparent border-b border-slate-700 text-xs py-1 text-slate-400 focus:border-teal-500 outline-none"
+                    />
+                    <button 
+                        onClick={handleSendEmail}
+                        title="Enviar e-mail para este endereço"
+                        className="bg-slate-700 hover:bg-slate-600 text-slate-300 px-2 rounded-lg transition"
+                    >
+                        <span className="text-[10px] font-bold">Enviar</span>
+                    </button>
+                </div>
             </div>
         </div>
     );
