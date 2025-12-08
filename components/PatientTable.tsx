@@ -19,6 +19,12 @@ export const PatientTable: React.FC<PatientTableProps> = ({ patients, onEdit, on
         return `${d}/${m}/${y}`;
     };
     
+    const handleDeleteClick = (id: string, name: string) => {
+        if (window.confirm(`Tem certeza que deseja excluir o paciente ${name}? Esta ação não pode ser desfeita.`)) {
+            onDelete(id);
+        }
+    };
+    
     return (
         <div className="overflow-auto border border-slate-700 rounded-2xl" style={{ maxHeight: '60vh' }}>
             <table className="w-full min-w-[1400px] text-sm text-left text-slate-300">
@@ -57,7 +63,7 @@ export const PatientTable: React.FC<PatientTableProps> = ({ patients, onEdit, on
                             <td className="px-6 py-4">
                                 <div className="flex items-center gap-2">
                                     <button onClick={() => onEdit(p)} className="p-1 text-sky-400 hover:text-sky-300 transition" title="Editar"><EditIcon className="w-4 h-4" /></button>
-                                    <button onClick={() => onDelete(p.id)} className="p-1 text-red-400 hover:text-red-300 transition" title="Excluir"><TrashIcon className="w-4 h-4" /></button>
+                                    <button onClick={() => handleDeleteClick(p.id, p.nome)} className="p-1 text-red-400 hover:text-red-300 transition" title="Excluir"><TrashIcon className="w-4 h-4" /></button>
                                 </div>
                             </td>
                         </tr>

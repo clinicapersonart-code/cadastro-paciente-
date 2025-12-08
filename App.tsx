@@ -152,43 +152,34 @@ const App: React.FC = () => {
         setTimeout(() => setToast(null), 4000);
     };
 
-    // --- DATABASE ACTIONS ---
+    // --- DATABASE ACTIONS (Pessimistic / Safe) ---
+    // Retorna { error } para que a UI saiba se deu certo ou não
     const savePatientToDb = async (patient: Patient) => {
-        if (!supabase) return;
-        const { error } = await supabase.from('patients').upsert({
+        if (!supabase) return { error: { message: 'Supabase não configurado' } };
+        return await supabase.from('patients').upsert({
             id: patient.id,
             nome: patient.nome,
             data: patient
         });
-        if (error) {
-            console.error(error);
-            showToast('Erro ao salvar paciente no banco.', 'error');
-        }
     };
 
     const deletePatientFromDb = async (id: string) => {
-        if (!supabase) return;
-        const { error } = await supabase.from('patients').delete().eq('id', id);
-        if (error) {
-             console.error(error);
-             showToast('Erro ao excluir paciente do banco.', 'error');
-        }
+        if (!supabase) return { error: { message: 'Supabase não configurado' } };
+        return await supabase.from('patients').delete().eq('id', id);
     };
 
     const saveAppointmentToDb = async (appt: Appointment) => {
-        if (!supabase) return;
-        const { error } = await supabase.from('appointments').upsert({
+        if (!supabase) return { error: { message: 'Supabase não configurado' } };
+        return await supabase.from('appointments').upsert({
             id: appt.id,
             date: appt.date,
             data: appt
         });
-        if (error) console.error(error);
     };
 
     const deleteAppointmentFromDb = async (id: string) => {
-        if (!supabase) return;
-        const { error } = await supabase.from('appointments').delete().eq('id', id);
-        if (error) console.error(error);
+        if (!supabase) return { error: { message: 'Supabase não configurado' } };
+        return await supabase.from('appointments').delete().eq('id', id);
     };
 
     const deleteInboxItemFromDb = async (id: string) => {
@@ -198,25 +189,33 @@ const App: React.FC = () => {
 
     // --- HANDLERS ---
     const handleSavePatient = async (patient: Patient, initialAppointment?: { date: string, time: string, professional: string, recurrence: string, type: 'Convênio' | 'Particular' }) => {
-        // Optimistic UI Update
         let updatedPatients;
         let newPatientId = patient.id;
 
-        if (patient.id) {
+        // Gerar ID se novo
+        if (!patient.id) {
+            newPatientId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+            patient.id = newPatientId;
+        }
+
+        // Salvar Paciente no Banco
+        const { error } = await savePatientToDb(patient);
+        if (error) {
+            console.error(error);
+            showToast('Erro ao salvar paciente. Verifique a conexão.', 'error');
+            return;
+        }
+
+        // Atualizar UI
+        if (patients.some(p => p.id === patient.id)) {
             updatedPatients = patients.map(p => p.id === patient.id ? patient : p);
         } else {
-            newPatientId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-            patient.id = newPatientId; // Assign ID
             updatedPatients = [...patients, patient];
         }
-        
         setPatients(updatedPatients);
         setEditingPatient(null);
-        
-        // Save to DB
-        await savePatientToDb(patient);
 
-        // Agendamento Inicial
+        // Agendamento Inicial (Se houver)
         if (initialAppointment) {
             const { date, time, professional, recurrence, type } = initialAppointment;
             
@@ -240,8 +239,7 @@ const App: React.FC = () => {
                 const [y, m, d] = date.split('-').map(Number);
                 const currentDate = new Date(y, m - 1, d);
                 
-                let count = 0;
-                let max = 4; // Default
+                let max = 4;
                 let daysToAdd = 0;
 
                 if (recurrence === 'weekly') { max = 3; daysToAdd = 7; } 
@@ -263,21 +261,27 @@ const App: React.FC = () => {
                     newAppointments.push(createAppointment(isoDate));
                 }
             }
-
-            const allAppointments = [...appointments, ...newAppointments];
-            setAppointments(allAppointments);
             
-            for (const appt of newAppointments) {
-                await saveAppointmentToDb(appt);
-            }
-
-            // Link Professional
-            const patIndex = updatedPatients.findIndex(p => p.id === newPatientId);
-            if (patIndex >= 0 && !updatedPatients[patIndex].profissionais.includes(professional)) {
-                 const p = updatedPatients[patIndex];
-                 p.profissionais = [...p.profissionais, professional];
-                 setPatients([...updatedPatients]); // UI
-                 await savePatientToDb(p); // DB
+            // Salvar Agendamentos no Banco (Batch)
+            const savePromises = newAppointments.map(appt => saveAppointmentToDb(appt));
+            const results = await Promise.all(savePromises);
+            
+            const hasError = results.some(r => r.error);
+            if (!hasError) {
+                setAppointments(prev => [...prev, ...newAppointments]);
+                
+                // Link Professional se necessário
+                const patIndex = updatedPatients.findIndex(p => p.id === newPatientId);
+                if (patIndex >= 0 && !updatedPatients[patIndex].profissionais.includes(professional)) {
+                     const p = { ...updatedPatients[patIndex] };
+                     p.profissionais = [...p.profissionais, professional];
+                     const { error: patUpdateError } = await savePatientToDb(p);
+                     if (!patUpdateError) {
+                         setPatients(prev => prev.map(pt => pt.id === p.id ? p : pt));
+                     }
+                }
+            } else {
+                showToast('Paciente salvo, mas erro ao criar agendamentos.', 'error');
             }
         }
 
@@ -290,55 +294,93 @@ const App: React.FC = () => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
+    // Função de deletar agora recebe o ID vindo do PatientTable (que já pediu confirmação)
     const handleDeletePatient = async (id: string) => {
-         setPatients(patients.filter(p => p.id !== id));
-         await deletePatientFromDb(id);
-         showToast('Paciente removido.', 'success');
+         // UI Optimistic update para deleção é aceitável, mas vamos garantir o banco
+         const { error } = await deletePatientFromDb(id);
+         if (error) {
+             console.error(error);
+             showToast('Erro ao excluir paciente. Tente novamente.', 'error');
+         } else {
+             setPatients(prev => prev.filter(p => p.id !== id));
+             showToast('Paciente removido.', 'success');
+         }
     };
 
+    // --- AGENDA HANDLERS (UPDATED TO BE SAFE) ---
+    
     const handleAddAppointment = async (appt: Appointment) => {
-        setAppointments(prev => [...prev, appt]);
-        await saveAppointmentToDb(appt);
-        showToast('Agendado!', 'success');
-        
-        const patient = patients.find(p => p.id === appt.patientId);
-        if (patient && !patient.profissionais.includes(appt.profissional)) {
-            patient.profissionais.push(appt.profissional);
-            await savePatientToDb(patient);
+        const { error } = await saveAppointmentToDb(appt);
+        if (error) {
+            console.error(error);
+            showToast('Erro ao salvar agendamento. Verifique a conexão.', 'error');
+        } else {
+            setAppointments(prev => [...prev, appt]);
+            showToast('Agendado com sucesso!', 'success');
+            
+            // Linkar profissional se necessário
+            const patient = patients.find(p => p.id === appt.patientId);
+            if (patient && !patient.profissionais.includes(appt.profissional)) {
+                const updatedPat = { ...patient, profissionais: [...patient.profissionais, appt.profissional] };
+                const { error: patError } = await savePatientToDb(updatedPat);
+                if (!patError) {
+                    setPatients(prev => prev.map(p => p.id === updatedPat.id ? updatedPat : p));
+                }
+            }
         }
     };
 
     const handleAddBatchAppointments = async (newAppts: Appointment[]) => {
         if (newAppts.length === 0) return;
         
-        // Atualiza UI de uma vez
-        setAppointments(prev => [...prev, ...newAppts]);
-        
         // Salva no banco em paralelo
-        await Promise.all(newAppts.map(appt => saveAppointmentToDb(appt)));
+        const promises = newAppts.map(appt => saveAppointmentToDb(appt));
+        const results = await Promise.all(promises);
         
+        // Verifica se algum falhou
+        const failed = results.filter(r => r.error);
+        if (failed.length > 0) {
+            showToast(`Erro ao salvar ${failed.length} agendamentos. Tente novamente.`, 'error');
+            return; 
+        }
+
+        // Se todos salvos, atualiza UI
+        setAppointments(prev => [...prev, ...newAppts]);
         showToast(`Agendados ${newAppts.length} horários!`, 'success');
 
-        // Linkar profissional se necessário (apenas do primeiro, pois é o mesmo para todos)
+        // Linkar profissional (apenas do primeiro)
         const appt = newAppts[0];
         const patient = patients.find(p => p.id === appt.patientId);
         if (patient && !patient.profissionais.includes(appt.profissional)) {
-            patient.profissionais.push(appt.profissional);
-            await savePatientToDb(patient);
+            const updatedPat = { ...patient, profissionais: [...patient.profissionais, appt.profissional] };
+            const { error: patError } = await savePatientToDb(updatedPat);
+            if (!patError) {
+                setPatients(prev => prev.map(p => p.id === updatedPat.id ? updatedPat : p));
+            }
         }
     };
 
     const handleUpdateAppointment = async (appt: Appointment) => {
-        setAppointments(appointments.map(a => a.id === appt.id ? appt : a));
-        await saveAppointmentToDb(appt);
-        showToast('Atualizado.', 'success');
+        const { error } = await saveAppointmentToDb(appt);
+        if (error) {
+            console.error(error);
+            showToast('Erro ao atualizar agendamento.', 'error');
+        } else {
+            setAppointments(prev => prev.map(a => a.id === appt.id ? appt : a));
+            showToast('Atualizado.', 'success');
+        }
     };
 
     const handleDeleteAppointment = async (id: string) => {
         if (window.confirm('Remover este agendamento?')) {
-            setAppointments(appointments.filter(a => a.id !== id));
-            await deleteAppointmentFromDb(id);
-            showToast('Removido.', 'success');
+            const { error } = await deleteAppointmentFromDb(id);
+            if (error) {
+                console.error(error);
+                showToast('Erro ao remover agendamento.', 'error');
+            } else {
+                setAppointments(prev => prev.filter(a => a.id !== id));
+                showToast('Removido.', 'success');
+            }
         }
     };
 
@@ -367,6 +409,8 @@ const App: React.FC = () => {
         setEditingPatient(newPatient);
         setShowInbox(false);
         setActiveTab('pacientes');
+        
+        // Remove do Inbox
         setInbox(prev => prev.filter(i => i.id !== item.id));
         await deleteInboxItemFromDb(item.id);
         
