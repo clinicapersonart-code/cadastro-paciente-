@@ -103,9 +103,9 @@ export const Agenda: React.FC<AgendaProps> = ({
         const patient = patients.find(p => p.id === selectedPatientId);
         if (!patient) return;
 
-        // Função de criação de objeto (com ID opcional)
-        const createAppointmentObj = (dateStr: string, idStr?: string, suffix?: string): Appointment => ({
-            id: idStr || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        // Função de criação de objeto (com ID opcional e garantido único para loop)
+        const createAppointmentObj = (dateStr: string, idStr?: string, suffix?: string, index = 0): Appointment => ({
+            id: idStr || `${Date.now()}-${index}-${Math.random().toString(36).substr(2, 9)}`,
             patientId: patient.id,
             patientName: patient.nome,
             profissional: formProfissional,
@@ -135,8 +135,7 @@ export const Agenda: React.FC<AgendaProps> = ({
         const newBatch: Appointment[] = [];
         const [y, m, d] = formDate.split('-').map(Number);
         
-        // Data base para cálculo (Meio dia para evitar problemas de fuso horário em pt-BR)
-        // Mas para manipulação de data simples, usaremos o objeto Date apenas como calculadora de dias
+        // Data base para cálculo
         const currentDateCalculator = new Date(y, m - 1, d); 
 
         const totalToCreate = (recurrence !== 'none') ? recurrenceCount : 1;
@@ -156,7 +155,7 @@ export const Agenda: React.FC<AgendaProps> = ({
 
             if (!conflict) {
                 const suffix = i > 0 ? `Sessão ${i + 1}` : '';
-                newBatch.push(createAppointmentObj(isoDate, undefined, suffix));
+                newBatch.push(createAppointmentObj(isoDate, undefined, suffix, i));
             }
 
             // Avança para a próxima data (se for loop)

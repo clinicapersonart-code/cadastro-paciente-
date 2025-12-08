@@ -77,6 +77,7 @@ const App: React.FC = () => {
                 return;
             }
             try {
+                // Teste simples para verificar conexão e existência da tabela principal
                 const { error } = await supabase!.from('patients').select('id').limit(1);
                 if (error) throw error;
                 setConnectionStatus('connected');
@@ -149,17 +150,19 @@ const App: React.FC = () => {
     // --- HELPERS ---
     const showToast = (msg: string, type: 'success' | 'error' | 'info' = 'success') => {
         setToast({ msg, type });
-        setTimeout(() => setToast(null), 4000);
+        setTimeout(() => setToast(null), 5000); // Aumentei um pouco o tempo para leitura de erros
     };
 
     // --- DATABASE ACTIONS (Pessimistic / Safe) ---
     // Retorna { error } para que a UI saiba se deu certo ou não
     const savePatientToDb = async (patient: Patient) => {
         if (!supabase) return { error: { message: 'Supabase não configurado' } };
+        // Remove undefined para evitar erro de JSONB
+        const cleanData = JSON.parse(JSON.stringify(patient));
         return await supabase.from('patients').upsert({
             id: patient.id,
             nome: patient.nome,
-            data: patient
+            data: cleanData
         });
     };
 
@@ -170,10 +173,12 @@ const App: React.FC = () => {
 
     const saveAppointmentToDb = async (appt: Appointment) => {
         if (!supabase) return { error: { message: 'Supabase não configurado' } };
+        // Remove undefined para evitar erro de JSONB
+        const cleanData = JSON.parse(JSON.stringify(appt));
         return await supabase.from('appointments').upsert({
             id: appt.id,
             date: appt.date,
-            data: appt
+            data: cleanData
         });
     };
 
@@ -201,8 +206,8 @@ const App: React.FC = () => {
         // Salvar Paciente no Banco
         const { error } = await savePatientToDb(patient);
         if (error) {
-            console.error(error);
-            showToast('Erro ao salvar paciente. Verifique a conexão.', 'error');
+            console.error("Erro ao salvar paciente:", error);
+            showToast(`Erro ao salvar paciente: ${error.message}`, 'error');
             return;
         }
 
@@ -219,8 +224,8 @@ const App: React.FC = () => {
         if (initialAppointment) {
             const { date, time, professional, recurrence, type } = initialAppointment;
             
-            const createAppointment = (d: string): Appointment => ({
-                id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+            const createAppointment = (d: string, index = 0): Appointment => ({
+                id: `${Date.now()}-${index}-${Math.random().toString(36).substring(2, 9)}`,
                 patientId: newPatientId,
                 patientName: patient.nome,
                 profissional: professional,
@@ -233,7 +238,7 @@ const App: React.FC = () => {
             });
 
             const newAppointments = [];
-            newAppointments.push(createAppointment(date));
+            newAppointments.push(createAppointment(date, 0));
 
             if (recurrence !== 'none') {
                 const [y, m, d] = date.split('-').map(Number);
@@ -258,7 +263,7 @@ const App: React.FC = () => {
                     const nd = String(currentDate.getDate()).padStart(2, '0');
                     const isoDate = `${ny}-${nm}-${nd}`;
                     
-                    newAppointments.push(createAppointment(isoDate));
+                    newAppointments.push(createAppointment(isoDate, i + 1));
                 }
             }
             
@@ -266,8 +271,8 @@ const App: React.FC = () => {
             const savePromises = newAppointments.map(appt => saveAppointmentToDb(appt));
             const results = await Promise.all(savePromises);
             
-            const hasError = results.some(r => r.error);
-            if (!hasError) {
+            const failed = results.filter(r => r.error);
+            if (failed.length === 0) {
                 setAppointments(prev => [...prev, ...newAppointments]);
                 
                 // Link Professional se necessário
@@ -280,12 +285,14 @@ const App: React.FC = () => {
                          setPatients(prev => prev.map(pt => pt.id === p.id ? p : pt));
                      }
                 }
+                showToast('Paciente salvo e agendado!', 'success');
             } else {
-                showToast('Paciente salvo, mas erro ao criar agendamentos.', 'error');
+                console.error("Falha nos agendamentos:", failed);
+                showToast(`Paciente salvo, mas ${failed.length} agendamentos falharam.`, 'error');
             }
+        } else {
+            showToast('Paciente salvo com sucesso!', 'success');
         }
-
-        showToast(initialAppointment ? 'Paciente salvo e agendado!' : 'Paciente salvo com sucesso!', 'success');
     };
 
     const handleEditPatient = (patient: Patient) => {
@@ -313,7 +320,7 @@ const App: React.FC = () => {
         const { error } = await saveAppointmentToDb(appt);
         if (error) {
             console.error(error);
-            showToast('Erro ao salvar agendamento. Verifique a conexão.', 'error');
+            showToast(`Erro ao salvar: ${error.message}`, 'error');
         } else {
             setAppointments(prev => [...prev, appt]);
             showToast('Agendado com sucesso!', 'success');
@@ -340,7 +347,9 @@ const App: React.FC = () => {
         // Verifica se algum falhou
         const failed = results.filter(r => r.error);
         if (failed.length > 0) {
-            showToast(`Erro ao salvar ${failed.length} agendamentos. Tente novamente.`, 'error');
+            const msg = failed[0].error?.message || 'Erro desconhecido';
+            console.error("Falha em lote:", failed);
+            showToast(`Erro ao salvar ${failed.length} itens. Motivo: ${msg}`, 'error');
             return; 
         }
 
@@ -364,7 +373,7 @@ const App: React.FC = () => {
         const { error } = await saveAppointmentToDb(appt);
         if (error) {
             console.error(error);
-            showToast('Erro ao atualizar agendamento.', 'error');
+            showToast(`Erro ao atualizar: ${error.message}`, 'error');
         } else {
             setAppointments(prev => prev.map(a => a.id === appt.id ? appt : a));
             showToast('Atualizado.', 'success');
