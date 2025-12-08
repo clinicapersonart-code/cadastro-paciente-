@@ -175,9 +175,12 @@ const App: React.FC = () => {
         if (!supabase) return { error: { message: 'Supabase não configurado' } };
         // Remove undefined para evitar erro de JSONB
         const cleanData = JSON.parse(JSON.stringify(appt));
+        
+        // CORREÇÃO CRÍTICA: Mapeia explicitamente o patient_id para a coluna do banco
         return await supabase.from('appointments').upsert({
             id: appt.id,
             date: appt.date,
+            patient_id: appt.patientId, // Esta coluna é obrigatória (NOT NULL) no banco
             data: cleanData
         });
     };
