@@ -160,12 +160,20 @@ const FunservCard: React.FC<FunservCardProps> = ({ patient, onSave }) => {
             <div className="flex justify-between items-start mb-2">
                 <div>
                     <h3 className="font-bold text-white text-lg leading-tight">{patient.nome}</h3>
-                    <p className="text-xs text-slate-400 mt-0.5">{patient.profissionais[0] || 'Sem profissional'}</p>
+                    <p className="text-xs text-slate-400 mt-0.5 mb-2">{patient.profissionais[0] || 'Sem profissional'}</p>
+                    
+                    {/* Campo de Carteirinha para integração com Extensão */}
+                    <div className="inline-flex items-center gap-2 bg-slate-900/60 px-2 py-1 rounded border border-slate-700/50">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase">Carteirinha:</span>
+                        <span className="text-xs font-mono text-sky-400 tracking-wider select-all cursor-text font-bold" title="Número da carteirinha">
+                            {patient.carteirinha || 'N/A'}
+                        </span>
+                    </div>
                 </div>
             </div>
 
             {/* Inputs de Configuração */}
-            <div className="grid grid-cols-2 gap-2 mb-3 bg-slate-900/30 p-2 rounded-lg">
+            <div className="grid grid-cols-2 gap-2 mb-3 bg-slate-900/30 p-2 rounded-lg mt-2">
                 <div>
                     <label className="text-[10px] text-slate-500 uppercase font-bold block mb-1">Início Guia</label>
                     <input 
