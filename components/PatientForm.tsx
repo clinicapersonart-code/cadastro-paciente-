@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { Patient, FunservConfig } from '../types';
 import { PlusIcon, XIcon, TrashIcon, CalendarIcon, CheckIcon, RepeatIcon, ArrowRightIcon, ClockIcon, UserIcon } from './icons';
@@ -19,7 +20,7 @@ interface PatientFormProps {
 }
 
 const emptyPatient: Patient = {
-    id: '', nome: '', faixa: '', profissionais: [], especialidades: []
+    id: '', nome: '', faixa: '', profissionais: [], especialidades: [], crm: ''
 };
 
 const Chip = ({ text, onRemove }: { text: string, onRemove: () => void }) => (
@@ -317,19 +318,24 @@ export const PatientForm: React.FC<PatientFormProps> = ({
                     )}
 
 
-                    {/* Campo Origem */}
-                    <div>
-                        <label htmlFor="origem" className="block text-sm font-medium text-slate-400 mb-1">Origem (Como conheceu a clínica?)</label>
-                        <select 
-                            id="origem" 
-                            name="origem" 
-                            value={formData.origem || ''} 
-                            onChange={handleChange} 
-                            className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition"
-                        >
-                            <option value="">Selecione a origem...</option>
-                            {DEFAULT_ORIGINS.map(o => <option key={o} value={o}>{o}</option>)}
-                        </select>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label htmlFor="crm" className="block text-sm font-medium text-slate-400 mb-1">CRM do Médico Solicitante</label>
+                            <input id="crm" name="crm" type="text" placeholder="Ex.: CRM-SP 123456" value={formData.crm || ''} onChange={handleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition" />
+                        </div>
+                        <div>
+                            <label htmlFor="origem" className="block text-sm font-medium text-slate-400 mb-1">Origem (Como conheceu a clínica?)</label>
+                            <select 
+                                id="origem" 
+                                name="origem" 
+                                value={formData.origem || ''} 
+                                onChange={handleChange} 
+                                className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition"
+                            >
+                                <option value="">Selecione a origem...</option>
+                                {DEFAULT_ORIGINS.map(o => <option key={o} value={o}>{o}</option>)}
+                            </select>
+                        </div>
                     </div>
 
                     <div>

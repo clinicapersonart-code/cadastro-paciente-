@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { PreCadastro } from '../types';
 import { CheckIcon, StarIcon, UserIcon } from './icons';
@@ -31,6 +32,7 @@ export const PublicRegistration: React.FC<PublicRegistrationProps> = ({
         endereco: '',
         convenio: '',
         carteirinha: '',
+        crm: '',
         origem: '',
         profissional: '',
         agendamento: {
@@ -233,6 +235,11 @@ export const PublicRegistration: React.FC<PublicRegistrationProps> = ({
                                 <label className="block text-sm font-medium text-slate-400 mb-1">Número da Carteirinha</label>
                                 <input name="carteirinha" value={formData.carteirinha} onChange={handleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-3 text-white focus:ring-2 focus:ring-sky-500 outline-none transition" placeholder="Número da carteira do convênio" />
                             </div>
+                        </div>
+                        
+                        <div className="mt-4">
+                            <label className="block text-sm font-medium text-slate-400 mb-1">CRM do Médico (Pedido Médico)</label>
+                            <input name="crm" value={formData.crm} onChange={handleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-3 text-white focus:ring-2 focus:ring-sky-500 outline-none transition" placeholder="Ex.: CRM-SP 123456 (Se houver pedido)" />
                         </div>
                     </div>
 

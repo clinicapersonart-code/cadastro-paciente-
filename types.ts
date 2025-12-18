@@ -1,3 +1,4 @@
+
 export interface Evolution {
     id: string;
     date: string;
@@ -75,6 +76,7 @@ export interface PreCadastro {
   endereco: string;
   convenio: string;
   carteirinha: string;
+  crm?: string;
   origem?: string;
   profissional?: string; // Campo novo
   dataEnvio: string;
