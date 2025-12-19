@@ -14,7 +14,9 @@ export interface FunservConfig {
     startDate: string;
     frequency: '1x Semana' | '2x Semana' | 'Quinzenal' | 'Outro';
     alertEmail: string;
-    history: string[]; // Datas das sessões realizadas
+    history: string[]; 
+    numeroAutorizacao?: string; 
+    dataAutorizacao?: string;   
 }
 
 export interface Patient {
@@ -27,7 +29,9 @@ export interface Patient {
   contato?: string;
   email?: string;
   convenio?: string;
-  carteirinha?: string;
+  carteirinha?: string; 
+  numero_autorizacao?: string; 
+  data_autorizacao?: string;   
   tipoAtendimento?: 'Convencional' | 'ABA' | '';
   profissionais: string[];
   especialidades: string[];
@@ -41,11 +45,15 @@ export interface Appointment {
   id: string;
   patientId: string;
   patientName: string;
+  carteirinha?: string; 
+  // Fix: Unified property name to numero_autorizacao
+  numero_autorizacao?: string;
+  data_autorizacao?: string;
   profissional: string;
-  date: string; // YYYY-MM-DD
-  time: string; // HH:MM
+  date: string; 
+  time: string; 
   type: 'Convênio' | 'Particular';
-  convenioName?: string; // Nome do convênio se for convênio
+  convenioName?: string; 
   status: 'Agendado' | 'Realizado' | 'Cancelado';
   obs?: string;
 }
@@ -78,9 +86,9 @@ export interface PreCadastro {
   carteirinha: string;
   crm?: string;
   origem?: string;
-  profissional?: string; // Campo novo
+  profissional?: string;
   dataEnvio: string;
-  agendamento?: { // Tornando opcional para evitar erros com dados antigos
+  agendamento?: {
       data: string;
       hora: string;
       frequencia: string;
