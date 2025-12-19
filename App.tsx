@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Patient, BrandConfig, Appointment, PreCadastro } from './types';
 import { STORAGE_KEYS, DEFAULT_CONVENIOS, DEFAULT_PROFISSIONAIS, DEFAULT_ESPECIALIDADES } from './constants';
@@ -10,7 +9,7 @@ import { PatientTable } from './components/PatientTable';
 import { Agenda } from './components/Agenda';
 import { PublicRegistration } from './components/PublicRegistration';
 import { FunservManager } from './components/FunservManager';
-import { DownloadIcon, CloudIcon, UserIcon, CalendarIcon, InboxIcon, CheckIcon, XIcon, LockIcon, FileTextIcon, StarIcon } from './components/icons';
+import { DownloadIcon, CloudIcon, UserIcon, CalendarIcon, InboxIcon, CheckIcon, XIcon, LockIcon, FileTextIcon, StarIcon, UploadIcon } from './components/icons';
 
 const App: React.FC = () => {
     const [convenios, setConvenios] = useLocalStorage<string[]>(STORAGE_KEYS.CONVENIOS, DEFAULT_CONVENIOS);
@@ -35,6 +34,28 @@ const App: React.FC = () => {
     const [view, setView] = useState<'landing' | 'login' | 'dashboard'>('landing');
     const [loginInput, setLoginInput] = useState('');
     const [toast, setToast] = useState<{ msg: string, type: 'success' | 'error' | 'info' } | null>(null);
+    const [showLinksModal, setShowLinksModal] = useState(false);
+
+    // --- ROTEAMENTO PÚBLICO ---
+    const params = new URLSearchParams(window.location.search);
+    const pageParam = params.get('page');
+
+    if (pageParam === 'cadastro' || pageParam === 'update' || pageParam === 'vip') {
+        const isVip = pageParam === 'vip';
+        const isUpdate = pageParam === 'update';
+        
+        return (
+            <PublicRegistration 
+                cloudEndpoint="" 
+                brandName={brand.name}
+                brandColor={brand.color}
+                brandLogo={brand.logo}
+                convenios={convenios}
+                isVipMode={isVip}
+                isUpdateMode={isUpdate}
+            />
+        );
+    }
 
     useEffect(() => {
         const initSystem = async () => {
@@ -147,7 +168,6 @@ const App: React.FC = () => {
         const enrichedAppt = {
             ...appt,
             numero_autorizacao: patient?.funservConfig?.numeroAutorizacao || patient?.numero_autorizacao || appt.numero_autorizacao || '',
-            // Fix: Fixed typo in data_autorizacao access (was patient?.data_autor_izacao)
             data_autorizacao: patient?.funservConfig?.dataAutorizacao || patient?.data_autorizacao || appt.data_autorizacao || null
         };
 
@@ -157,7 +177,6 @@ const App: React.FC = () => {
             patient_id: enrichedAppt.patientId,
             status: enrichedAppt.status,
             carteirinha: enrichedAppt.carteirinha || '',
-            // Fix: Fixed typo in property access (was numero_autor_izacao)
             numero_autorizacao: enrichedAppt.numero_autorizacao || '',
             data_autorizacao: enrichedAppt.data_autorizacao,
             data: JSON.parse(JSON.stringify(enrichedAppt))
@@ -177,7 +196,6 @@ const App: React.FC = () => {
             const enriched = {
                 ...a,
                 numero_autorizacao: patient?.funservConfig?.numeroAutorizacao || patient?.numero_autorizacao || '',
-                // Fix: Fixed typo in data_autorizacao access (was patient?.data_autor_izacao)
                 data_autorizacao: patient?.funservConfig?.dataAutorizacao || patient?.data_autorizacao || null
             };
             return {
@@ -186,7 +204,6 @@ const App: React.FC = () => {
                 patient_id: enriched.patientId,
                 status: enriched.status,
                 carteirinha: enriched.carteirinha || '',
-                // Fix: Fixed typo in property access (was numero_autor_izacao)
                 numero_autorizacao: enriched.numero_autorizacao || '',
                 data_autorizacao: enriched.data_autorizacao,
                 data: JSON.parse(JSON.stringify(enriched))
@@ -207,7 +224,6 @@ const App: React.FC = () => {
             patient_id: appt.patientId,
             status: appt.status,
             carteirinha: appt.carteirinha || '',
-            // Fix: Fixed typo in property access (was appt.numero_autorizacao)
             numero_autorizacao: appt.numero_autorizacao || '',
             data_autorizacao: appt.data_autorizacao || null,
             data: JSON.parse(JSON.stringify(appt))
@@ -238,6 +254,13 @@ const App: React.FC = () => {
         }).sort((a, b) => a.nome.localeCompare(b.nome));
     }, [patients, searchTerm, filters]);
 
+    // Função para copiar links
+    const copyLink = (path: string) => {
+        const url = `${window.location.origin}${window.location.pathname}${path}`;
+        navigator.clipboard.writeText(url);
+        showToast('Link copiado para a área de transferência!', 'success');
+    };
+
     if (view === 'landing') return (
         <div className="min-h-screen flex flex-col items-center justify-center p-6" style={{ backgroundColor: brand.dark }}>
             <h1 className="text-5xl font-bold mb-8" style={{ color: brand.color }}>{brand.name}</h1>
@@ -260,11 +283,21 @@ const App: React.FC = () => {
             <header className="bg-slate-800/50 border-b border-slate-700 p-4 sticky top-0 z-50 backdrop-blur-md">
                 <div className="max-w-7xl mx-auto flex justify-between items-center">
                     <h1 className="font-bold text-xl cursor-pointer" onClick={() => setActiveTab('pacientes')} style={{ color: brand.color }}>{brand.name}</h1>
-                    <nav className="flex gap-2">
+                    <nav className="flex gap-2 items-center">
                         <button onClick={() => setActiveTab('pacientes')} className={`px-4 py-2 rounded-lg text-sm font-medium ${activeTab === 'pacientes' ? 'bg-sky-600' : 'hover:bg-slate-700'}`}>Pacientes</button>
                         <button onClick={() => setActiveTab('agenda')} className={`px-4 py-2 rounded-lg text-sm font-medium ${activeTab === 'agenda' ? 'bg-sky-600' : 'hover:bg-slate-700'}`}>Agenda</button>
                         <button onClick={() => setActiveTab('funserv')} className={`px-4 py-2 rounded-lg text-sm font-medium ${activeTab === 'funserv' ? 'bg-sky-600' : 'hover:bg-slate-700'}`}>Funserv</button>
-                        <button onClick={handleLogout} className="p-2 text-red-400"><LockIcon className="w-5 h-5" /></button>
+                        
+                        {/* Botão de Links */}
+                        <button 
+                            onClick={() => setShowLinksModal(true)} 
+                            className="bg-slate-700 hover:bg-slate-600 text-white p-2 rounded-lg ml-2 flex items-center gap-2"
+                            title="Links de Cadastro"
+                        >
+                            <UploadIcon className="w-5 h-5" />
+                        </button>
+                        
+                        <button onClick={handleLogout} className="p-2 text-red-400 hover:text-red-300 ml-1"><LockIcon className="w-5 h-5" /></button>
                     </nav>
                 </div>
             </header>
@@ -293,6 +326,47 @@ const App: React.FC = () => {
                 {activeTab === 'agenda' && <Agenda patients={patients} profissionais={profissionais} appointments={appointments} onAddAppointment={handleAddAppointment} onAddBatchAppointments={handleAddBatchAppointments} onUpdateAppointment={handleUpdateAppointment} onDeleteAppointment={handleDeleteAppointment} />}
                 {activeTab === 'funserv' && <FunservManager patients={patients} onSavePatient={handleSavePatient} />}
             </main>
+
+            {/* Modal de Links */}
+            {showLinksModal && (
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+                    <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-md p-6 shadow-2xl relative animate-fade-in">
+                        <button onClick={() => setShowLinksModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-white"><XIcon className="w-6 h-6"/></button>
+                        <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                            <UploadIcon className="w-5 h-5 text-sky-400"/> Links de Cadastro
+                        </h3>
+                        <p className="text-sm text-slate-400 mb-6">Envie estes links para que os pacientes preencham seus dados antes da consulta.</p>
+
+                        <div className="space-y-4">
+                            <div className="bg-slate-900 p-4 rounded-xl border border-slate-700">
+                                <div className="flex items-center gap-3 mb-2">
+                                    <div className="bg-green-900/30 p-2 rounded-lg"><UserIcon className="w-5 h-5 text-green-400"/></div>
+                                    <div className="flex-1">
+                                        <h4 className="font-bold text-white text-sm">Novo Paciente</h4>
+                                        <p className="text-xs text-slate-500">Cadastro completo inicial</p>
+                                    </div>
+                                </div>
+                                <button onClick={() => copyLink('?page=cadastro')} className="w-full bg-slate-800 hover:bg-slate-700 text-sky-400 text-xs font-mono py-2 rounded border border-slate-600 transition">
+                                    Copiar Link de Cadastro
+                                </button>
+                            </div>
+
+                            <div className="bg-slate-900 p-4 rounded-xl border border-slate-700">
+                                <div className="flex items-center gap-3 mb-2">
+                                    <div className="bg-amber-900/30 p-2 rounded-lg"><StarIcon className="w-5 h-5 text-amber-400"/></div>
+                                    <div className="flex-1">
+                                        <h4 className="font-bold text-white text-sm">Link VIP / Pesquisa</h4>
+                                        <p className="text-xs text-slate-500">Atualização cadastral e Google Review</p>
+                                    </div>
+                                </div>
+                                <button onClick={() => copyLink('?page=vip')} className="w-full bg-slate-800 hover:bg-slate-700 text-amber-400 text-xs font-mono py-2 rounded border border-slate-600 transition">
+                                    Copiar Link VIP
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {toast && <div className={`fixed bottom-4 right-4 p-4 rounded-xl shadow-2xl border animate-fade-in ${toast.type === 'error' ? 'bg-red-900 border-red-700' : 'bg-green-900 border-green-700'}`}>{toast.msg}</div>}
         </div>
