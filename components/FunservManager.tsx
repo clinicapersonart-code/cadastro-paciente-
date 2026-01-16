@@ -25,7 +25,7 @@ const FunservCard: React.FC<FunservCardProps> = ({ patient, onSave }) => {
         active: true, totalSessions: 10, usedSessions: 0, startDate: '', frequency: '1x Semana', alertEmail: '', history: [],
         numeroAutorizacao: '', dataAutorizacao: ''
     };
-    
+
     useEffect(() => {
         if (!config.alertEmail && patient.profissionais.length > 0) {
             const firstProf = patient.profissionais[0];
@@ -46,41 +46,41 @@ const FunservCard: React.FC<FunservCardProps> = ({ patient, onSave }) => {
 
     const handleConfigChange = (field: keyof FunservConfig, value: any) => {
         const newConfig = { ...config, [field]: value };
-        
+
         if (field === 'startDate') {
             newConfig.dataAutorizacao = value;
         }
 
-        onSave({ 
-            ...patient, 
-            funservConfig: newConfig, 
-            numero_autorizacao: newConfig.numeroAutorizacao, 
-            data_autorizacao: newConfig.dataAutorizacao || newConfig.startDate 
+        onSave({
+            ...patient,
+            funservConfig: newConfig,
+            numero_autorizacao: newConfig.numeroAutorizacao,
+            data_autorizacao: newConfig.dataAutorizacao || newConfig.startDate
         });
     };
 
     const handleAddSession = () => {
         if (!config.startDate) return alert('Preencha a Data da Guia/Sessão.');
-        
+
         const [y, m, d] = config.startDate.split('-');
         const formattedDate = `${d}/${m}/${y}`;
-        
+
         // Inclui o número da autorização no registro do histórico
         const authSuffix = config.numeroAutorizacao ? ` (Aut: ${config.numeroAutorizacao})` : '';
         const historyEntry = `${formattedDate}${authSuffix}`;
-        
+
         // Verifica duplicidade básica pela data
         if (config.history.some(h => h.includes(formattedDate))) {
-             if(!confirm('Esta data já consta no histórico deste paciente. Registrar novamente?')) return;
+            if (!confirm('Esta data já consta no histórico deste paciente. Registrar novamente?')) return;
         }
-        
+
         const newHistory = [historyEntry, ...config.history];
         const newConfig = { ...config, usedSessions: newHistory.length, history: newHistory };
         onSave({ ...patient, funservConfig: newConfig });
     };
 
     const handleRemoveSession = (itemToRemove: string, index: number) => {
-        if(!confirm(`Remover o registro "${itemToRemove}"?`)) return;
+        if (!confirm(`Remover o registro "${itemToRemove}"?`)) return;
         const newHistory = [...config.history];
         newHistory.splice(index, 1);
         const newConfig = { ...config, usedSessions: newHistory.length, history: newHistory };
@@ -98,7 +98,7 @@ const FunservCard: React.FC<FunservCardProps> = ({ patient, onSave }) => {
     return (
         <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 shadow-lg flex flex-col hover:border-teal-500/50 transition relative overflow-hidden group">
             {remaining <= 0 && <div className="absolute top-0 right-0 bg-red-600 text-white text-[10px] font-bold px-2 py-1 rounded-bl-lg z-10 uppercase">Esgotada</div>}
-            
+
             <div className="mb-3 flex justify-between items-start">
                 <div>
                     <h3 className="font-bold text-white text-lg leading-tight">{patient.nome}</h3>
@@ -113,8 +113,8 @@ const FunservCard: React.FC<FunservCardProps> = ({ patient, onSave }) => {
             {/* SEÇÃO CONTROLE (Agora acima da Guia) */}
             <div className="grid grid-cols-2 gap-2 mb-2 bg-slate-900/30 p-2 rounded-lg">
                 <div>
-                     <label className="text-[9px] text-slate-500 uppercase font-bold block mb-1">Frequência</label>
-                     <select 
+                    <label className="text-[9px] text-slate-500 uppercase font-bold block mb-1">Frequência</label>
+                    <select
                         value={config.frequency}
                         onChange={e => handleConfigChange('frequency', e.target.value)}
                         className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-white focus:border-teal-500 outline-none"
@@ -126,11 +126,11 @@ const FunservCard: React.FC<FunservCardProps> = ({ patient, onSave }) => {
                 </div>
                 <div>
                     <label className="text-[9px] text-slate-500 uppercase font-bold block mb-1">Total Permitido</label>
-                    <input 
-                        type="number" 
+                    <input
+                        type="number"
                         className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-white focus:border-teal-500 outline-none"
-                        value={config.totalSessions} 
-                        onChange={e => handleConfigChange('totalSessions', Number(e.target.value))} 
+                        value={config.totalSessions}
+                        onChange={e => handleConfigChange('totalSessions', Number(e.target.value))}
                     />
                 </div>
             </div>
@@ -142,15 +142,15 @@ const FunservCard: React.FC<FunservCardProps> = ({ patient, onSave }) => {
                         <FileTextIcon className="w-3 h-3" /> Guia Atual
                     </span>
                 </div>
-                
+
                 <div className="flex gap-2 mt-1">
                     {/* Número da Autorização */}
                     <div className="flex-1">
                         <label className="text-[9px] text-slate-500 uppercase font-bold block mb-1">Nº Autorização</label>
-                        <input 
-                            type="text" 
+                        <input
+                            type="text"
                             placeholder="Nº Guia"
-                            value={config.numeroAutorizacao || ''} 
+                            value={config.numeroAutorizacao || ''}
                             onChange={e => handleConfigChange('numeroAutorizacao', e.target.value)}
                             className="w-full bg-slate-900 border border-teal-500/50 rounded-l px-2 py-2 text-sm text-white font-bold focus:ring-1 focus:ring-teal-500 outline-none font-mono tracking-wide"
                         />
@@ -159,9 +159,9 @@ const FunservCard: React.FC<FunservCardProps> = ({ patient, onSave }) => {
                     {/* Data Única (Serve para Guia e Sessão) */}
                     <div className="w-32 sm:w-40">
                         <label className="text-[9px] text-slate-500 uppercase font-bold block mb-1">Data</label>
-                        <input 
-                            type="date" 
-                            value={config.startDate} 
+                        <input
+                            type="date"
+                            value={config.startDate}
                             onChange={e => handleConfigChange('startDate', e.target.value)}
                             className="w-full bg-slate-900 border border-teal-500/50 rounded-r px-2 py-2 text-sm text-white focus:ring-1 focus:ring-teal-500 outline-none"
                         />
@@ -185,22 +185,22 @@ const FunservCard: React.FC<FunservCardProps> = ({ patient, onSave }) => {
             </div>
 
             <div className="mb-4">
-                 <button onClick={handleAddSession} className="w-full bg-teal-600 hover:bg-teal-500 text-white px-3 py-3 rounded-lg text-sm font-bold transition flex items-center justify-center gap-2 shadow-lg shadow-teal-900/20 uppercase tracking-wide">
+                <button onClick={handleAddSession} className="w-full bg-teal-600 hover:bg-teal-500 text-white px-3 py-3 rounded-lg text-sm font-bold transition flex items-center justify-center gap-2 shadow-lg shadow-teal-900/20 uppercase tracking-wide">
                     <CheckIcon className="w-4 h-4" /> Registrar Guia & Sessão
-                 </button>
+                </button>
             </div>
 
             <div className="mt-auto space-y-2">
-                
+
                 {config.usedSessions > 8 && (
-                    <button 
-                        onClick={handleSendEmail} 
+                    <button
+                        onClick={handleSendEmail}
                         className="w-full bg-amber-600/20 hover:bg-amber-600/30 text-amber-500 border border-amber-600/50 px-3 py-2 rounded-lg text-xs transition flex items-center justify-center gap-2"
                     >
                         Solicitar Autorização (Email)
                     </button>
                 )}
-                
+
                 {config.history.length > 0 && (
                     <div className="mt-2 pt-2 border-t border-slate-700">
                         <p className="text-[10px] text-slate-500 mb-1">Histórico (Data e Nº Guia):</p>
@@ -208,7 +208,7 @@ const FunservCard: React.FC<FunservCardProps> = ({ patient, onSave }) => {
                             {config.history.map((item, idx) => (
                                 <div key={idx} className="bg-slate-900 text-slate-400 text-[10px] px-2 py-1 rounded border border-slate-700 flex items-center justify-between group hover:border-slate-600">
                                     <span>{item}</span>
-                                    <button onClick={() => handleRemoveSession(item, idx)} className="hover:text-red-400"><TrashIcon className="w-3 h-3"/></button>
+                                    <button onClick={() => handleRemoveSession(item, idx)} className="hover:text-red-400"><TrashIcon className="w-3 h-3" /></button>
                                 </div>
                             ))}
                         </div>
@@ -228,6 +228,33 @@ export const FunservManager: React.FC<FunservManagerProps> = ({ patients, onSave
 
     const filtered = funservPatients.filter(p => p.nome.toLowerCase().includes(searchTerm.toLowerCase()));
 
+    // Agrupa pacientes por profissional
+    const groupedByProfessional = useMemo(() => {
+        const groups: Record<string, typeof filtered> = {};
+        const professionalOrder = Object.keys(PROFESSIONAL_EMAILS); // Bruno, Drieli, Simone, Geovana, Soraia
+
+        filtered.forEach(patient => {
+            const professional = patient.profissionais?.[0] || 'Sem Profissional Definido';
+            if (!groups[professional]) {
+                groups[professional] = [];
+            }
+            groups[professional].push(patient);
+        });
+
+        // Ordena as chaves: primeiro os profissionais conhecidos, depois os outros
+        const sortedKeys = Object.keys(groups).sort((a, b) => {
+            const indexA = professionalOrder.findIndex(p => a.toLowerCase().includes(p.toLowerCase()));
+            const indexB = professionalOrder.findIndex(p => b.toLowerCase().includes(p.toLowerCase()));
+
+            if (indexA === -1 && indexB === -1) return a.localeCompare(b);
+            if (indexA === -1) return 1;
+            if (indexB === -1) return -1;
+            return indexA - indexB;
+        });
+
+        return { groups, sortedKeys };
+    }, [filtered]);
+
     return (
         <div className="space-y-6">
             <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6 shadow-xl backdrop-blur-sm">
@@ -239,9 +266,9 @@ export const FunservManager: React.FC<FunservManagerProps> = ({ patients, onSave
                         <p className="text-slate-400 text-sm">Controle de sessões, guias e renovações.</p>
                     </div>
                     <div className="w-full md:w-auto">
-                        <input 
-                            type="text" 
-                            placeholder="Buscar paciente Funserv..." 
+                        <input
+                            type="text"
+                            placeholder="Buscar paciente Funserv..."
                             value={searchTerm}
                             onChange={e => setSearchTerm(e.target.value)}
                             className="w-full md:w-64 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white focus:ring-2 focus:ring-teal-500 outline-none"
@@ -255,9 +282,26 @@ export const FunservManager: React.FC<FunservManagerProps> = ({ patients, onSave
                         <p className="text-xs text-slate-600 mt-1">Certifique-se de cadastrar o paciente com o convênio "Funserv" na aba de Pacientes.</p>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                        {filtered.map(patient => (
-                            <FunservCard key={patient.id} patient={patient} onSave={onSavePatient} />
+                    <div className="space-y-8">
+                        {groupedByProfessional.sortedKeys.map(professional => (
+                            <div key={professional} className="space-y-4">
+                                <div className="flex items-center gap-3 border-b border-slate-700 pb-2">
+                                    <div className="w-8 h-8 bg-teal-600/20 rounded-full flex items-center justify-center">
+                                        <span className="text-teal-400 text-sm font-bold">
+                                            {professional.charAt(0).toUpperCase()}
+                                        </span>
+                                    </div>
+                                    <h3 className="text-lg font-semibold text-white">{professional}</h3>
+                                    <span className="text-xs text-slate-500 bg-slate-800 px-2 py-0.5 rounded-full">
+                                        {groupedByProfessional.groups[professional].length} paciente{groupedByProfessional.groups[professional].length !== 1 ? 's' : ''}
+                                    </span>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                                    {groupedByProfessional.groups[professional].map(patient => (
+                                        <FunservCard key={patient.id} patient={patient} onSave={onSavePatient} />
+                                    ))}
+                                </div>
+                            </div>
                         ))}
                     </div>
                 )}
