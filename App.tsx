@@ -9,13 +9,14 @@ import { PatientTable } from './components/PatientTable';
 import { Agenda } from './components/Agenda';
 import { PublicRegistration } from './components/PublicRegistration';
 import { FunservManager } from './components/FunservManager';
+import { Inbox } from './components/Inbox';
 import { DownloadIcon, CloudIcon, UserIcon, CalendarIcon, InboxIcon, CheckIcon, XIcon, LockIcon, FileTextIcon, StarIcon, UploadIcon, ShieldIcon } from './components/icons';
 
 const App: React.FC = () => {
     const [convenios, setConvenios] = useLocalStorage<string[]>(STORAGE_KEYS.CONVENIOS, DEFAULT_CONVENIOS);
     const [profissionais, setProfissionais] = useLocalStorage<string[]>(STORAGE_KEYS.PROFISSIONAIS, DEFAULT_PROFISSIONAIS);
     const [especialidades, setEspecialidades] = useLocalStorage<string[]>(STORAGE_KEYS.ESPECIALIDADES, DEFAULT_ESPECIALIDADES);
-    const [activeTab, setActiveTab] = useLocalStorage<'pacientes' | 'agenda' | 'funserv'>('personart.view.tab', 'pacientes');
+    const [activeTab, setActiveTab] = useLocalStorage<'pacientes' | 'agenda' | 'funserv' | 'inbox'>('personart.view.tab', 'pacientes');
     const [brand] = useLocalStorage<BrandConfig>(STORAGE_KEYS.BRAND, { color: '#e9c49e', dark: '#273e44', logo: null, name: 'Clínica Personart' });
     const [accessPass, setAccessPass] = useLocalStorage<string>(STORAGE_KEYS.ACCESS_PASS, 'personart');
     const [sessionAuth, setSessionAuth] = useLocalStorage<number | null>('personart.auth.session', null);
@@ -23,7 +24,7 @@ const App: React.FC = () => {
     // MUDANÇA PRINCIPAL: Usar LocalStorage como "Cache" para garantir que os dados apareçam mesmo sem internet/nuvem
     const [patients, setPatients] = useLocalStorage<Patient[]>('personart.patients.db', []);
     const [appointments, setAppointments] = useLocalStorage<Appointment[]>('personart.appointments.db', []);
-    
+
     const [inbox, setInbox] = useState<PreCadastro[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [dbError, setDbError] = useState('');
@@ -45,10 +46,10 @@ const App: React.FC = () => {
     if (pageParam === 'cadastro' || pageParam === 'update' || pageParam === 'vip') {
         const isVip = pageParam === 'vip';
         const isUpdate = pageParam === 'update';
-        
+
         return (
-            <PublicRegistration 
-                cloudEndpoint="" 
+            <PublicRegistration
+                cloudEndpoint=""
                 brandName={brand.name}
                 brandColor={brand.color}
                 brandLogo={brand.logo}
@@ -78,7 +79,7 @@ const App: React.FC = () => {
         if (isAuthenticated) {
             const fetchData = async () => {
                 setIsLoading(true);
-                
+
                 // Se não tem supabase configurado, entra em modo offline
                 if (!isSupabaseConfigured() || !supabase) {
                     setConnectionStatus('offline');
@@ -89,7 +90,7 @@ const App: React.FC = () => {
                 try {
                     const { data: patData, error: patError } = await supabase.from('patients').select('*');
                     if (patError) throw patError;
-                    
+
                     if (patData) {
                         // Sincroniza Nuvem -> Local
                         setPatients(patData.map((row: any) => row.data));
@@ -102,7 +103,7 @@ const App: React.FC = () => {
 
                     const { data: inboxData } = await supabase.from('inbox').select('*');
                     if (inboxData) setInbox(inboxData.map((row: any) => row.data));
-                    
+
                     setConnectionStatus('connected');
                     setDbError('');
                 } catch (err: any) {
@@ -125,7 +126,7 @@ const App: React.FC = () => {
 
     const handleSavePatient = async (patient: Patient, initialAppointment?: any) => {
         const newPatientId = patient.id || `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-        
+
         const numAut = patient.funservConfig?.numeroAutorizacao || patient.numero_autorizacao || '';
         const dataAut = patient.funservConfig?.dataAutorizacao || patient.data_autorizacao || null;
 
@@ -209,12 +210,12 @@ const App: React.FC = () => {
     const handleAddBatchAppointments = async (batch: Appointment[]) => {
         // Local
         const enrichedBatch = batch.map(a => {
-             const patient = patients.find(p => p.id === a.patientId);
-             return {
+            const patient = patients.find(p => p.id === a.patientId);
+            return {
                 ...a,
                 numero_autorizacao: patient?.funservConfig?.numeroAutorizacao || patient?.numero_autorizacao || '',
                 data_autorizacao: patient?.funservConfig?.dataAutorizacao || patient?.data_autorizacao || null
-             };
+            };
         });
         setAppointments(prev => [...prev, ...enrichedBatch]);
 
@@ -238,7 +239,7 @@ const App: React.FC = () => {
 
     const handleUpdateAppointment = async (appt: Appointment) => {
         setAppointments(prev => prev.map(x => x.id === appt.id ? appt : x));
-        
+
         if (supabase && connectionStatus !== 'offline') {
             await supabase.from('appointments').upsert({
                 id: appt.id,
@@ -313,7 +314,7 @@ const App: React.FC = () => {
                             </span>
                         )}
                         {connectionStatus === 'connected' && (
-                             <span className="text-[10px] bg-green-900/30 text-green-400 border border-green-800/50 px-2 py-0.5 rounded-full flex items-center gap-1">
+                            <span className="text-[10px] bg-green-900/30 text-green-400 border border-green-800/50 px-2 py-0.5 rounded-full flex items-center gap-1">
                                 <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div> Online
                             </span>
                         )}
@@ -326,15 +327,20 @@ const App: React.FC = () => {
                         <button onClick={() => setActiveTab('pacientes')} className={`px-4 py-2 rounded-lg text-sm font-medium ${activeTab === 'pacientes' ? 'bg-sky-600' : 'hover:bg-slate-700'}`}>Pacientes</button>
                         <button onClick={() => setActiveTab('agenda')} className={`px-4 py-2 rounded-lg text-sm font-medium ${activeTab === 'agenda' ? 'bg-sky-600' : 'hover:bg-slate-700'}`}>Agenda</button>
                         <button onClick={() => setActiveTab('funserv')} className={`px-4 py-2 rounded-lg text-sm font-medium ${activeTab === 'funserv' ? 'bg-sky-600' : 'hover:bg-slate-700'}`}>Funserv</button>
-                        
-                        <button 
-                            onClick={() => setShowLinksModal(true)} 
+                        <button onClick={() => setActiveTab('inbox')} className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${activeTab === 'inbox' ? 'bg-sky-600' : 'hover:bg-slate-700'}`}>
+                            <InboxIcon className="w-4 h-4" />
+                            Inbox
+                            {inbox.length > 0 && <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{inbox.length}</span>}
+                        </button>
+
+                        <button
+                            onClick={() => setShowLinksModal(true)}
                             className="bg-slate-700 hover:bg-slate-600 text-white p-2 rounded-lg ml-2 flex items-center gap-2"
                             title="Links de Cadastro"
                         >
                             <UploadIcon className="w-5 h-5" />
                         </button>
-                        
+
                         <button onClick={handleLogout} className="p-2 text-red-400 hover:text-red-300 ml-1"><LockIcon className="w-5 h-5" /></button>
                     </nav>
                 </div>
@@ -343,19 +349,19 @@ const App: React.FC = () => {
             <main className="max-w-7xl mx-auto p-6">
                 {dbError && activeTab === 'pacientes' && patients.length === 0 && (
                     <div className="bg-red-900/20 border border-red-800/50 text-red-300 p-4 rounded-xl mb-6 flex items-center gap-3">
-                         <ShieldIcon className="w-6 h-6" />
-                         <div>
-                             <p className="font-bold">Modo Offline Ativado</p>
-                             <p className="text-sm opacity-80">{dbError}. Seus dados estão sendo salvos localmente neste navegador.</p>
-                         </div>
+                        <ShieldIcon className="w-6 h-6" />
+                        <div>
+                            <p className="font-bold">Modo Offline Ativado</p>
+                            <p className="text-sm opacity-80">{dbError}. Seus dados estão sendo salvos localmente neste navegador.</p>
+                        </div>
                     </div>
                 )}
 
                 {activeTab === 'pacientes' && (
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-                        <PatientForm 
-                            editingPatient={editingPatient} 
-                            onSave={handleSavePatient} 
+                        <PatientForm
+                            editingPatient={editingPatient}
+                            onSave={handleSavePatient}
                             onClear={() => setEditingPatient(null)}
                             convenios={convenios} profissionais={profissionais} especialidades={especialidades}
                             onAddConvenio={c => setConvenios(prev => [...prev, c])}
@@ -367,28 +373,71 @@ const App: React.FC = () => {
                         />
                         <div className="space-y-4">
                             <input type="text" placeholder="Buscar por nome ou carteirinha..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-sky-500" />
-                            <PatientTable patients={filteredPatients} onEdit={p => { setEditingPatient(p); window.scrollTo(0,0); }} onDelete={async id => { if(confirm('Excluir?')) { await supabase?.from('patients').delete().eq('id', id).catch(() => {}); setPatients(prev => prev.filter(p => p.id !== id)); } }} />
+                            <PatientTable patients={filteredPatients} onEdit={p => { setEditingPatient(p); window.scrollTo(0, 0); }} onDelete={async id => { if (confirm('Excluir?')) { await supabase?.from('patients').delete().eq('id', id).catch(() => { }); setPatients(prev => prev.filter(p => p.id !== id)); } }} />
                         </div>
                     </div>
                 )}
                 {activeTab === 'agenda' && <Agenda patients={patients} profissionais={profissionais} appointments={appointments} onAddAppointment={handleAddAppointment} onAddBatchAppointments={handleAddBatchAppointments} onUpdateAppointment={handleUpdateAppointment} onDeleteAppointment={handleDeleteAppointment} />}
                 {activeTab === 'funserv' && <FunservManager patients={patients} onSavePatient={handleSavePatient} />}
+                {activeTab === 'inbox' && (
+                    <Inbox
+                        inbox={inbox}
+                        onApprove={async (item) => {
+                            // Calcula faixa etária
+                            const age = item.nascimento ? Math.floor((Date.now() - new Date(item.nascimento).getTime()) / (365.25 * 24 * 60 * 60 * 1000)) : 0;
+                            const faixa = age < 18 ? 'Criança' : 'Adulto';
+
+                            const newPatient: Patient = {
+                                id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+                                nome: item.nome,
+                                nascimento: item.nascimento,
+                                faixa: faixa,
+                                responsavel: item.responsavel,
+                                endereco: item.endereco,
+                                contato: item.contato,
+                                email: item.email,
+                                convenio: item.convenio,
+                                carteirinha: item.carteirinha,
+                                crm: item.crm,
+                                origem: item.origem,
+                                profissionais: item.profissional ? [item.profissional] : [],
+                                especialidades: [],
+                            };
+
+                            await handleSavePatient(newPatient);
+
+                            // Remove do inbox
+                            if (supabase) {
+                                await supabase.from('inbox').delete().eq('id', item.id);
+                            }
+                            setInbox(prev => prev.filter(i => i.id !== item.id));
+                            showToast(`Paciente "${item.nome}" aprovado e adicionado!`, 'success');
+                        }}
+                        onDelete={async (id) => {
+                            if (supabase) {
+                                await supabase.from('inbox').delete().eq('id', id);
+                            }
+                            setInbox(prev => prev.filter(i => i.id !== id));
+                            showToast('Pré-cadastro excluído.', 'info');
+                        }}
+                    />
+                )}
             </main>
 
             {/* Modal de Links */}
             {showLinksModal && (
                 <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
                     <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-md p-6 shadow-2xl relative animate-fade-in">
-                        <button onClick={() => setShowLinksModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-white"><XIcon className="w-6 h-6"/></button>
+                        <button onClick={() => setShowLinksModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-white"><XIcon className="w-6 h-6" /></button>
                         <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                            <UploadIcon className="w-5 h-5 text-sky-400"/> Links de Cadastro
+                            <UploadIcon className="w-5 h-5 text-sky-400" /> Links de Cadastro
                         </h3>
                         <p className="text-sm text-slate-400 mb-6">Envie estes links para que os pacientes preencham seus dados antes da consulta.</p>
 
                         <div className="space-y-4">
                             <div className="bg-slate-900 p-4 rounded-xl border border-slate-700">
                                 <div className="flex items-center gap-3 mb-2">
-                                    <div className="bg-green-900/30 p-2 rounded-lg"><UserIcon className="w-5 h-5 text-green-400"/></div>
+                                    <div className="bg-green-900/30 p-2 rounded-lg"><UserIcon className="w-5 h-5 text-green-400" /></div>
                                     <div className="flex-1">
                                         <h4 className="font-bold text-white text-sm">Novo Paciente</h4>
                                         <p className="text-xs text-slate-500">Cadastro completo inicial</p>
@@ -401,7 +450,7 @@ const App: React.FC = () => {
 
                             <div className="bg-slate-900 p-4 rounded-xl border border-slate-700">
                                 <div className="flex items-center gap-3 mb-2">
-                                    <div className="bg-amber-900/30 p-2 rounded-lg"><StarIcon className="w-5 h-5 text-amber-400"/></div>
+                                    <div className="bg-amber-900/30 p-2 rounded-lg"><StarIcon className="w-5 h-5 text-amber-400" /></div>
                                     <div className="flex-1">
                                         <h4 className="font-bold text-white text-sm">Link VIP / Pesquisa</h4>
                                         <p className="text-xs text-slate-500">Atualização cadastral e Google Review</p>
