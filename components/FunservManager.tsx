@@ -87,6 +87,19 @@ const FunservCard: React.FC<FunservCardProps> = ({ patient, onSave }) => {
         onSave({ ...patient, funservConfig: newConfig });
     };
 
+    const handleResetSessions = () => {
+        if (!confirm(`Tem certeza que deseja reiniciar as guias de ${patient.nome}?\n\nIsso irá:\n• Zerar o contador de sessões usadas\n• Limpar o histórico anterior\n• Manter as configurações (frequência, total permitido)`)) return;
+
+        const newConfig = {
+            ...config,
+            usedSessions: 0,
+            history: [],
+            numeroAutorizacao: '', // Limpa número da autorização anterior
+            startDate: '' // Limpa a data
+        };
+        onSave({ ...patient, funservConfig: newConfig });
+    };
+
     const handleSendEmail = () => {
         if (!config.alertEmail) return alert('Cadastre um e-mail.');
         const subject = `Solicitação de Nova Guia Funserv - ${patient.nome}`;
@@ -184,10 +197,20 @@ const FunservCard: React.FC<FunservCardProps> = ({ patient, onSave }) => {
                 </div>
             </div>
 
-            <div className="mb-4">
+            <div className="mb-4 space-y-2">
                 <button onClick={handleAddSession} className="w-full bg-teal-600 hover:bg-teal-500 text-white px-3 py-3 rounded-lg text-sm font-bold transition flex items-center justify-center gap-2 shadow-lg shadow-teal-900/20 uppercase tracking-wide">
                     <CheckIcon className="w-4 h-4" /> Registrar Guia & Sessão
                 </button>
+
+                {/* Botão Reiniciar - aparece quando esgotado ou tem histórico */}
+                {(remaining <= 0 || config.history.length > 0) && (
+                    <button
+                        onClick={handleResetSessions}
+                        className="w-full bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 border border-purple-600/50 px-3 py-2 rounded-lg text-xs transition flex items-center justify-center gap-2"
+                    >
+                        🔄 Reiniciar Ciclo de Guias
+                    </button>
+                )}
             </div>
 
             <div className="mt-auto space-y-2">
@@ -225,8 +248,34 @@ export const FunservManager: React.FC<FunservManagerProps> = ({ patients, onSave
     }, [patients]);
 
     const [searchTerm, setSearchTerm] = useState('');
+    const [selectedProfessional, setSelectedProfessional] = useState<string>(''); // Filtro por profissional
+    const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set()); // Grupos recolhidos
 
-    const filtered = funservPatients.filter(p => p.nome.toLowerCase().includes(searchTerm.toLowerCase()));
+    // Lista de profissionais disponíveis para o filtro
+    const availableProfessionals = useMemo(() => {
+        const profs = new Set<string>();
+        funservPatients.forEach(p => {
+            const prof = p.profissionais?.[0];
+            if (prof) profs.add(prof);
+        });
+        return Array.from(profs).sort((a, b) => {
+            const order = Object.keys(PROFESSIONAL_EMAILS);
+            const indexA = order.findIndex(p => a.toLowerCase().includes(p.toLowerCase()));
+            const indexB = order.findIndex(p => b.toLowerCase().includes(p.toLowerCase()));
+            if (indexA === -1 && indexB === -1) return a.localeCompare(b);
+            if (indexA === -1) return 1;
+            if (indexB === -1) return -1;
+            return indexA - indexB;
+        });
+    }, [funservPatients]);
+
+    // Filtra por busca e por profissional selecionado
+    const filtered = funservPatients.filter(p => {
+        const matchesSearch = p.nome.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesProfessional = !selectedProfessional ||
+            (p.profissionais?.[0] || '').toLowerCase().includes(selectedProfessional.toLowerCase());
+        return matchesSearch && matchesProfessional;
+    });
 
     // Agrupa pacientes por profissional
     const groupedByProfessional = useMemo(() => {
@@ -255,6 +304,23 @@ export const FunservManager: React.FC<FunservManagerProps> = ({ patients, onSave
         return { groups, sortedKeys };
     }, [filtered]);
 
+    // Toggle para expandir/recolher grupo
+    const toggleGroup = (professional: string) => {
+        setCollapsedGroups(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(professional)) {
+                newSet.delete(professional);
+            } else {
+                newSet.add(professional);
+            }
+            return newSet;
+        });
+    };
+
+    // Expande ou recolhe todos
+    const expandAll = () => setCollapsedGroups(new Set());
+    const collapseAll = () => setCollapsedGroups(new Set(groupedByProfessional.sortedKeys));
+
     return (
         <div className="space-y-6">
             <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6 shadow-xl backdrop-blur-sm">
@@ -265,16 +331,48 @@ export const FunservManager: React.FC<FunservManagerProps> = ({ patients, onSave
                         </h2>
                         <p className="text-slate-400 text-sm">Controle de sessões, guias e renovações.</p>
                     </div>
-                    <div className="w-full md:w-auto">
+                    <div className="w-full md:w-auto flex flex-col sm:flex-row gap-2">
+                        {/* Filtro por profissional */}
+                        <select
+                            value={selectedProfessional}
+                            onChange={e => setSelectedProfessional(e.target.value)}
+                            className="bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white focus:ring-2 focus:ring-teal-500 outline-none"
+                        >
+                            <option value="">Todos os Profissionais</option>
+                            {availableProfessionals.map(prof => (
+                                <option key={prof} value={prof}>{prof}</option>
+                            ))}
+                        </select>
+
+                        {/* Busca */}
                         <input
                             type="text"
-                            placeholder="Buscar paciente Funserv..."
+                            placeholder="Buscar paciente..."
                             value={searchTerm}
                             onChange={e => setSearchTerm(e.target.value)}
-                            className="w-full md:w-64 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white focus:ring-2 focus:ring-teal-500 outline-none"
+                            className="w-full md:w-48 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white focus:ring-2 focus:ring-teal-500 outline-none"
                         />
                     </div>
                 </div>
+
+                {/* Botões expandir/recolher todos */}
+                {groupedByProfessional.sortedKeys.length > 1 && (
+                    <div className="flex gap-2 mb-4">
+                        <button
+                            onClick={expandAll}
+                            className="text-xs text-slate-400 hover:text-teal-400 transition"
+                        >
+                            ▼ Expandir todos
+                        </button>
+                        <span className="text-slate-600">|</span>
+                        <button
+                            onClick={collapseAll}
+                            className="text-xs text-slate-400 hover:text-teal-400 transition"
+                        >
+                            ▶ Recolher todos
+                        </button>
+                    </div>
+                )}
 
                 {filtered.length === 0 ? (
                     <div className="text-center py-12 bg-slate-800/50 rounded-xl border border-slate-700 border-dashed">
@@ -282,27 +380,47 @@ export const FunservManager: React.FC<FunservManagerProps> = ({ patients, onSave
                         <p className="text-xs text-slate-600 mt-1">Certifique-se de cadastrar o paciente com o convênio "Funserv" na aba de Pacientes.</p>
                     </div>
                 ) : (
-                    <div className="space-y-8">
-                        {groupedByProfessional.sortedKeys.map(professional => (
-                            <div key={professional} className="space-y-4">
-                                <div className="flex items-center gap-3 border-b border-slate-700 pb-2">
-                                    <div className="w-8 h-8 bg-teal-600/20 rounded-full flex items-center justify-center">
-                                        <span className="text-teal-400 text-sm font-bold">
-                                            {professional.charAt(0).toUpperCase()}
+                    <div className="space-y-4">
+                        {groupedByProfessional.sortedKeys.map(professional => {
+                            const isCollapsed = collapsedGroups.has(professional);
+                            const patientCount = groupedByProfessional.groups[professional].length;
+
+                            return (
+                                <div key={professional} className="bg-slate-900/30 rounded-xl border border-slate-700/50 overflow-hidden">
+                                    {/* Header do grupo - clicável */}
+                                    <button
+                                        onClick={() => toggleGroup(professional)}
+                                        className="w-full flex items-center gap-3 p-3 hover:bg-slate-800/50 transition cursor-pointer"
+                                    >
+                                        {/* Setinha */}
+                                        <span className={`text-teal-400 transition-transform duration-200 ${isCollapsed ? '' : 'rotate-90'}`}>
+                                            ▶
                                         </span>
-                                    </div>
-                                    <h3 className="text-lg font-semibold text-white">{professional}</h3>
-                                    <span className="text-xs text-slate-500 bg-slate-800 px-2 py-0.5 rounded-full">
-                                        {groupedByProfessional.groups[professional].length} paciente{groupedByProfessional.groups[professional].length !== 1 ? 's' : ''}
-                                    </span>
+
+                                        <div className="w-8 h-8 bg-teal-600/20 rounded-full flex items-center justify-center">
+                                            <span className="text-teal-400 text-sm font-bold">
+                                                {professional.charAt(0).toUpperCase()}
+                                            </span>
+                                        </div>
+                                        <h3 className="text-lg font-semibold text-white flex-1 text-left">{professional}</h3>
+                                        <span className="text-xs text-slate-500 bg-slate-800 px-2 py-0.5 rounded-full">
+                                            {patientCount} paciente{patientCount !== 1 ? 's' : ''}
+                                        </span>
+                                    </button>
+
+                                    {/* Conteúdo do grupo - cards dos pacientes */}
+                                    {!isCollapsed && (
+                                        <div className="p-4 pt-0">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                                                {groupedByProfessional.groups[professional].map(patient => (
+                                                    <FunservCard key={patient.id} patient={patient} onSave={onSavePatient} />
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                                    {groupedByProfessional.groups[professional].map(patient => (
-                                        <FunservCard key={patient.id} patient={patient} onSave={onSavePatient} />
-                                    ))}
-                                </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
             </div>
