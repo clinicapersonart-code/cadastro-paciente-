@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Funserv Integrador</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <div class="logo-icon">🏥</div>
+                <div class="logo-text">
+                    <span class="logo-title">Funserv Integrador</span>
+                    <span class="logo-subtitle">Clínica Personart</span>
+                </div>
+            </div>
+            <button id="btn-config" class="btn-icon" title="Configurações">⚙️</button>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main">
+            <!-- Status Card -->
+            <div class="status-card">
+                <div class="status-indicator" id="status-indicator"></div>
+                <div class="status-text" id="status-text">Monitorando...</div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="tabs">
+                <button class="tab active" data-tab="authorizations">Autorizações</button>
+                <button class="tab" data-tab="settings">Configurações</button>
+            </div>
+
+            <!-- Authorizations Tab -->
+            <div class="tab-content active" id="tab-authorizations">
+                <div class="authorizations-list" id="authorizations-list">
+                    <div class="empty-state">
+                        <div class="empty-icon">📋</div>
+                        <p>Nenhuma autorização capturada ainda</p>
+                        <button id="btn-force-capture" class="btn btn-secondary btn-sm"
+                            style="margin-top: 10px;">Capturar Manualmente</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings Tab -->
+            <div class="tab-content" id="tab-settings">
+                <div class="settings-form">
+                    <h3>Configuração Supabase</h3>
+                    <div class="form-group">
+                        <label for="supabase-url">URL do Projeto</label>
+                        <input type="text" id="supabase-url" placeholder="https://xxxx.supabase.co">
+                    </div>
+                    <div class="form-group">
+                        <label for="supabase-key">Anon Key</label>
+                        <input type="password" id="supabase-key" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6...">
+                    </div>
+                    <div class="form-group">
+                        <label for="supabase-table">Nome da Tabela</label>
+                        <input type="text" id="supabase-table" placeholder="autorizacoes">
+                    </div>
+                    <button id="btn-save-config" class="btn btn-primary">Salvar Configurações</button>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <button id="btn-clear" class="btn btn-danger btn-sm">Limpar Tudo</button>
+            <span class="version">v1.0.0</span>
+        </footer>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+
+</html>
