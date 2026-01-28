@@ -7,18 +7,35 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies
 node_modules
+node_modules/
+
+# Build
 dist
 dist-ssr
+dist/
+build/
 *.local
+
+# Environment variables
+.env
+.env.local
+.env.*.local
 
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
+.vscode/
 .idea
+.idea/
 .DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+Thumbs.db
+
+# Previous clone folder
+cadastro-paciente-/
