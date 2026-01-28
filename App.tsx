@@ -10,7 +10,7 @@ import { Agenda } from './components/Agenda';
 import { PublicRegistration } from './components/PublicRegistration';
 import { FunservManager } from './components/FunservManager';
 import { Inbox } from './components/Inbox';
-import { DownloadIcon, CloudIcon, UserIcon, CalendarIcon, InboxIcon, CheckIcon, XIcon, LockIcon, FileTextIcon, StarIcon, UploadIcon, ShieldIcon } from './components/icons';
+import { DownloadIcon, CloudIcon, UserIcon, CalendarIcon, InboxIcon, CheckIcon, XIcon, LockIcon, FileTextIcon, StarIcon, UploadIcon, ShieldIcon, FilterIcon } from './components/icons';
 
 const App: React.FC = () => {
     const [convenios, setConvenios] = useLocalStorage<string[]>(STORAGE_KEYS.CONVENIOS, DEFAULT_CONVENIOS);
@@ -274,6 +274,7 @@ const App: React.FC = () => {
             if (s && !p.nome.toLowerCase().includes(s) && !p.carteirinha?.includes(s)) return false;
             if (filters.convenio && p.convenio !== filters.convenio) return false;
             if (filters.profissional && !p.profissionais.includes(filters.profissional)) return false;
+            if (filters.faixa && p.faixa !== filters.faixa) return false;
             return true;
         }).sort((a, b) => a.nome.localeCompare(b.nome));
     }, [patients, searchTerm, filters]);
@@ -372,6 +373,52 @@ const App: React.FC = () => {
                             onRemoveEspecialidade={e => setEspecialidades(prev => prev.filter(x => x !== e))}
                         />
                         <div className="space-y-4">
+                            <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-3">
+                                <div className="flex items-center gap-2 mb-2 text-slate-400 text-sm font-bold uppercase tracking-wider">
+                                    <FilterIcon className="w-4 h-4" /> Filtros Avançados
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                    <select
+                                        value={filters.profissional}
+                                        onChange={e => setFilters(prev => ({ ...prev, profissional: e.target.value }))}
+                                        className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-300 outline-none focus:ring-2 focus:ring-sky-500"
+                                    >
+                                        <option value="">Todos os Profissionais</option>
+                                        {profissionais.map(p => <option key={p} value={p}>{p}</option>)}
+                                    </select>
+
+                                    <select
+                                        value={filters.convenio}
+                                        onChange={e => setFilters(prev => ({ ...prev, convenio: e.target.value }))}
+                                        className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-300 outline-none focus:ring-2 focus:ring-sky-500"
+                                    >
+                                        <option value="">Todos os Convênios</option>
+                                        {convenios.map(c => <option key={c} value={c}>{c}</option>)}
+                                    </select>
+
+                                    <div className="flex gap-2">
+                                        <select
+                                            value={filters.faixa}
+                                            onChange={e => setFilters(prev => ({ ...prev, faixa: e.target.value }))}
+                                            className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-300 outline-none focus:ring-2 focus:ring-sky-500 flex-1"
+                                        >
+                                            <option value="">Todas as Faixas</option>
+                                            <option value="Criança">Criança</option>
+                                            <option value="Adulto">Adulto</option>
+                                        </select>
+                                        {(filters.profissional || filters.convenio || filters.faixa) && (
+                                            <button
+                                                onClick={() => setFilters({ convenio: '', profissional: '', faixa: '' })}
+                                                className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg text-xs transition"
+                                                title="Limpar Filtros"
+                                            >
+                                                Limpar
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
                             <input type="text" placeholder="Buscar por nome ou carteirinha..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-sky-500" />
                             <PatientTable patients={filteredPatients} onEdit={p => { setEditingPatient(p); window.scrollTo(0, 0); }} onDelete={async id => { if (confirm('Excluir?')) { await supabase?.from('patients').delete().eq('id', id).catch(() => { }); setPatients(prev => prev.filter(p => p.id !== id)); } }} />
                         </div>
