@@ -154,9 +154,10 @@ export const ChevronRightIcon = ({ className, style }: IconProps) => (
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} style={style}>
         <polyline points="9 18 15 12 9 6"></polyline>
     </svg>
-);e x p o r t   c o n s t   F i l t e r I c o n   =   ( {   c l a s s N a m e ,   s t y l e   } :   I c o n P r o p s )   = >   (  
-         < s v g   x m l n s = " h t t p : / / w w w . w 3 . o r g / 2 0 0 0 / s v g "   w i d t h = " 2 4 "   h e i g h t = " 2 4 "   v i e w B o x = " 0   0   2 4   2 4 "   f i l l = " n o n e "   s t r o k e = " c u r r e n t C o l o r "   s t r o k e W i d t h = " 2 "   s t r o k e L i n e c a p = " r o u n d "   s t r o k e L i n e j o i n = " r o u n d "   c l a s s N a m e = { c l a s s N a m e }   s t y l e = { s t y l e } >  
-                 < p o l y g o n   p o i n t s = " 2 2   3   2   3   1 0   1 2 . 4 6   1 0   1 9   1 4   2 1   1 4   1 2 . 4 6   2 2   3 " > < / p o l y g o n >  
-         < / s v g >  
- ) ;  
- 
+);
+
+export const FilterIcon = ({ className, style }: IconProps) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} style={style}>
+        <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+    </svg>
+);
