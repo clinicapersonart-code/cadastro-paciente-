@@ -70,19 +70,11 @@ export const MedicalRecord: React.FC<MedicalRecordProps> = ({
     // Estado de loading para IA
     const [isFormatting, setIsFormatting] = useState(false);
 
-    // Formatar com IA (Ollama local - qwen3-coder:30b)
-    const formatWithAI = async () => {
-        if (!quickNotes.trim()) {
-            alert('Digite algumas anotações para formatar.');
-            return;
-        }
-
-        setIsFormatting(true);
-
-        const prompt = `Você é um assistente de psicólogo clínico. Formate as seguintes anotações de sessão em um prontuário profissional padrão CRP.
+    // Prompt para formatação CRP
+    const buildPrompt = (notes: string) => `Você é um assistente de psicólogo clínico. Formate as seguintes anotações de sessão em um prontuário profissional padrão CRP.
 
 ANOTAÇÕES DA SESSÃO:
-${quickNotes}
+${notes}
 
 Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicações):
 {
@@ -92,6 +84,62 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
     "nextSteps": "Encaminhamentos e próximos passos"
 }`;
 
+    // Processar resposta da IA
+    const processAIResponse = (aiResponse: string) => {
+        const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+            try {
+                const parsed = JSON.parse(jsonMatch[0]);
+                setFormattedRecord(prev => ({
+                    ...prev,
+                    content: parsed.content || quickNotes,
+                    behavior: parsed.behavior || '',
+                    intervention: parsed.intervention || '',
+                    nextSteps: parsed.nextSteps || ''
+                }));
+                return true;
+            } catch {
+                setFormattedRecord(prev => ({ ...prev, content: aiResponse || quickNotes }));
+                return true;
+            }
+        }
+        setFormattedRecord(prev => ({ ...prev, content: aiResponse || quickNotes }));
+        return true;
+    };
+
+    // Tentar Groq Cloud (funciona em produção)
+    const tryGroq = async (prompt: string): Promise<boolean> => {
+        const apiKey = import.meta.env.VITE_GROQ_API_KEY;
+        if (!apiKey) return false;
+
+        try {
+            const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify({
+                    model: 'llama-3.3-70b-versatile',
+                    messages: [{ role: 'user', content: prompt }],
+                    temperature: 0.3,
+                    max_tokens: 1000
+                })
+            });
+
+            if (!response.ok) throw new Error('Groq API error');
+
+            const data = await response.json();
+            const aiResponse = data.choices?.[0]?.message?.content || '';
+            return processAIResponse(aiResponse);
+        } catch (error) {
+            console.error('Groq error:', error);
+            return false;
+        }
+    };
+
+    // Tentar Ollama Local (funciona em desenvolvimento)
+    const tryOllama = async (prompt: string): Promise<boolean> => {
         try {
             const response = await fetch('http://localhost:11434/api/generate', {
                 method: 'POST',
@@ -100,54 +148,42 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
                     model: 'qwen3-coder:30b',
                     prompt: prompt,
                     stream: false,
-                    options: {
-                        temperature: 0.3,
-                        num_predict: 1000
-                    }
+                    options: { temperature: 0.3, num_predict: 1000 }
                 })
             });
 
-            if (!response.ok) {
-                throw new Error('Erro ao conectar com Ollama');
-            }
+            if (!response.ok) throw new Error('Ollama error');
 
             const data = await response.json();
-            let aiResponse = data.response || '';
-
-            // Tenta extrair JSON da resposta
-            const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-                try {
-                    const parsed = JSON.parse(jsonMatch[0]);
-                    setFormattedRecord(prev => ({
-                        ...prev,
-                        content: parsed.content || quickNotes,
-                        behavior: parsed.behavior || '',
-                        intervention: parsed.intervention || '',
-                        nextSteps: parsed.nextSteps || ''
-                    }));
-                } catch {
-                    // Se não conseguir parsear, usa texto bruto
-                    setFormattedRecord(prev => ({
-                        ...prev,
-                        content: aiResponse || quickNotes
-                    }));
-                }
-            } else {
-                // Fallback: usa resposta como conteúdo
-                setFormattedRecord(prev => ({
-                    ...prev,
-                    content: aiResponse || quickNotes
-                }));
-            }
+            return processAIResponse(data.response || '');
         } catch (error) {
-            console.error('Erro Ollama:', error);
-            alert('Erro ao conectar com IA. Verifique se o Ollama está rodando em localhost:11434');
-            // Fallback manual
-            setFormattedRecord(prev => ({
-                ...prev,
-                content: quickNotes
-            }));
+            console.error('Ollama error:', error);
+            return false;
+        }
+    };
+
+    // Formatar com IA (tenta Groq primeiro, depois Ollama)
+    const formatWithAI = async () => {
+        if (!quickNotes.trim()) {
+            alert('Digite algumas anotações para formatar.');
+            return;
+        }
+
+        setIsFormatting(true);
+        const prompt = buildPrompt(quickNotes);
+
+        try {
+            // Tenta Groq Cloud primeiro (funciona no Vercel)
+            const groqSuccess = await tryGroq(prompt);
+            if (groqSuccess) return;
+
+            // Fallback: tenta Ollama local
+            const ollamaSuccess = await tryOllama(prompt);
+            if (ollamaSuccess) return;
+
+            // Se nenhum funcionou
+            alert('Não foi possível conectar à IA. Verifique sua conexão.');
+            setFormattedRecord(prev => ({ ...prev, content: quickNotes }));
         } finally {
             setIsFormatting(false);
         }
@@ -284,7 +320,7 @@ Exemplo:
                         ) : (
                             <>
                                 <SparklesIcon className="w-5 h-5" />
-                                Formatar com IA (Ollama)
+                                Formatar
                             </>
                         )}
                     </button>
