@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Patient, MedicalRecordChunk, UserProfile } from '../types';
-import { FileTextIcon, MicIcon, SparklesIcon, SaveIcon, PlusIcon, ChevronDownIcon, ChevronUpIcon } from './icons';
+import { FileTextIcon, MicIcon, SparklesIcon, SaveIcon, PlusIcon, ChevronDownIcon, ChevronUpIcon, TrashIcon } from './icons';
 
 interface MedicalRecordProps {
     patient: Patient;
@@ -33,6 +33,128 @@ export const MedicalRecord: React.FC<MedicalRecordProps> = ({
 
     // Histórico expandido
     const [showHistory, setShowHistory] = useState(false);
+
+    // Seleção de registros para download
+    const [selectedRecords, setSelectedRecords] = useState<Set<string>>(new Set());
+
+    // Funções de seleção
+    const toggleRecordSelection = (recordId: string) => {
+        setSelectedRecords(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(recordId)) {
+                newSet.delete(recordId);
+            } else {
+                newSet.add(recordId);
+            }
+            return newSet;
+        });
+    };
+
+    const selectAllRecords = () => {
+        setSelectedRecords(new Set(existingRecords.map(r => r.id)));
+    };
+
+    const deselectAllRecords = () => {
+        setSelectedRecords(new Set());
+    };
+
+    // Formatar registro para texto
+    const formatRecordToText = (record: MedicalRecordChunk): string => {
+        return `
+═══════════════════════════════════════════════════════════════
+PRONTUÁRIO PSICOLÓGICO - ${record.type.toUpperCase()}
+═══════════════════════════════════════════════════════════════
+Paciente: ${patient.nome}
+Data: ${new Date(record.date).toLocaleDateString('pt-BR')}
+Profissional: ${record.professionalName}
+
+REGISTRO DA SESSÃO:
+${record.content}
+
+COMPORTAMENTO/HUMOR:
+${record.behavior || 'Não registrado'}
+
+INTERVENÇÃO/TÉCNICA:
+${record.intervention || 'Não registrado'}
+
+PRÓXIMOS PASSOS:
+${record.nextSteps || 'Não registrado'}
+═══════════════════════════════════════════════════════════════
+`;
+    };
+
+    // Download como TXT (simula DOC)
+    const downloadAsTxt = (records: MedicalRecordChunk[]) => {
+        const content = records.map(formatRecordToText).join('\n\n');
+        const header = `
+╔═══════════════════════════════════════════════════════════════╗
+║           CLÍNICA PERSONART - PRONTUÁRIO ELETRÔNICO           ║
+║                    Padrão CFP - Res. 001/2009                 ║
+╠═══════════════════════════════════════════════════════════════╣
+║ Paciente: ${patient.nome.padEnd(51)}║
+║ Convênio: ${(patient.convenio || 'Particular').padEnd(51)}║
+║ Data de Exportação: ${new Date().toLocaleString('pt-BR').padEnd(41)}║
+╚═══════════════════════════════════════════════════════════════╝
+`;
+        const blob = new Blob([header + content], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `prontuario_${patient.nome.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.txt`;
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+
+    // Download como PDF (usando print)
+    const downloadAsPdf = (records: MedicalRecordChunk[]) => {
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) {
+            alert('Por favor, permita pop-ups para gerar o PDF.');
+            return;
+        }
+
+        const content = records.map(record => `
+            <div style="page-break-after: always; padding: 20px; font-family: Arial, sans-serif;">
+                <h2 style="color: #1e3a5f; border-bottom: 2px solid #1e3a5f; padding-bottom: 10px;">
+                    PRONTUÁRIO PSICOLÓGICO - ${record.type.toUpperCase()}
+                </h2>
+                <table style="width: 100%; margin-bottom: 20px;">
+                    <tr><td><strong>Paciente:</strong> ${patient.nome}</td></tr>
+                    <tr><td><strong>Data:</strong> ${new Date(record.date).toLocaleDateString('pt-BR')}</td></tr>
+                    <tr><td><strong>Profissional:</strong> ${record.professionalName}</td></tr>
+                </table>
+                <h3 style="color: #2d5a87;">Registro da Sessão</h3>
+                <p style="background: #f5f5f5; padding: 15px; border-radius: 5px;">${record.content}</p>
+                <h3 style="color: #2d5a87;">Comportamento/Humor</h3>
+                <p style="background: #f5f5f5; padding: 15px; border-radius: 5px;">${record.behavior || 'Não registrado'}</p>
+                <h3 style="color: #2d5a87;">Intervenção/Técnica</h3>
+                <p style="background: #f5f5f5; padding: 15px; border-radius: 5px;">${record.intervention || 'Não registrado'}</p>
+                <h3 style="color: #2d5a87;">Próximos Passos</h3>
+                <p style="background: #f5f5f5; padding: 15px; border-radius: 5px;">${record.nextSteps || 'Não registrado'}</p>
+            </div>
+        `).join('');
+
+        printWindow.document.write(`
+            <html>
+                <head>
+                    <title>Prontuário - ${patient.nome}</title>
+                    <style>
+                        body { margin: 0; padding: 20px; }
+                        @media print { body { margin: 0; } }
+                    </style>
+                </head>
+                <body>
+                    <div style="text-align: center; margin-bottom: 30px;">
+                        <h1 style="color: #1e3a5f;">CLÍNICA PERSONART</h1>
+                        <p>Prontuário Eletrônico - Padrão CFP</p>
+                    </div>
+                    ${content}
+                </body>
+            </html>
+        `);
+        printWindow.document.close();
+        printWindow.print();
+    };
 
     // Ditado por voz (Web Speech API)
     const startDictation = () => {
@@ -434,25 +556,85 @@ Exemplo:
                     </button>
 
                     {showHistory && (
-                        <div className="p-4 pt-0 space-y-3 max-h-96 overflow-y-auto">
-                            {existingRecords
-                                .sort((a, b) => b.timestamp - a.timestamp)
-                                .map(record => (
-                                    <div key={record.id} className="bg-slate-900 rounded-xl p-4 border border-slate-700">
-                                        <div className="flex items-center justify-between mb-2">
-                                            <span className={`text-xs font-bold uppercase px-2 py-1 rounded ${record.type === 'Anamnese' ? 'bg-blue-500/20 text-blue-400' :
-                                                record.type === 'Encerramento' ? 'bg-red-500/20 text-red-400' :
-                                                    'bg-green-500/20 text-green-400'
-                                                }`}>
-                                                {record.type}
-                                            </span>
-                                            <span className="text-xs text-slate-500">
-                                                {new Date(record.date).toLocaleDateString('pt-BR')} • {record.professionalName}
-                                            </span>
-                                        </div>
-                                        <p className="text-slate-300 text-sm line-clamp-3">{record.content}</p>
+                        <div className="p-4 pt-0">
+                            {/* Barra de ações */}
+                            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedRecords.size === existingRecords.length && existingRecords.length > 0}
+                                        onChange={() => selectedRecords.size === existingRecords.length ? deselectAllRecords() : selectAllRecords()}
+                                        className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-sky-500 focus:ring-sky-500"
+                                    />
+                                    <span className="text-sm text-slate-400">
+                                        {selectedRecords.size === 0 ? 'Selecionar todos' :
+                                            selectedRecords.size === existingRecords.length ? 'Todos selecionados' :
+                                                `${selectedRecords.size} selecionado(s)`}
+                                    </span>
+                                </div>
+                                {selectedRecords.size > 0 && (
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => {
+                                                const records = existingRecords.filter(r => selectedRecords.has(r.id));
+                                                downloadAsTxt(records);
+                                            }}
+                                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg flex items-center gap-1 transition"
+                                        >
+                                            <FileTextIcon className="w-4 h-4" />
+                                            DOC/TXT
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                const records = existingRecords.filter(r => selectedRecords.has(r.id));
+                                                downloadAsPdf(records);
+                                            }}
+                                            className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-sm font-medium rounded-lg flex items-center gap-1 transition"
+                                        >
+                                            <FileTextIcon className="w-4 h-4" />
+                                            PDF
+                                        </button>
                                     </div>
-                                ))}
+                                )}
+                            </div>
+
+                            {/* Lista de registros */}
+                            <div className="space-y-3 max-h-96 overflow-y-auto">
+                                {existingRecords
+                                    .sort((a, b) => b.timestamp - a.timestamp)
+                                    .map(record => (
+                                        <div
+                                            key={record.id}
+                                            className={`bg-slate-900 rounded-xl p-4 border transition cursor-pointer ${selectedRecords.has(record.id)
+                                                ? 'border-sky-500 bg-sky-500/10'
+                                                : 'border-slate-700 hover:border-slate-600'
+                                                }`}
+                                            onClick={() => toggleRecordSelection(record.id)}
+                                        >
+                                            <div className="flex items-center justify-between mb-2">
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedRecords.has(record.id)}
+                                                        onChange={() => toggleRecordSelection(record.id)}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-sky-500 focus:ring-sky-500"
+                                                    />
+                                                    <span className={`text-xs font-bold uppercase px-2 py-1 rounded ${record.type === 'Anamnese' ? 'bg-blue-500/20 text-blue-400' :
+                                                        record.type === 'Encerramento' ? 'bg-red-500/20 text-red-400' :
+                                                            'bg-green-500/20 text-green-400'
+                                                        }`}>
+                                                        {record.type}
+                                                    </span>
+                                                </div>
+                                                <span className="text-xs text-slate-500">
+                                                    {new Date(record.date).toLocaleDateString('pt-BR')} • {record.professionalName}
+                                                </span>
+                                            </div>
+                                            <p className="text-slate-300 text-sm line-clamp-3">{record.content}</p>
+                                        </div>
+                                    ))}
+                            </div>
                         </div>
                     )}
                 </div>
