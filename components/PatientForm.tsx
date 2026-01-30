@@ -11,12 +11,16 @@ interface PatientFormProps {
     convenios: string[];
     profissionais: string[];
     especialidades: string[];
-    onAddConvenio: (convenio: string) => void;
-    onAddProfissional: (profissional: string) => void;
-    onAddEspecialidade: (especialidade: string) => void;
-    onRemoveConvenio: (convenio: string) => void;
-    onRemoveProfissional: (profissional: string) => void;
-    onRemoveEspecialidade: (especialidade: string) => void;
+    onAddConvenio?: (convenio: string) => void;
+    onAddProfissional?: (profissional: string) => void;
+    onAddEspecialidade?: (especialidade: string) => void;
+    onRemoveConvenio?: (convenio: string) => void;
+    onRemoveProfissional?: (profissional: string) => void;
+    onRemoveEspecialidade?: (especialidade: string) => void;
+    // NOVO: Para profissionais, trava o nome deles
+    lockedProfessional?: string;
+    hideProfessionalAdd?: boolean;
+    hideEspecialidadeAdd?: boolean;
 }
 
 const emptyPatient: Patient = {
@@ -33,13 +37,14 @@ const Chip = ({ text, onRemove }: { text: string, onRemove: () => void }) => (
 );
 
 export const PatientForm: React.FC<PatientFormProps> = ({
-    editingPatient, onSave, onClear, convenios, profissionais, especialidades, 
+    editingPatient, onSave, onClear, convenios, profissionais, especialidades,
     onAddConvenio, onAddProfissional, onAddEspecialidade,
-    onRemoveConvenio, onRemoveProfissional, onRemoveEspecialidade
+    onRemoveConvenio, onRemoveProfissional, onRemoveEspecialidade,
+    lockedProfessional, hideProfessionalAdd, hideEspecialidadeAdd
 }) => {
     const [formData, setFormData] = useState<Patient>(emptyPatient);
     const [activeTab, setActiveTab] = useState<'cadastro' | 'prontuario'>('cadastro');
-    
+
     // States for adding new items
     const [novoProfissional, setNovoProfissional] = useState('');
     const [novaEspecialidade, setNovaEspecialidade] = useState('');
@@ -94,7 +99,7 @@ export const PatientForm: React.FC<PatientFormProps> = ({
             }
             return updated;
         });
-        
+
         if (val === 'Funserv') {
             alert('Aviso: Para gerenciar as sessões e guias deste paciente, utilize a aba "Gestão Funserv" no menu principal após salvar o cadastro.');
         }
@@ -157,19 +162,19 @@ export const PatientForm: React.FC<PatientFormProps> = ({
     };
 
     const handleAddItem = (
-      list: string[], 
-      setter: (list: string[]) => void, 
-      item: string
+        list: string[],
+        setter: (list: string[]) => void,
+        item: string
     ) => {
         if (item && !list.includes(item)) {
             setter([...list, item]);
         }
     };
-    
+
     const handleRemoveItem = (
-      list: string[], 
-      setter: (list: string[]) => void, 
-      item: string
+        list: string[],
+        setter: (list: string[]) => void,
+        item: string
     ) => {
         setter(list.filter(i => i !== item));
     };
@@ -189,7 +194,7 @@ export const PatientForm: React.FC<PatientFormProps> = ({
         }
         return age;
     };
-    
+
     const ageHint = useCallback(() => {
         const d = parseISODate(formData.nascimento);
         if (!d) return '';
@@ -202,20 +207,20 @@ export const PatientForm: React.FC<PatientFormProps> = ({
         <section className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6 shadow-2xl backdrop-blur-sm">
             <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-bold text-slate-100">{editingPatient ? 'Editar Paciente' : 'Novo Paciente'}</h2>
-                
+
                 {/* Tabs */}
                 {editingPatient && (
                     <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-700">
-                        <button 
+                        <button
                             type="button"
-                            onClick={() => setActiveTab('cadastro')} 
+                            onClick={() => setActiveTab('cadastro')}
                             className={`px-3 py-1 text-xs font-bold rounded transition ${activeTab === 'cadastro' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white'}`}
                         >
                             Cadastro
                         </button>
-                        <button 
+                        <button
                             type="button"
-                            onClick={() => setActiveTab('prontuario')} 
+                            onClick={() => setActiveTab('prontuario')}
                             className={`px-3 py-1 text-xs font-bold rounded transition ${activeTab === 'prontuario' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white'}`}
                         >
                             Prontuário
@@ -265,36 +270,36 @@ export const PatientForm: React.FC<PatientFormProps> = ({
                             <input id="responsavel" name="responsavel" type="text" placeholder="Ex.: Maria de Souza" value={formData.responsavel || ''} onChange={handleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition" />
                         </div>
                     )}
-                    
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label htmlFor="convenio" className="block text-sm font-medium text-slate-400 mb-1">Convênio</label>
                             <div className="flex gap-2">
-                                <select 
-                                    id="convenio" 
-                                    name="convenio" 
-                                    value={selectedConvenio} 
-                                    onChange={handleConvenioSelect} 
+                                <select
+                                    id="convenio"
+                                    name="convenio"
+                                    value={selectedConvenio}
+                                    onChange={handleConvenioSelect}
                                     className="flex-1 w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition"
                                 >
                                     <option value="">Selecione...</option>
                                     {convenios.map(c => <option key={c} value={c}>{c}</option>)}
                                 </select>
-                                <button 
-                                    type="button" 
-                                    title="Excluir convênio selecionado da lista de opções" 
+                                <button
+                                    type="button"
+                                    title="Excluir convênio selecionado da lista de opções"
                                     onClick={() => {
                                         if (selectedConvenio) {
                                             onRemoveConvenio(selectedConvenio);
                                             setSelectedConvenio('');
-                                            setFormData(prev => ({...prev, convenio: ''}));
+                                            setFormData(prev => ({ ...prev, convenio: '' }));
                                         }
-                                    }} 
+                                    }}
                                     className="bg-slate-700 hover:bg-red-900/50 hover:text-red-300 text-slate-200 px-2.5 rounded-lg text-sm transition"
                                 >
                                     <TrashIcon className="w-4 h-4" />
                                 </button>
-                                <button type="button" title="Criar novo convênio" onClick={() => {const n = prompt('Novo convênio:'); if (n) onAddConvenio(n);}} className="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 rounded-lg text-sm transition"><PlusIcon className="w-4 h-4" /></button>
+                                <button type="button" title="Criar novo convênio" onClick={() => { const n = prompt('Novo convênio:'); if (n) onAddConvenio(n); }} className="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 rounded-lg text-sm transition"><PlusIcon className="w-4 h-4" /></button>
                             </div>
                         </div>
                         <div>
@@ -306,14 +311,14 @@ export const PatientForm: React.FC<PatientFormProps> = ({
                     {/* Funserv Notice */}
                     {formData.convenio === 'Funserv' && (
                         <div className="bg-teal-900/20 border border-teal-700/50 rounded-lg p-3 flex items-start gap-3 mt-2">
-                             <CheckIcon className="w-5 h-5 text-teal-400 mt-0.5" />
-                             <div>
-                                 <p className="text-sm text-teal-200 font-bold">Convênio Funserv Selecionado</p>
-                                 <p className="text-xs text-slate-400">
-                                     O controle de sessões, alertas e validade da guia deve ser feito através da aba 
-                                     <span className="font-bold text-teal-400"> "Gestão Funserv"</span> no menu principal.
-                                 </p>
-                             </div>
+                            <CheckIcon className="w-5 h-5 text-teal-400 mt-0.5" />
+                            <div>
+                                <p className="text-sm text-teal-200 font-bold">Convênio Funserv Selecionado</p>
+                                <p className="text-xs text-slate-400">
+                                    O controle de sessões, alertas e validade da guia deve ser feito através da aba
+                                    <span className="font-bold text-teal-400"> "Gestão Funserv"</span> no menu principal.
+                                </p>
+                            </div>
                         </div>
                     )}
 
@@ -325,11 +330,11 @@ export const PatientForm: React.FC<PatientFormProps> = ({
                         </div>
                         <div>
                             <label htmlFor="origem" className="block text-sm font-medium text-slate-400 mb-1">Origem (Como conheceu a clínica?)</label>
-                            <select 
-                                id="origem" 
-                                name="origem" 
-                                value={formData.origem || ''} 
-                                onChange={handleChange} 
+                            <select
+                                id="origem"
+                                name="origem"
+                                value={formData.origem || ''}
+                                onChange={handleChange}
                                 className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition"
                             >
                                 <option value="">Selecione a origem...</option>
@@ -340,95 +345,114 @@ export const PatientForm: React.FC<PatientFormProps> = ({
 
                     <div>
                         <label className="block text-sm font-medium text-slate-400 mb-1">Profissionais</label>
-                        <div className="flex gap-2 mb-2">
-                        <select 
-                            id="profissional-select" 
-                            value={selectedProfissional}
-                            onChange={(e) => setSelectedProfissional(e.target.value)}
-                            className="flex-1 w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition"
-                        >
-                            <option value="">Selecione para adicionar ou excluir...</option>
-                            {profissionais.map(p => <option key={p} value={p}>{p}</option>)}
-                        </select>
-                        <button 
-                            type="button" 
-                            title="Excluir profissional selecionado da lista de opções" 
-                            onClick={() => {
-                                if(selectedProfissional) {
-                                    onRemoveProfissional(selectedProfissional);
-                                    setSelectedProfissional('');
-                                }
-                            }} 
-                            className="bg-slate-700 hover:bg-red-900/50 hover:text-red-300 text-slate-200 px-3 rounded-lg text-sm transition"
-                        >
-                            <TrashIcon className="w-4 h-4" />
-                        </button>
-                        <button 
-                            type="button" 
-                            title="Adicionar profissional ao paciente" 
-                            onClick={() => {
-                                if (selectedProfissional) {
-                                    handleAddItem(formData.profissionais, (p) => setFormData(prev => ({...prev, profissionais: p})), selectedProfissional);
-                                }
-                            }} 
-                            className="bg-sky-600 hover:bg-sky-500 text-white font-semibold px-4 rounded-lg text-sm transition"
-                        >
-                            Adicionar
-                        </button>
-                        </div>
-                        <div className="flex gap-2">
-                            <input type="text" value={novoProfissional} onChange={(e) => setNovoProfissional(e.target.value)} placeholder="Criar novo profissional (Digite e clique em +)" className="flex-1 w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition" />
-                            <button type="button" onClick={() => { if (novoProfissional) { onAddProfissional(novoProfissional); setNovoProfissional(''); } }} className="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 rounded-lg text-sm transition"><PlusIcon className="w-4 h-4" /></button>
-                        </div>
-                        <div className="flex flex-wrap gap-2 mt-2">
-                            {formData.profissionais.map((p: string) => <span key={p}><Chip text={p} onRemove={() => handleRemoveItem(formData.profissionais, (pro) => setFormData(prev => ({...prev, profissionais: pro})), p)} /></span>)}
-                        </div>
+                        {lockedProfessional ? (
+                            // Modo travado: apenas mostra o nome do profissional
+                            <div className="bg-slate-900/70 border border-slate-600 rounded-lg px-4 py-3 text-white font-medium flex items-center gap-2">
+                                <UserIcon className="w-4 h-4 text-sky-400" />
+                                {lockedProfessional}
+                                <span className="text-xs text-slate-500 ml-auto">(atribuído automaticamente)</span>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="flex gap-2 mb-2">
+                                    <select
+                                        id="profissional-select"
+                                        value={selectedProfissional}
+                                        onChange={(e) => setSelectedProfissional(e.target.value)}
+                                        className="flex-1 w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition"
+                                    >
+                                        <option value="">Selecione para adicionar ou excluir...</option>
+                                        {profissionais.map(p => <option key={p} value={p}>{p}</option>)}
+                                    </select>
+                                    {onRemoveProfissional && (
+                                        <button
+                                            type="button"
+                                            title="Excluir profissional selecionado da lista de opções"
+                                            onClick={() => {
+                                                if (selectedProfissional) {
+                                                    onRemoveProfissional(selectedProfissional);
+                                                    setSelectedProfissional('');
+                                                }
+                                            }}
+                                            className="bg-slate-700 hover:bg-red-900/50 hover:text-red-300 text-slate-200 px-3 rounded-lg text-sm transition"
+                                        >
+                                            <TrashIcon className="w-4 h-4" />
+                                        </button>
+                                    )}
+                                    <button
+                                        type="button"
+                                        title="Adicionar profissional ao paciente"
+                                        onClick={() => {
+                                            if (selectedProfissional) {
+                                                handleAddItem(formData.profissionais, (p) => setFormData(prev => ({ ...prev, profissionais: p })), selectedProfissional);
+                                            }
+                                        }}
+                                        className="bg-sky-600 hover:bg-sky-500 text-white font-semibold px-4 rounded-lg text-sm transition"
+                                    >
+                                        Adicionar
+                                    </button>
+                                </div>
+                                {!hideProfessionalAdd && onAddProfissional && (
+                                    <div className="flex gap-2">
+                                        <input type="text" value={novoProfissional} onChange={(e) => setNovoProfissional(e.target.value)} placeholder="Criar novo profissional (Digite e clique em +)" className="flex-1 w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition" />
+                                        <button type="button" onClick={() => { if (novoProfissional) { onAddProfissional(novoProfissional); setNovoProfissional(''); } }} className="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 rounded-lg text-sm transition"><PlusIcon className="w-4 h-4" /></button>
+                                    </div>
+                                )}
+                                <div className="flex flex-wrap gap-2 mt-2">
+                                    {formData.profissionais.map((p: string) => <span key={p}><Chip text={p} onRemove={() => handleRemoveItem(formData.profissionais, (pro) => setFormData(prev => ({ ...prev, profissionais: pro })), p)} /></span>)}
+                                </div>
+                            </>
+                        )}
                     </div>
 
                     <div>
                         <label className="block text-sm font-medium text-slate-400 mb-1">Especialidades</label>
                         <div className="flex gap-2 mb-2">
-                        <select 
-                            id="especialidade-select" 
-                            value={selectedEspecialidade}
-                            onChange={(e) => setSelectedEspecialidade(e.target.value)}
-                            className="flex-1 w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition"
-                        >
-                            <option value="">Selecione para adicionar ou excluir...</option>
-                            {especialidades.map(e => <option key={e} value={e}>{e}</option>)}
-                        </select>
-                        <button 
-                            type="button" 
-                            title="Excluir especialidade selecionada da lista de opções" 
-                            onClick={() => {
-                                if(selectedEspecialidade) {
-                                    onRemoveEspecialidade(selectedEspecialidade);
-                                    setSelectedEspecialidade('');
-                                }
-                            }}
-                            className="bg-slate-700 hover:bg-red-900/50 hover:text-red-300 text-slate-200 px-3 rounded-lg text-sm transition"
-                        >
-                            <TrashIcon className="w-4 h-4" />
-                        </button>
-                        <button 
-                            type="button" 
-                            title="Adicionar especialidade ao paciente" 
-                            onClick={() => {
-                                if (selectedEspecialidade) {
-                                    handleAddItem(formData.especialidades, (e) => setFormData(prev => ({...prev, especialidades: e})), selectedEspecialidade);
-                                }
-                            }}
-                            className="bg-sky-600 hover:bg-sky-500 text-white font-semibold px-4 rounded-lg text-sm transition"
-                        >
-                            Adicionar
-                        </button>
+                            <select
+                                id="especialidade-select"
+                                value={selectedEspecialidade}
+                                onChange={(e) => setSelectedEspecialidade(e.target.value)}
+                                className="flex-1 w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition"
+                            >
+                                <option value="">Selecione para adicionar ou excluir...</option>
+                                {especialidades.map(e => <option key={e} value={e}>{e}</option>)}
+                            </select>
+                            {onRemoveEspecialidade && (
+                                <button
+                                    type="button"
+                                    title="Excluir especialidade selecionada da lista de opções"
+                                    onClick={() => {
+                                        if (selectedEspecialidade) {
+                                            onRemoveEspecialidade(selectedEspecialidade);
+                                            setSelectedEspecialidade('');
+                                        }
+                                    }}
+                                    className="bg-slate-700 hover:bg-red-900/50 hover:text-red-300 text-slate-200 px-3 rounded-lg text-sm transition"
+                                >
+                                    <TrashIcon className="w-4 h-4" />
+                                </button>
+                            )}
+                            <button
+                                type="button"
+                                title="Adicionar especialidade ao paciente"
+                                onClick={() => {
+                                    if (selectedEspecialidade) {
+                                        handleAddItem(formData.especialidades, (e) => setFormData(prev => ({ ...prev, especialidades: e })), selectedEspecialidade);
+                                    }
+                                }}
+                                className="bg-sky-600 hover:bg-sky-500 text-white font-semibold px-4 rounded-lg text-sm transition"
+                            >
+                                Adicionar
+                            </button>
                         </div>
-                        <div className="flex gap-2">
-                            <input type="text" value={novaEspecialidade} onChange={(e) => setNovaEspecialidade(e.target.value)} placeholder="Criar nova especialidade (Digite e clique em +)" className="flex-1 w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition" />
-                            <button type="button" onClick={() => { if (novaEspecialidade) { onAddEspecialidade(novaEspecialidade); setNovaEspecialidade(''); } }} className="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 rounded-lg text-sm transition"><PlusIcon className="w-4 h-4" /></button>
-                        </div>
+                        {!hideEspecialidadeAdd && onAddEspecialidade && (
+                            <div className="flex gap-2">
+                                <input type="text" value={novaEspecialidade} onChange={(e) => setNovaEspecialidade(e.target.value)} placeholder="Criar nova especialidade (Digite e clique em +)" className="flex-1 w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition" />
+                                <button type="button" onClick={() => { if (novaEspecialidade) { onAddEspecialidade(novaEspecialidade); setNovaEspecialidade(''); } }} className="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 rounded-lg text-sm transition"><PlusIcon className="w-4 h-4" /></button>
+                            </div>
+                        )}
                         <div className="flex flex-wrap gap-2 mt-2">
-                            {formData.especialidades.map((e: string) => <span key={e}><Chip text={e} onRemove={() => handleRemoveItem(formData.especialidades, (esp) => setFormData(prev => ({...prev, especialidades: esp})), e)} /></span>)}
+                            {formData.especialidades.map((e: string) => <span key={e}><Chip text={e} onRemove={() => handleRemoveItem(formData.especialidades, (esp) => setFormData(prev => ({ ...prev, especialidades: esp })), e)} /></span>)}
                         </div>
                     </div>
 
@@ -446,17 +470,17 @@ export const PatientForm: React.FC<PatientFormProps> = ({
                     {/* SEÇÃO AGENDAMENTO INICIAL */}
                     <div className="bg-slate-900/50 border border-slate-700 rounded-xl p-4 mt-2">
                         <div className="flex items-center gap-2 mb-3">
-                             <input 
-                                type="checkbox" 
-                                id="scheduleInitial" 
-                                checked={scheduleInitial} 
+                            <input
+                                type="checkbox"
+                                id="scheduleInitial"
+                                checked={scheduleInitial}
                                 onChange={(e) => setScheduleInitial(e.target.checked)}
                                 className="w-4 h-4 text-sky-600 rounded bg-slate-800 border-slate-600 focus:ring-sky-500"
-                             />
-                             <label htmlFor="scheduleInitial" className="text-sm font-bold text-slate-200 cursor-pointer flex items-center gap-2">
-                                <CalendarIcon className="w-4 h-4 text-sky-400"/>
+                            />
+                            <label htmlFor="scheduleInitial" className="text-sm font-bold text-slate-200 cursor-pointer flex items-center gap-2">
+                                <CalendarIcon className="w-4 h-4 text-sky-400" />
                                 Agendar primeira consulta agora?
-                             </label>
+                            </label>
                         </div>
 
                         {scheduleInitial && (
@@ -474,7 +498,7 @@ export const PatientForm: React.FC<PatientFormProps> = ({
                                     <select value={apptProf} onChange={e => setApptProf(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:ring-1 focus:ring-sky-500 outline-none">
                                         <option value="">Selecione...</option>
                                         {/* Use patient's selected professionals first, then fallback to full list if none */}
-                                        {formData.profissionais.length > 0 
+                                        {formData.profissionais.length > 0
                                             ? formData.profissionais.map(p => <option key={p} value={p}>{p}</option>)
                                             : profissionais.map(p => <option key={p} value={p}>{p}</option>)
                                         }
@@ -505,9 +529,9 @@ export const PatientForm: React.FC<PatientFormProps> = ({
                 </form>
             ) : (
                 <div className="space-y-4">
-                     <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider">Histórico de Evoluções</h4>
-                     
-                     <div className="max-h-[400px] overflow-y-auto pr-2 space-y-3 bg-slate-900/30 rounded-xl p-2 border border-slate-700/50">
+                    <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider">Histórico de Evoluções</h4>
+
+                    <div className="max-h-[400px] overflow-y-auto pr-2 space-y-3 bg-slate-900/30 rounded-xl p-2 border border-slate-700/50">
                         {(!formData.evolutions || formData.evolutions.length === 0) ? (
                             <p className="text-sm text-slate-500 text-center py-8">Nenhuma evolução registrada neste prontuário.</p>
                         ) : (
@@ -526,8 +550,8 @@ export const PatientForm: React.FC<PatientFormProps> = ({
                                     </div>
                                 ))
                         )}
-                     </div>
-                     <p className="text-xs text-slate-500 mt-2">* As evoluções são inseridas pelos profissionais através do Portal do Colaborador.</p>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-2">* As evoluções são inseridas pelos profissionais através do Portal do Colaborador.</p>
                 </div>
             )}
         </section>
