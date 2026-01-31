@@ -405,16 +405,16 @@ const App: React.FC = () => {
     );
 
     return (
-        <div className="min-h-screen bg-slate-900 text-slate-100">
-            <header className="bg-slate-800/50 border-b border-slate-700 p-4 sticky top-0 z-50 backdrop-blur-md">
-                <div className="max-w-7xl mx-auto flex justify-between items-center">
-                    <div className="flex items-center gap-3">
-                        <h1 className="font-bold text-xl cursor-pointer" onClick={() => setActiveTab('pacientes')} style={{ color: brand.color }}>{brand.name}</h1>
+        <div className="min-h-screen bg-slate-950 text-slate-100 selection:bg-[#e9c49e]/30 selection:text-[#e9c49e]">
+            <header className="bg-slate-900/60 border-b border-[#e9c49e]/10 p-4 sticky top-0 z-50 backdrop-blur-xl shadow-lg shadow-black/20">
+                <div className="max-w-7xl mx-auto flex justify-between items-center transition-all">
+                    <div className="flex items-center gap-4">
+                        <h1 className="font-bold text-2xl cursor-pointer tracking-tight hover:opacity-80 transition-opacity" onClick={() => setActiveTab('pacientes')} style={{ color: '#e9c49e', textShadow: '0 0 20px rgba(233, 196, 158, 0.2)' }}>{brand.name}</h1>
 
                         {/* Saudação Usuário */}
                         {currentUser && (
-                            <div className="flex items-center gap-2 px-3 py-1 bg-slate-900/50 rounded-lg border border-slate-700/50">
-                                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${currentUser.role === 'admin' ? 'bg-amber-500/20 text-amber-400' : 'bg-sky-500/20 text-sky-400'}`}>
+                            <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/40 rounded-full border border-slate-700/50 backdrop-blur-md">
+                                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${currentUser.role === 'admin' ? 'bg-[#e9c49e]/20 text-[#e9c49e]' : 'bg-[#273e44] text-[#e9c49e]'}`}>
                                     {currentUser.name.charAt(0)}
                                 </div>
                                 <span className="text-xs text-slate-300 font-medium">
@@ -426,40 +426,78 @@ const App: React.FC = () => {
 
                         {/* Indicador de Status da Conexão */}
                         {connectionStatus === 'error' && (
-                            <span className="text-[10px] bg-red-900/50 text-red-400 border border-red-800 px-2 py-0.5 rounded-full flex items-center gap-1" title={dbError}>
-                                <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></div> Offline
+                            <span className="text-[10px] bg-red-900/20 text-red-400 border border-red-800/30 px-3 py-1 rounded-full flex items-center gap-1.5 backdrop-blur-sm" title={dbError}>
+                                <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.5)]"></div> Offline
                             </span>
                         )}
                         {connectionStatus === 'connected' && (
-                            <span className="text-[10px] bg-green-900/30 text-green-400 border border-green-800/50 px-2 py-0.5 rounded-full flex items-center gap-1">
-                                <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div> Online
+                            <span className="text-[10px] bg-[#273e44]/20 text-[#e9c49e]/80 border border-[#273e44]/50 px-3 py-1 rounded-full flex items-center gap-1.5 backdrop-blur-sm">
+                                <div className="w-1.5 h-1.5 rounded-full bg-[#e9c49e] shadow-[0_0_8px_rgba(233,196,158,0.4)]"></div> Online
                             </span>
                         )}
                         {isLoading && (
-                            <span className="text-[10px] text-slate-500 animate-pulse">Sincronizando...</span>
+                            <span className="text-[10px] text-[#e9c49e]/50 animate-pulse flex items-center gap-2">
+                                <div className="w-3 h-3 border-2 border-[#e9c49e]/20 border-t-[#e9c49e] rounded-full animate-spin" />
+                                Sincronizando
+                            </span>
                         )}
                     </div>
 
-                    <nav className="flex gap-2 items-center">
+                    <nav className="flex gap-1 items-center bg-slate-900/50 p-1 rounded-xl border border-white/5">
                         {/* Abas visíveis apenas para Clínica */}
                         {currentUser?.role === 'clinic' && (
                             <>
-                                <button onClick={() => setActiveTab('pacientes')} className={`px-4 py-2 rounded-lg text-sm font-medium ${activeTab === 'pacientes' ? 'bg-sky-600' : 'hover:bg-slate-700'}`}>Pacientes</button>
-                                <button onClick={() => setActiveTab('agenda')} className={`px-4 py-2 rounded-lg text-sm font-medium ${activeTab === 'agenda' ? 'bg-sky-600' : 'hover:bg-slate-700'}`}>Agenda</button>
-                                <button onClick={() => setActiveTab('funserv')} className={`px-4 py-2 rounded-lg text-sm font-medium ${activeTab === 'funserv' ? 'bg-sky-600' : 'hover:bg-slate-700'}`}>Funserv</button>
-                                <button onClick={() => setActiveTab('inbox')} className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${activeTab === 'inbox' ? 'bg-sky-600' : 'hover:bg-slate-700'}`}>
-                                    <InboxIcon className="w-4 h-4" />
-                                    Inbox
-                                    {inbox.length > 0 && <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{inbox.length}</span>}
+                                <button
+                                    onClick={() => setActiveTab('pacientes')}
+                                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 ${activeTab === 'pacientes'
+                                        ? 'bg-[#273e44] text-[#e9c49e] shadow-lg shadow-[#273e44]/20 border border-[#e9c49e]/10'
+                                        : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                                        }`}
+                                >
+                                    Pacientes
+                                </button>
+                                <button
+                                    onClick={() => setActiveTab('agenda')}
+                                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 ${activeTab === 'agenda'
+                                        ? 'bg-[#273e44] text-[#e9c49e] shadow-lg shadow-[#273e44]/20 border border-[#e9c49e]/10'
+                                        : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                                        }`}
+                                >
+                                    Agenda
+                                </button>
+                                <button
+                                    onClick={() => setActiveTab('funserv')}
+                                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 ${activeTab === 'funserv'
+                                        ? 'bg-[#273e44] text-[#e9c49e] shadow-lg shadow-[#273e44]/20 border border-[#e9c49e]/10'
+                                        : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                                        }`}
+                                >
+                                    Funserv
+                                </button>
+                                <button
+                                    onClick={() => setActiveTab('inbox')}
+                                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 flex items-center gap-2 ${activeTab === 'inbox'
+                                        ? 'bg-[#273e44] text-[#e9c49e] shadow-lg shadow-[#273e44]/20 border border-[#e9c49e]/10'
+                                        : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                                        }`}
+                                >
+                                    <span className="relative">
+                                        Inbox
+                                        {inbox.filter((msg: any) => !msg.read).length > 0 && (
+                                            <span className="absolute -top-1 -right-2 w-2 h-2 bg-red-500 rounded-full animate-ping" />
+                                        )}
+                                    </span>
                                 </button>
                             </>
                         )}
 
-                        {/* Prontuário visível para todos */}
-                        <button onClick={() => setActiveTab('prontuario')} className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${activeTab === 'prontuario' ? 'bg-green-600' : 'hover:bg-slate-700'}`}>
-                            <FileTextIcon className="w-4 h-4" />
-                            Prontuário
-                        </button>
+                        {/* Prontuário visível apenas para profissionais e admin */}
+                        {currentUser?.role !== 'clinic' && (
+                            <button onClick={() => setActiveTab('prontuario')} className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${activeTab === 'prontuario' ? 'bg-green-600' : 'hover:bg-slate-700'}`}>
+                                <FileTextIcon className="w-4 h-4" />
+                                Prontuário
+                            </button>
+                        )}
 
                         {/* Cadastrar Paciente visível para admin e profissionais */}
                         {(currentUser?.role === 'admin' || currentUser?.role === 'professional') && (
@@ -749,20 +787,6 @@ const App: React.FC = () => {
                                 </div>
                                 <button onClick={() => copyLink('?page=cadastro')} className="w-full bg-slate-800 hover:bg-slate-700 text-sky-400 text-xs font-mono py-2 rounded border border-slate-600 transition">
                                     Copiar Link de Cadastro
-                                </button>
-                            </div>
-
-                            {/* Atualização Cadastral - visível para todos */}
-                            <div className="bg-slate-900 p-4 rounded-xl border border-slate-700">
-                                <div className="flex items-center gap-3 mb-2">
-                                    <div className="bg-blue-900/30 p-2 rounded-lg"><EditIcon className="w-5 h-5 text-blue-400" /></div>
-                                    <div className="flex-1">
-                                        <h4 className="font-bold text-white text-sm">Atualização Cadastral</h4>
-                                        <p className="text-xs text-slate-500">Pacientes já cadastrados</p>
-                                    </div>
-                                </div>
-                                <button onClick={() => copyLink('?page=update')} className="w-full bg-slate-800 hover:bg-slate-700 text-blue-400 text-xs font-mono py-2 rounded border border-slate-600 transition">
-                                    Copiar Link de Atualização
                                 </button>
                             </div>
 
