@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Appointment, Patient } from '../types';
+import { Appointment, Patient, UserProfile } from '../types';
 import { CalendarIcon, PlusIcon, TrashIcon, CheckIcon, EditIcon, ChevronLeftIcon, ChevronRightIcon } from './icons';
 import useLocalStorage from '../hooks/useLocalStorage';
 
@@ -11,6 +11,7 @@ interface AgendaProps {
     onAddBatchAppointments?: (appts: Appointment[]) => void;
     onUpdateAppointment: (appt: Appointment) => void;
     onDeleteAppointment: (id: string) => void;
+    currentUser?: UserProfile;
 }
 
 const TIME_SLOTS = [
@@ -102,8 +103,24 @@ export const Agenda: React.FC<AgendaProps> = ({
     onAddAppointment,
     onAddBatchAppointments,
     onUpdateAppointment,
-    onDeleteAppointment
+    onDeleteAppointment,
+    currentUser
 }) => {
+    // RBAC: Filtrar agendamentos para profissionais
+    const filteredAppointments = useMemo(() => {
+        if (!appointments || appointments.length === 0) return [];
+        if (currentUser?.role === 'professional' && currentUser?.name) {
+            const professionalName = currentUser.name;
+            return appointments.filter(appt => {
+                if (!appt?.profissional) return false;
+                // Correspondência parcial do nome do profissional
+                return appt.profissional.toLowerCase().includes(professionalName.toLowerCase()) ||
+                    professionalName.toLowerCase().includes(appt.profissional.toLowerCase().split(' - ')[0]);
+            });
+        }
+        return appointments;
+    }, [appointments, currentUser]);
+
     const [selectedDate, setSelectedDate] = useLocalStorage<string>('personart.agenda.date', new Date().toISOString().split('T')[0]);
     const [viewMode, setViewMode] = useLocalStorage<'day' | 'week' | 'month'>('personart.agenda.view', 'week');
 
@@ -221,7 +238,7 @@ export const Agenda: React.FC<AgendaProps> = ({
 
     const getAppointmentsForDay = (date: Date): Appointment[] => {
         const dateStr = formatDateISO(date);
-        return appointments
+        return filteredAppointments
             .filter(a => a.date === dateStr)
             .filter(a => !filterProfissional || a.profissional === filterProfissional)
             .sort((a, b) => a.time.localeCompare(b.time));
@@ -229,7 +246,7 @@ export const Agenda: React.FC<AgendaProps> = ({
 
     const getAppointmentsForSlot = (date: Date, timeSlot: string): Appointment[] => {
         const dateStr = formatDateISO(date);
-        return appointments
+        return filteredAppointments
             .filter(a => a.date === dateStr && a.time === timeSlot)
             .filter(a => !filterProfissional || a.profissional === filterProfissional);
     };

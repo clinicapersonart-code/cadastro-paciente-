@@ -493,10 +493,16 @@ const App: React.FC = () => {
 
                         {/* Prontuário visível apenas para profissionais e admin */}
                         {currentUser?.role !== 'clinic' && (
-                            <button onClick={() => setActiveTab('prontuario')} className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${activeTab === 'prontuario' ? 'bg-green-600' : 'hover:bg-slate-700'}`}>
-                                <FileTextIcon className="w-4 h-4" />
-                                Prontuário
-                            </button>
+                            <>
+                                <button onClick={() => setActiveTab('agenda')} className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${activeTab === 'agenda' ? 'bg-sky-600' : 'hover:bg-slate-700'}`}>
+                                    <CalendarIcon className="w-4 h-4" />
+                                    Agenda
+                                </button>
+                                <button onClick={() => setActiveTab('prontuario')} className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${activeTab === 'prontuario' ? 'bg-green-600' : 'hover:bg-slate-700'}`}>
+                                    <FileTextIcon className="w-4 h-4" />
+                                    Prontuário
+                                </button>
+                            </>
                         )}
 
                         {/* Cadastrar Paciente visível para admin e profissionais */}
@@ -607,7 +613,7 @@ const App: React.FC = () => {
                         </div>
                     </div>
                 )}
-                {activeTab === 'agenda' && <Agenda patients={patients} profissionais={profissionais} appointments={appointments} onAddAppointment={handleAddAppointment} onAddBatchAppointments={handleAddBatchAppointments} onUpdateAppointment={handleUpdateAppointment} onDeleteAppointment={handleDeleteAppointment} />}
+                {activeTab === 'agenda' && <Agenda patients={patients} profissionais={profissionais} appointments={appointments} onAddAppointment={handleAddAppointment} onAddBatchAppointments={handleAddBatchAppointments} onUpdateAppointment={handleUpdateAppointment} onDeleteAppointment={handleDeleteAppointment} currentUser={currentUser} />}
                 {activeTab === 'funserv' && <FunservManager patients={patients} onSavePatient={handleSavePatient} />}
                 {activeTab === 'inbox' && (
                     <Inbox
