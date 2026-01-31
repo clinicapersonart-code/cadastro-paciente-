@@ -408,7 +408,20 @@ export const Agenda: React.FC<AgendaProps> = ({
                         <form onSubmit={handleSubmit} className="space-y-4">
                             <select required value={selectedPatientId} onChange={e => setSelectedPatientId(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white">
                                 <option value="">Selecione o paciente...</option>
-                                {patients.sort((a, b) => a.nome.localeCompare(b.nome)).map(p => <option key={p.id} value={p.id}>{p.nome} {p.carteirinha ? `(${p.carteirinha})` : ''}</option>)}
+                                {patients
+                                    .filter(p => {
+                                        if (currentUser?.role === 'professional' && currentUser?.name) {
+                                            const normalizedPro = currentUser.name.toLowerCase();
+                                            // Verifica se o paciente tem lista de profissionais E se inclui o logado
+                                            return p.profissionais?.some(prof =>
+                                                prof.toLowerCase().includes(normalizedPro) ||
+                                                normalizedPro.includes(prof.toLowerCase().split(' - ')[0])
+                                            );
+                                        }
+                                        return true;
+                                    })
+                                    .sort((a, b) => a.nome.localeCompare(b.nome))
+                                    .map(p => <option key={p.id} value={p.id}>{p.nome} {p.carteirinha ? `(${p.carteirinha})` : ''}</option>)}
                             </select>
 
                             <div className="grid grid-cols-2 gap-3">
@@ -416,7 +429,13 @@ export const Agenda: React.FC<AgendaProps> = ({
                                 <input type="time" required value={time} onChange={e => setTime(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white" />
                             </div>
 
-                            <select required value={formProfissional} onChange={e => setFormProfissional(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white">
+                            <select
+                                required
+                                value={currentUser?.role === 'professional' ? (profissionais.find(p => p.toLowerCase().includes(currentUser.name.toLowerCase()) || currentUser.name.toLowerCase().includes(p.toLowerCase().split(' - ')[0])) || formProfissional) : formProfissional}
+                                onChange={e => setFormProfissional(e.target.value)}
+                                disabled={currentUser?.role === 'professional'}
+                                className={`w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white ${currentUser?.role === 'professional' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            >
                                 <option value="">Selecione o profissional...</option>
                                 {profissionais.map(p => <option key={p} value={p}>{p}</option>)}
                             </select>
