@@ -1,7 +1,7 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { PreCadastro } from '../types';
-import { CheckIcon, StarIcon, UserIcon } from './icons';
+import { CheckIcon, StarIcon, UserIcon, LockIcon } from './icons';
 import { DEFAULT_ORIGINS, DEFAULT_PROFISSIONAIS } from '../constants';
 import { supabase } from '../services/supabase';
 
@@ -15,14 +15,26 @@ interface PublicRegistrationProps {
     convenios: string[];
 }
 
-export const PublicRegistration: React.FC<PublicRegistrationProps> = ({ 
-    brandName, 
-    brandColor, 
-    brandLogo, 
-    isUpdateMode = false, 
+export const PublicRegistration: React.FC<PublicRegistrationProps> = ({
+    brandName,
+    brandColor,
+    brandLogo,
+    isUpdateMode = false,
     isVipMode = false,
-    convenios 
+    convenios
 }) => {
+    // Ler parâmetros da URL para pré-configuração
+    const urlParams = new URLSearchParams(window.location.search);
+    const presetData = urlParams.get('preData') || ''; // formato: 2026-02-07
+    const presetHora = urlParams.get('preHora') || ''; // formato: 14:00
+    const presetProfissional = urlParams.get('prePro') || '';
+    const presetDia = urlParams.get('preDia') || ''; // formato: Segunda-feira
+
+    // Verificar se há campos pré-configurados (travados)
+    const isDataLocked = !!presetData || !!presetDia;
+    const isHoraLocked = !!presetHora;
+    const isProfissionalLocked = !!presetProfissional;
+
     const [formData, setFormData] = useState({
         nome: '',
         nascimento: '',
@@ -34,10 +46,11 @@ export const PublicRegistration: React.FC<PublicRegistrationProps> = ({
         carteirinha: '',
         crm: '',
         origem: '',
-        profissional: '',
+        profissional: presetProfissional,
         agendamento: {
-            data: '',
-            hora: '',
+            data: presetData,
+            hora: presetHora,
+            dia: presetDia, // Novo campo para dia da semana
             frequencia: 'Semanal'
         }
     });
@@ -73,13 +86,13 @@ export const PublicRegistration: React.FC<PublicRegistrationProps> = ({
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        
+
         if (!supabase) {
             alert('Erro de configuração do sistema. Contate a clínica.');
             return;
         }
 
-        if(isChild && !formData.responsavel) {
+        if (isChild && !formData.responsavel) {
             alert('Por favor, preencha o nome do responsável.');
             return;
         }
@@ -108,7 +121,7 @@ export const PublicRegistration: React.FC<PublicRegistrationProps> = ({
 
     if (status === 'success') {
         if (isVipMode) {
-             return (
+            return (
                 <div className="min-h-screen flex items-center justify-center p-4 bg-slate-900">
                     <div className="bg-slate-800 p-8 rounded-2xl text-center max-w-md w-full shadow-2xl border border-slate-700 animate-fade-in relative overflow-hidden">
                         {/* Efeito de brilho no fundo */}
@@ -120,17 +133,17 @@ export const PublicRegistration: React.FC<PublicRegistrationProps> = ({
                         <h2 className="text-2xl font-bold text-white mb-4">Atualização Recebida!</h2>
                         <p className="text-slate-300 text-sm leading-relaxed mb-6">
                             Você é muito importante para o nosso crescimento. Obrigado por fazer parte da nossa história!
-                            <br/><br/>
+                            <br /><br />
                             Se puder, nos ajude ainda mais nos avaliando com 5 estrelas no Google. Isso faz toda a diferença para nós.
                         </p>
-                        
-                        <a 
-                            href="https://g.page/r/CeVIkm6xjD-zEAE/review" 
-                            target="_blank" 
+
+                        <a
+                            href="https://g.page/r/CeVIkm6xjD-zEAE/review"
+                            target="_blank"
                             rel="noopener noreferrer"
                             className="block w-full bg-slate-100 hover:bg-white text-slate-900 font-bold py-3 rounded-xl transition shadow-lg transform hover:scale-[1.02] flex items-center justify-center gap-2 mb-4"
                         >
-                            <img src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg" alt="Google" className="w-5 h-5"/>
+                            <img src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg" alt="Google" className="w-5 h-5" />
                             Avaliar no Google
                         </a>
 
@@ -139,7 +152,7 @@ export const PublicRegistration: React.FC<PublicRegistrationProps> = ({
                         </button>
                     </div>
                 </div>
-             );
+            );
         }
 
         return (
@@ -200,27 +213,40 @@ export const PublicRegistration: React.FC<PublicRegistrationProps> = ({
                         <label className="block text-sm font-medium text-slate-400 mb-1">Endereço</label>
                         <input name="endereco" value={formData.endereco} onChange={handleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-3 text-white focus:ring-2 focus:ring-sky-500 outline-none transition" placeholder="Rua, Número, Bairro" />
                     </div>
-                    
+
                     <div className="border-t border-slate-700 pt-4 mt-2">
                         <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Informações do Atendimento</p>
-                        
-                        {/* Seção Novo Profissional */}
+
+                        {/* Seção Profissional */}
                         <div className="mb-4">
-                             <label className="block text-sm font-medium text-slate-400 mb-1">Profissional de Preferência</label>
-                             <div className="relative">
-                                 <select 
-                                    name="profissional" 
-                                    value={formData.profissional} 
-                                    onChange={handleChange} 
-                                    className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-3 text-white focus:ring-2 focus:ring-sky-500 outline-none transition appearance-none pl-10"
-                                 >
-                                    <option value="">Selecione o profissional (Opcional)...</option>
-                                    {DEFAULT_PROFISSIONAIS.sort().map(p => (
-                                        <option key={p} value={p}>{p}</option>
-                                    ))}
-                                 </select>
-                                 <UserIcon className="w-5 h-5 text-slate-500 absolute left-3 top-3.5" />
-                             </div>
+                            <label className="block text-sm font-medium text-slate-400 mb-1 flex items-center gap-2">
+                                Profissional de Preferência
+                                {isProfissionalLocked && <LockIcon className="w-3 h-3 text-amber-400" />}
+                            </label>
+                            <div className="relative">
+                                {isProfissionalLocked ? (
+                                    <div className="w-full bg-amber-900/20 border border-amber-700/50 rounded-lg px-3 py-3 text-amber-200 pl-10 flex items-center">
+                                        <UserIcon className="w-5 h-5 text-amber-400 absolute left-3" />
+                                        {formData.profissional}
+                                        <span className="ml-auto text-xs text-amber-500">Pré-agendado</span>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <select
+                                            name="profissional"
+                                            value={formData.profissional}
+                                            onChange={handleChange}
+                                            className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-3 text-white focus:ring-2 focus:ring-sky-500 outline-none transition appearance-none pl-10"
+                                        >
+                                            <option value="">Selecione o profissional (Opcional)...</option>
+                                            {DEFAULT_PROFISSIONAIS.sort().map(p => (
+                                                <option key={p} value={p}>{p}</option>
+                                            ))}
+                                        </select>
+                                        <UserIcon className="w-5 h-5 text-slate-500 absolute left-3 top-3.5" />
+                                    </>
+                                )}
+                            </div>
                         </div>
 
                         <div className="space-y-4">
@@ -236,7 +262,7 @@ export const PublicRegistration: React.FC<PublicRegistrationProps> = ({
                                 <input name="carteirinha" value={formData.carteirinha} onChange={handleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-3 text-white focus:ring-2 focus:ring-sky-500 outline-none transition" placeholder="Número da carteira do convênio" />
                             </div>
                         </div>
-                        
+
                         <div className="mt-4">
                             <label className="block text-sm font-medium text-slate-400 mb-1">CRM do Médico (Pedido Médico)</label>
                             <input name="crm" value={formData.crm} onChange={handleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-3 text-white focus:ring-2 focus:ring-sky-500 outline-none transition" placeholder="Ex.: CRM-SP 123456 (Se houver pedido)" />
@@ -245,15 +271,36 @@ export const PublicRegistration: React.FC<PublicRegistrationProps> = ({
 
                     {!isVipMode && (
                         <div className="border-t border-slate-700 pt-4 mt-2">
-                            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Sugestão de Agendamento</p>
+                            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
+                                Sugestão de Agendamento
+                                {(isDataLocked || isHoraLocked) && <span className="text-amber-400 ml-2">• Pré-configurado</span>}
+                            </p>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-400 mb-1">Data Preferencial</label>
-                                    <input type="date" name="data" value={formData.agendamento.data} onChange={handleScheduleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-3 text-white focus:ring-2 focus:ring-sky-500 outline-none transition" />
+                                    <label className="block text-sm font-medium text-slate-400 mb-1 flex items-center gap-2">
+                                        Data / Dia Preferencial
+                                        {isDataLocked && <LockIcon className="w-3 h-3 text-amber-400" />}
+                                    </label>
+                                    {isDataLocked ? (
+                                        <div className="w-full bg-amber-900/20 border border-amber-700/50 rounded-lg px-3 py-3 text-amber-200">
+                                            {presetDia || (presetData && new Date(presetData + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }))}
+                                        </div>
+                                    ) : (
+                                        <input type="date" name="data" value={formData.agendamento.data} onChange={handleScheduleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-3 text-white focus:ring-2 focus:ring-sky-500 outline-none transition" />
+                                    )}
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-400 mb-1">Horário Preferencial</label>
-                                    <input type="time" name="hora" value={formData.agendamento.hora} onChange={handleScheduleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-3 text-white focus:ring-2 focus:ring-sky-500 outline-none transition" />
+                                    <label className="block text-sm font-medium text-slate-400 mb-1 flex items-center gap-2">
+                                        Horário Preferencial
+                                        {isHoraLocked && <LockIcon className="w-3 h-3 text-amber-400" />}
+                                    </label>
+                                    {isHoraLocked ? (
+                                        <div className="w-full bg-amber-900/20 border border-amber-700/50 rounded-lg px-3 py-3 text-amber-200">
+                                            {presetHora}
+                                        </div>
+                                    ) : (
+                                        <input type="time" name="hora" value={formData.agendamento.hora} onChange={handleScheduleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-3 text-white focus:ring-2 focus:ring-sky-500 outline-none transition" />
+                                    )}
                                 </div>
                                 <div className="col-span-2">
                                     <label className="block text-sm font-medium text-slate-400 mb-1">Frequência Desejada</label>
@@ -268,8 +315,8 @@ export const PublicRegistration: React.FC<PublicRegistrationProps> = ({
                     )}
 
                     <div className="pt-2">
-                         <label className="block text-sm font-medium text-slate-400 mb-1">Como conheceu a clínica?</label>
-                         <select name="origem" value={formData.origem} onChange={handleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-3 text-white focus:ring-2 focus:ring-sky-500 outline-none transition appearance-none">
+                        <label className="block text-sm font-medium text-slate-400 mb-1">Como conheceu a clínica?</label>
+                        <select name="origem" value={formData.origem} onChange={handleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-3 text-white focus:ring-2 focus:ring-sky-500 outline-none transition appearance-none">
                             <option value="">Selecione...</option>
                             {DEFAULT_ORIGINS.map(o => <option key={o} value={o}>{o}</option>)}
                         </select>

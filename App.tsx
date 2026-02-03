@@ -853,6 +853,60 @@ const App: React.FC = () => {
                                 </button>
                             </div>
 
+                            {/* Link Pré-Configurado */}
+                            <div className="bg-slate-900 p-4 rounded-xl border border-slate-700">
+                                <div className="flex items-center gap-3 mb-3">
+                                    <div className="bg-purple-900/30 p-2 rounded-lg"><CalendarIcon className="w-5 h-5 text-purple-400" /></div>
+                                    <div className="flex-1">
+                                        <h4 className="font-bold text-white text-sm">Link Pré-Agendado</h4>
+                                        <p className="text-xs text-slate-500">Com data/hora/profissional travados</p>
+                                    </div>
+                                </div>
+                                <div className="space-y-2 mb-3">
+                                    <select
+                                        id="prePro"
+                                        className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white"
+                                    >
+                                        <option value="">Profissional (opcional)</option>
+                                        {profissionais.map(p => <option key={p} value={p}>{p}</option>)}
+                                    </select>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <select
+                                            id="preDia"
+                                            className="bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white"
+                                        >
+                                            <option value="">Dia (opcional)</option>
+                                            <option value="Segunda-feira">Segunda</option>
+                                            <option value="Terça-feira">Terça</option>
+                                            <option value="Quarta-feira">Quarta</option>
+                                            <option value="Quinta-feira">Quinta</option>
+                                            <option value="Sexta-feira">Sexta</option>
+                                            <option value="Sábado">Sábado</option>
+                                        </select>
+                                        <input
+                                            type="time"
+                                            id="preHora"
+                                            className="bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white"
+                                        />
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        const pro = (document.getElementById('prePro') as HTMLSelectElement)?.value;
+                                        const dia = (document.getElementById('preDia') as HTMLSelectElement)?.value;
+                                        const hora = (document.getElementById('preHora') as HTMLInputElement)?.value;
+                                        let params = '?page=cadastro';
+                                        if (pro) params += `&prePro=${encodeURIComponent(pro)}`;
+                                        if (dia) params += `&preDia=${encodeURIComponent(dia)}`;
+                                        if (hora) params += `&preHora=${encodeURIComponent(hora)}`;
+                                        copyLink(params);
+                                    }}
+                                    className="w-full bg-purple-600 hover:bg-purple-500 text-white text-xs font-medium py-2 rounded transition"
+                                >
+                                    Copiar Link Pré-Configurado
+                                </button>
+                            </div>
+
                             {/* VIP - apenas Clínica */}
                             {currentUser?.role === 'clinic' && (
                                 <div className="bg-slate-900 p-4 rounded-xl border border-slate-700">
