@@ -12,6 +12,8 @@ import { FunservManager } from './components/FunservManager';
 import { Inbox } from './components/Inbox';
 import { LoginScreen } from './components/LoginScreen';
 import { MedicalRecord } from './components/MedicalRecord';
+import { PatientPortal } from './components/PatientPortal';
+import { UserManager } from './components/UserManager';
 import { DownloadIcon, CloudIcon, UserIcon, CalendarIcon, InboxIcon, CheckIcon, XIcon, LockIcon, FileTextIcon, StarIcon, UploadIcon, ShieldIcon, FilterIcon, EditIcon, PlusIcon } from './components/icons';
 
 const App: React.FC = () => {
@@ -46,6 +48,7 @@ const App: React.FC = () => {
     const [toast, setToast] = useState<{ msg: string, type: 'success' | 'error' | 'info' } | null>(null);
     const [showLinksModal, setShowLinksModal] = useState(false);
     const [showPasswordModal, setShowPasswordModal] = useState(false);
+    const [showUserManager, setShowUserManager] = useState(false);
     const [passwordForm, setPasswordForm] = useState({ current: '', new: '', confirm: '' });
     const [passwordError, setPasswordError] = useState('');
 
@@ -226,6 +229,12 @@ const App: React.FC = () => {
         }
     };
 
+    // Handler para atualizar paciente (usado pelo PatientPortal)
+    const handlePatientUpdate = (updatedPatient: Patient) => {
+        setPatients(prev => prev.map(p => p.id === updatedPatient.id ? updatedPatient : p));
+        showToast('Dados do paciente atualizados!', 'success');
+    };
+
     const handleAddAppointment = async (appt: Appointment) => {
         const patient = patients.find(p => p.id === appt.patientId);
         const enrichedAppt = {
@@ -393,6 +402,47 @@ const App: React.FC = () => {
         showToast('Link copiado para a área de transferência!', 'success');
     };
 
+    // --- HANDLERS DE GERENCIAMENTO DE USUÁRIOS ---
+    const handleAddUser = (newUser: UserProfile) => {
+        setUsers(prev => [...prev, newUser]);
+
+        // SINCRONIZAÇÃO: Se for profissional, adiciona na lista de profissionais
+        if (newUser.role === 'professional') {
+            const displayName = newUser.professionalRegister
+                ? `${newUser.name} - ${newUser.professionalRegister}`
+                : newUser.name;
+
+            // Evita duplicatas
+            setProfissionais(prev => {
+                if (prev.some(p => p.toLowerCase().includes(newUser.name.toLowerCase()))) {
+                    return prev;
+                }
+                return [...prev, displayName];
+            });
+
+            // Adiciona especialidade se houver
+            if (newUser.specialty) {
+                setEspecialidades(prev => {
+                    if (prev.includes(newUser.specialty!)) return prev;
+                    return [...prev, newUser.specialty!];
+                });
+            }
+        }
+
+        showToast(`Usuário "${newUser.name}" criado com sucesso!`, 'success');
+    };
+
+    const handleUpdateUser = (updatedUser: UserProfile) => {
+        setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
+
+        // Atualiza sessão se for o usuário logado
+        if (currentUser?.id === updatedUser.id) {
+            setCurrentUser(updatedUser);
+        }
+
+        showToast(`Usuário "${updatedUser.name}" atualizado!`, 'success');
+    };
+
     if (view === 'landing') return (
         <div className="min-h-screen flex flex-col items-center justify-center p-6" style={{ backgroundColor: brand.dark }}>
             <h1 className="text-5xl font-bold mb-8" style={{ color: brand.color }}>{brand.name}</h1>
@@ -500,7 +550,7 @@ const App: React.FC = () => {
                                 </button>
                                 <button onClick={() => setActiveTab('prontuario')} className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${activeTab === 'prontuario' ? 'bg-green-600' : 'hover:bg-slate-700'}`}>
                                     <FileTextIcon className="w-4 h-4" />
-                                    Prontuário
+                                    Pacientes
                                 </button>
                             </>
                         )}
@@ -510,6 +560,17 @@ const App: React.FC = () => {
                             <button onClick={() => setActiveTab('cadastro')} className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${activeTab === 'cadastro' ? 'bg-purple-600' : 'hover:bg-slate-700'}`}>
                                 <PlusIcon className="w-4 h-4" />
                                 Cadastrar
+                            </button>
+                        )}
+
+                        {/* Gerenciar Usuários - apenas Clínica */}
+                        {currentUser?.role === 'clinic' && (
+                            <button
+                                onClick={() => setShowUserManager(true)}
+                                className="bg-purple-600 hover:bg-purple-500 text-white p-2 rounded-lg ml-2 flex items-center gap-2"
+                                title="Gerenciar Usuários"
+                            >
+                                <UserIcon className="w-5 h-5" />
                             </button>
                         )}
 
@@ -694,14 +755,8 @@ const App: React.FC = () => {
                             </div>
                         ) : (
                             <div>
-                                <button
-                                    onClick={() => setSelectedPatientForRecord(null)}
-                                    className="mb-4 text-slate-400 hover:text-white flex items-center gap-2 transition-colors"
-                                >
-                                    ← Voltar para lista de pacientes
-                                </button>
                                 {currentUser && (
-                                    <MedicalRecord
+                                    <PatientPortal
                                         patient={selectedPatientForRecord}
                                         currentUser={currentUser}
                                         existingRecords={medicalRecords[selectedPatientForRecord.id] || []}
@@ -712,6 +767,8 @@ const App: React.FC = () => {
                                             }));
                                             showToast('Registro salvo com sucesso!', 'success');
                                         }}
+                                        onUpdatePatient={handlePatientUpdate}
+                                        onBack={() => setSelectedPatientForRecord(null)}
                                     />
                                 )}
                             </div>
@@ -873,6 +930,17 @@ const App: React.FC = () => {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Modal de Gerenciamento de Usuários */}
+            {showUserManager && (
+                <UserManager
+                    users={users}
+                    especialidades={especialidades}
+                    onAddUser={handleAddUser}
+                    onUpdateUser={handleUpdateUser}
+                    onClose={() => setShowUserManager(false)}
+                />
             )}
 
             {toast && <div className={`fixed bottom-4 right-4 p-4 rounded-xl shadow-2xl border animate-fade-in ${toast.type === 'error' ? 'bg-red-900 border-red-700' : 'bg-green-900 border-green-700'}`}>{toast.msg}</div>}

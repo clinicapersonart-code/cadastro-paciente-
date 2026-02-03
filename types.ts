@@ -114,8 +114,12 @@ export interface UserProfile {
   name: string;
   role: 'clinic' | 'admin' | 'professional'; // clinic = acesso total, admin = resp técnico, professional = psicólogo
   pin?: string; // Senha ou PIN
-  crp?: string; // Para psicólogos
+  crp?: string; // Para psicólogos (legado)
   active: boolean;
+  // Novos campos para sincronização com lista de profissionais
+  specialty?: string; // Especialidade (ex: Psicologia, Fonoaudiologia)
+  professionalRegister?: string; // CRM/CRP completo
+  color?: string; // Cor na agenda
 }
 
 export interface MedicalRecordChunk {
@@ -138,3 +142,46 @@ export interface MedicalRecordChunk {
 
   isPrivate?: boolean; // Se true, visível apenas ao criador e admin
 }
+
+// --- PORTAL DO PACIENTE 2.0 ---
+
+// Registro de Sessão (Extensão de MedicalRecordChunk com controle de presença)
+export interface SessionRecord extends MedicalRecordChunk {
+  attendance: 'Compareceu' | 'Faltou' | 'Cancelado' | 'Justificado';
+  paymentStatus?: 'Pago' | 'Pendente' | 'Isento';
+}
+
+// Documento do Paciente (Laudos, Atestados, Uploads)
+export interface PatientDocument {
+  id: string;
+  title: string;
+  type: 'Laudo' | 'Atestado' | 'Encaminhamento' | 'Contrato' | 'Outro';
+  date: string;
+  content?: string; // Para documentos gerados no sistema (HTML/Texto)
+  fileData?: string; // Base64 para pequenos arquivos
+  fileName?: string;
+  professionalName: string;
+  professionalId: string;
+  folderId?: string; // ID da pasta (null = raiz)
+}
+
+// Pasta de Documentos do Paciente
+export interface DocumentFolder {
+  id: string;
+  name: string;
+  color?: string;
+  createdAt: string;
+}
+
+// Dados de Anamnese (Estrutura básica - templates serão preenchidos depois)
+export interface AnamneseData {
+  id: string;
+  patientId: string;
+  type: 'Infantil' | 'Adulto';
+  date: string;
+  professionalName: string;
+  professionalId: string;
+  data: Record<string, any>; // Campos dinâmicos do formulário
+}
+
+
