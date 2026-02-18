@@ -141,6 +141,8 @@ export interface MedicalRecordChunk {
   nextSteps?: string; // Próximos passos
 
   isPrivate?: boolean; // Se true, visível apenas ao criador e admin
+  attendance?: 'Compareceu' | 'Faltou' | 'Cancelado' | 'Justificado';
+  frequency?: 'Semanal' | 'Mensal';
 }
 
 // --- PORTAL DO PACIENTE 2.0 ---

@@ -31,6 +31,11 @@ export const MedicalRecord: React.FC<MedicalRecordProps> = ({
     // Data selecionada para o registro (padrão: hoje)
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
+    // Frequência do prontuário
+    const [frequency, setFrequency] = useState<'Semanal' | 'Mensal'>('Semanal');
+    const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth()); // 0-11
+    const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+
     // Histórico expandido
     const [showHistory, setShowHistory] = useState(false);
 
@@ -347,9 +352,13 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
             return;
         }
 
+        const recordDate = frequency === 'Mensal'
+            ? `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-01`
+            : selectedDate;
+
         const newRecord: MedicalRecordChunk = {
             id: `rec-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            date: selectedDate,
+            date: recordDate,
             timestamp: Date.now(),
             professionalName: currentUser.name,
             professionalId: currentUser.id,
@@ -357,7 +366,8 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
             content: formattedRecord.content,
             behavior: formattedRecord.behavior,
             intervention: formattedRecord.intervention,
-            nextSteps: formattedRecord.nextSteps
+            nextSteps: formattedRecord.nextSteps,
+            frequency
         };
 
         onSaveRecord(patient.id, newRecord);
@@ -490,15 +500,68 @@ Exemplo:
                             Prontuário Padrão CRP
                         </h3>
 
-                        {/* Data da Sessão */}
+                        {/* Frequência do Prontuário */}
                         <div className="mb-4">
-                            <label className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-1 block">Data da Sessão</label>
-                            <input
-                                type="date"
-                                value={selectedDate}
-                                onChange={(e) => setSelectedDate(e.target.value)}
-                                className="w-full bg-slate-950/50 border border-slate-700/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-[#e9c49e]/50 focus:border-[#e9c49e]/30 transition-all shadow-inner"
-                            />
+                            <label className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-2 block">Frequência</label>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => setFrequency('Semanal')}
+                                    className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${frequency === 'Semanal'
+                                        ? 'bg-[#e9c49e]/20 text-[#e9c49e] border border-[#e9c49e]/50'
+                                        : 'bg-slate-950/50 text-slate-400 border border-slate-700/50 hover:bg-slate-800'
+                                        }`}
+                                >
+                                    📅 Semanal
+                                </button>
+                                <button
+                                    onClick={() => setFrequency('Mensal')}
+                                    className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${frequency === 'Mensal'
+                                        ? 'bg-[#e9c49e]/20 text-[#e9c49e] border border-[#e9c49e]/50'
+                                        : 'bg-slate-950/50 text-slate-400 border border-slate-700/50 hover:bg-slate-800'
+                                        }`}
+                                >
+                                    🗓️ Mensal
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Data da Sessão / Mês+Ano */}
+                        <div className="mb-4">
+                            {frequency === 'Semanal' ? (
+                                <>
+                                    <label className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-1 block">Data da Sessão</label>
+                                    <input
+                                        type="date"
+                                        value={selectedDate}
+                                        onChange={(e) => setSelectedDate(e.target.value)}
+                                        className="w-full bg-slate-950/50 border border-slate-700/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-[#e9c49e]/50 focus:border-[#e9c49e]/30 transition-all shadow-inner"
+                                    />
+                                </>
+                            ) : (
+                                <>
+                                    <label className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-1 block">Mês / Ano</label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <select
+                                            value={selectedMonth}
+                                            onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                                            className="bg-slate-950/50 border border-slate-700/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-[#e9c49e]/50 focus:border-[#e9c49e]/30 transition-all shadow-inner"
+                                        >
+                                            {['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'].map((m, i) => (
+                                                <option key={i} value={i}>{m}</option>
+                                            ))}
+                                        </select>
+                                        <select
+                                            value={selectedYear}
+                                            onChange={(e) => setSelectedYear(Number(e.target.value))}
+                                            className="bg-slate-950/50 border border-slate-700/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-[#e9c49e]/50 focus:border-[#e9c49e]/30 transition-all shadow-inner"
+                                        >
+                                            {[2024, 2025, 2026, 2027, 2028].map(y => (
+                                                <option key={y} value={y}>{y}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </>
+                            )}
                         </div>
 
                         {/* Tipo de Registro */}

@@ -24,10 +24,9 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({
     onUpdatePatient,
     onBack
 }) => {
-    const [activeTab, setActiveTab] = useState<PortalTab>('sessoes');
+    const [activeTab, setActiveTab] = useState<PortalTab>('prontuario');
 
-    // Estado para Sessões
-    const [sessionNotes, setSessionNotes] = useState('');
+    // Estado para Sessões (presença)
     const [sessionAttendance, setSessionAttendance] = useState<'Compareceu' | 'Faltou' | 'Cancelado' | 'Justificado'>('Compareceu');
     const [sessionDate, setSessionDate] = useState(new Date().toISOString().split('T')[0]);
 
@@ -68,13 +67,8 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({
             : 'Nenhuma'
     };
 
-    // Salvar sessão rápida
+    // Salvar presença
     const handleSaveSession = () => {
-        if (!sessionNotes.trim()) {
-            alert('Adicione anotações para salvar a sessão.');
-            return;
-        }
-
         const sessionRecord: SessionRecord = {
             id: `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             date: sessionDate,
@@ -82,12 +76,11 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({
             professionalName: currentUser.name,
             professionalId: currentUser.id,
             type: 'Evolução',
-            content: sessionNotes,
+            content: `Presença registrada: ${sessionAttendance}`,
             attendance: sessionAttendance
         };
 
         onSaveRecord(patient.id, sessionRecord);
-        setSessionNotes('');
     };
 
     // === FUNÇÕES DE DOCUMENTOS ===
@@ -232,17 +225,25 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({
                     />
                 )}
 
-                {/* === ABA SESSÕES === */}
+                {/* === ABA SESSÕES (Controle de Presença) === */}
                 {activeTab === 'sessoes' && (
                     <div className="space-y-6">
                         <h3 className="text-xl font-bold text-white flex items-center gap-2">
                             <CalendarIcon className="w-5 h-5 text-purple-400" />
-                            Registro de Sessão
+                            Controle de Presença
                         </h3>
 
-                        {/* Check-in de Presença */}
-                        <div className="bg-slate-800 rounded-xl border border-slate-700 p-4">
-                            <label className="text-sm text-slate-400 mb-2 block">Status da Sessão</label>
+                        {/* Registrar Presença */}
+                        <div className="bg-slate-800 rounded-xl border border-slate-700 p-5 space-y-4">
+                            <label className="text-sm text-slate-400 block font-medium">Data da Sessão</label>
+                            <input
+                                type="date"
+                                value={sessionDate}
+                                onChange={e => setSessionDate(e.target.value)}
+                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white"
+                            />
+
+                            <label className="text-sm text-slate-400 block font-medium">Status</label>
                             <div className="flex gap-2 flex-wrap">
                                 {(['Compareceu', 'Faltou', 'Cancelado', 'Justificado'] as const).map(status => (
                                     <button
@@ -256,43 +257,76 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({
                                             : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
                                             }`}
                                     >
+                                        {status === 'Compareceu' && '✅ '}
+                                        {status === 'Faltou' && '❌ '}
+                                        {status === 'Cancelado' && '🚫 '}
+                                        {status === 'Justificado' && '📋 '}
                                         {status}
                                     </button>
                                 ))}
                             </div>
+
+                            <button
+                                onClick={handleSaveSession}
+                                className="w-full py-3 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition"
+                            >
+                                <SaveIcon className="w-5 h-5" />
+                                Registrar Presença
+                            </button>
                         </div>
 
-                        {/* Data da Sessão */}
-                        <div className="bg-slate-800 rounded-xl border border-slate-700 p-4">
-                            <label className="text-sm text-slate-400 mb-2 block">Data da Sessão</label>
-                            <input
-                                type="date"
-                                value={sessionDate}
-                                onChange={e => setSessionDate(e.target.value)}
-                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white"
-                            />
+                        {/* Histórico de Presenças */}
+                        <div className="bg-slate-800 rounded-xl border border-slate-700 p-5">
+                            <h4 className="text-sm font-bold text-slate-300 mb-3 uppercase tracking-wider">Histórico de Presenças</h4>
+                            {existingRecords.filter(r => (r as SessionRecord).attendance).length === 0 ? (
+                                <p className="text-slate-500 text-center py-4">Nenhum registro de presença ainda.</p>
+                            ) : (
+                                <div className="space-y-2 max-h-[50vh] overflow-y-auto">
+                                    {existingRecords
+                                        .filter(r => (r as SessionRecord).attendance)
+                                        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                                        .map(record => {
+                                            const att = (record as SessionRecord).attendance;
+                                            const colorMap: Record<string, string> = {
+                                                'Compareceu': 'border-green-500/50 bg-green-500/10',
+                                                'Faltou': 'border-red-500/50 bg-red-500/10',
+                                                'Cancelado': 'border-orange-500/50 bg-orange-500/10',
+                                                'Justificado': 'border-yellow-500/50 bg-yellow-500/10'
+                                            };
+                                            const emojiMap: Record<string, string> = {
+                                                'Compareceu': '✅',
+                                                'Faltou': '❌',
+                                                'Cancelado': '🚫',
+                                                'Justificado': '📋'
+                                            };
+                                            return (
+                                                <div
+                                                    key={record.id}
+                                                    className={`flex items-center justify-between p-3 rounded-lg border ${colorMap[att || ''] || 'border-slate-700'}`}
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <span className="text-lg">{emojiMap[att || ''] || '📅'}</span>
+                                                        <div>
+                                                            <p className="text-white text-sm font-medium">
+                                                                {new Date(record.date).toLocaleDateString('pt-BR')}
+                                                            </p>
+                                                            <p className="text-xs text-slate-500">{record.professionalName}</p>
+                                                        </div>
+                                                    </div>
+                                                    <span className={`text-sm font-medium ${att === 'Compareceu' ? 'text-green-400' :
+                                                            att === 'Faltou' ? 'text-red-400' :
+                                                                att === 'Cancelado' ? 'text-orange-400' :
+                                                                    'text-yellow-400'
+                                                        }`}>
+                                                        {att}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })
+                                    }
+                                </div>
+                            )}
                         </div>
-
-                        {/* Anotações Rápidas */}
-                        <div className="bg-slate-800 rounded-xl border border-slate-700 p-4">
-                            <label className="text-sm text-slate-400 mb-2 block">Anotações da Sessão</label>
-                            <textarea
-                                value={sessionNotes}
-                                onChange={e => setSessionNotes(e.target.value)}
-                                placeholder="Digite suas anotações aqui..."
-                                className="w-full h-48 bg-slate-900 border border-slate-700 rounded-lg p-4 text-white resize-none"
-                            />
-                        </div>
-
-                        {/* Botão Salvar */}
-                        <button
-                            onClick={handleSaveSession}
-                            disabled={!sessionNotes.trim()}
-                            className="w-full py-3 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:bg-slate-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition"
-                        >
-                            <SaveIcon className="w-5 h-5" />
-                            Salvar Sessão
-                        </button>
                     </div>
                 )}
 
