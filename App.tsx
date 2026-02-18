@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Patient, BrandConfig, Appointment, PreCadastro, UserProfile } from './types';
+import { Patient, BrandConfig, Appointment, PreCadastro, UserProfile, MedicalRecordChunk } from './types';
 import { STORAGE_KEYS, DEFAULT_CONVENIOS, DEFAULT_PROFISSIONAIS, DEFAULT_ESPECIALIDADES } from './constants';
 import useLocalStorage from './hooks/useLocalStorage';
 import { downloadFile, exportToCSV } from './services/fileService';
@@ -152,6 +152,49 @@ const App: React.FC = () => {
 
                     const { data: inboxData } = await supabase.from('inbox').select('*');
                     if (inboxData) setInbox(inboxData.map((row: any) => row.data));
+
+                    // Carregar prontuários
+                    const { data: recData, error: recError } = await supabase.from('medical_records').select('*');
+                    const cloudIds = new Set<string>();
+                    if (!recError && recData && recData.length > 0) {
+                        const grouped: Record<string, MedicalRecordChunk[]> = {};
+                        recData.forEach((row: any) => {
+                            const rec = row.data as MedicalRecordChunk;
+                            const pid = row.patient_id;
+                            cloudIds.add(row.id);
+                            if (!grouped[pid]) grouped[pid] = [];
+                            grouped[pid].push(rec);
+                        });
+                        setMedicalRecords(grouped);
+                    }
+
+                    // Migração: subir registros locais que ainda não estão na nuvem
+                    const localRecords = JSON.parse(localStorage.getItem('personart.medical_records.db') || '{}');
+                    const toUpload: any[] = [];
+                    Object.entries(localRecords).forEach(([patientId, records]: [string, any]) => {
+                        if (Array.isArray(records)) {
+                            records.forEach((rec: MedicalRecordChunk) => {
+                                if (!cloudIds.has(rec.id)) {
+                                    toUpload.push({
+                                        id: rec.id,
+                                        patient_id: patientId,
+                                        professional_id: rec.professionalId,
+                                        date: rec.date,
+                                        type: rec.type,
+                                        data: JSON.parse(JSON.stringify(rec))
+                                    });
+                                }
+                            });
+                        }
+                    });
+                    if (toUpload.length > 0) {
+                        const { error: migError } = await supabase.from('medical_records').upsert(toUpload);
+                        if (migError) {
+                            console.error('Erro na migração de prontuários:', migError);
+                        } else {
+                            console.log(`✅ Migrados ${toUpload.length} prontuário(s) local → nuvem`);
+                        }
+                    }
 
                     setConnectionStatus('connected');
                     setDbError('');
@@ -765,6 +808,22 @@ const App: React.FC = () => {
                                                 ...prev,
                                                 [patientId]: [...(prev[patientId] || []), record]
                                             }));
+                                            // Sincronizar com Supabase
+                                            if (supabase && connectionStatus !== 'offline') {
+                                                supabase.from('medical_records').upsert({
+                                                    id: record.id,
+                                                    patient_id: patientId,
+                                                    professional_id: record.professionalId,
+                                                    date: record.date,
+                                                    type: record.type,
+                                                    data: JSON.parse(JSON.stringify(record))
+                                                }).then(({ error }) => {
+                                                    if (error) {
+                                                        console.error('Erro ao salvar prontuário na nuvem:', error);
+                                                        showToast('Registro salvo localmente. Erro na nuvem.', 'error');
+                                                    }
+                                                });
+                                            }
                                             showToast('Registro salvo com sucesso!', 'success');
                                         }}
                                         onUpdatePatient={handlePatientUpdate}
