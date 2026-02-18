@@ -325,14 +325,17 @@ export const Agenda: React.FC<AgendaProps> = ({
                             ))}
                         </div>
 
-                        <select
-                            value={filterProfissional}
-                            onChange={(e) => setFilterProfissional(e.target.value)}
-                            className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 outline-none"
-                        >
-                            <option value="">Todos</option>
-                            {profissionais.map(p => <option key={p} value={p}>{p.split(' - ')[0]}</option>)}
-                        </select>
+                        {/* Seletor de profissional — oculto para profissionais (já filtra automaticamente) */}
+                        {(!currentUser || currentUser.role !== 'professional') && (
+                            <select
+                                value={filterProfissional}
+                                onChange={(e) => setFilterProfissional(e.target.value)}
+                                className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 outline-none"
+                            >
+                                <option value="">Todos</option>
+                                {profissionais.map(p => <option key={p} value={p}>{p.split(' - ')[0]}</option>)}
+                            </select>
+                        )}
 
                         <button
                             onClick={() => setShowForm(true)}
@@ -345,8 +348,14 @@ export const Agenda: React.FC<AgendaProps> = ({
 
                 {/* Legenda de cores dos profissionais */}
                 <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-700/50">
-                    {profissionais.slice(0, 8).map((p, i) => {
-                        const color = PROFESSIONAL_COLORS[i % PROFESSIONAL_COLORS.length];
+                    {(currentUser?.role === 'professional'
+                        ? profissionais.filter(p => {
+                            const normalizedPro = currentUser.name.toLowerCase();
+                            return p.toLowerCase().includes(normalizedPro) || normalizedPro.includes(p.toLowerCase().split(' - ')[0]);
+                        })
+                        : profissionais
+                    ).slice(0, 8).map((p, _i) => {
+                        const color = getProfessionalColor(p, profissionais); // Usa índice na lista completa para manter cores consistentes
                         return (
                             <div key={p} className="flex items-center gap-1.5 text-xs">
                                 <div className="w-3 h-3 rounded" style={{ backgroundColor: color.accent }}></div>

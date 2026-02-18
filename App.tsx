@@ -895,7 +895,11 @@ const App: React.FC = () => {
                             onClear={() => setEditingPatient(null)}
                             convenios={convenios}
                             profissionais={profissionais}
-                            especialidades={especialidades}
+                            especialidades={
+                                currentUser?.role === 'professional' && currentUser?.specialty
+                                    ? especialidades.filter(e => e.toLowerCase() === currentUser.specialty!.toLowerCase())
+                                    : especialidades
+                            }
                             onAddConvenio={c => setConvenios(prev => [...prev, c])}
                             // Profissionais: trava nome, esconde criar novo
                             lockedProfessional={
