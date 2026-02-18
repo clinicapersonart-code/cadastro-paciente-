@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { Patient, MedicalRecordChunk, UserProfile } from '../types';
-import { FileTextIcon, MicIcon, SparklesIcon, SaveIcon, PlusIcon, ChevronDownIcon, ChevronUpIcon, TrashIcon } from './icons';
+import { FileTextIcon, MicIcon, SparklesIcon, SaveIcon, PlusIcon, ChevronDownIcon, ChevronUpIcon, TrashIcon, EditIcon } from './icons';
 
 interface MedicalRecordProps {
     patient: Patient;
     currentUser: UserProfile;
     onSaveRecord: (patientId: string, record: MedicalRecordChunk) => void;
+    onUpdateRecord: (patientId: string, record: MedicalRecordChunk) => void;
+    onDeleteRecord: (patientId: string, recordId: string) => void;
     existingRecords?: MedicalRecordChunk[];
 }
 
@@ -13,6 +15,8 @@ export const MedicalRecord: React.FC<MedicalRecordProps> = ({
     patient,
     currentUser,
     onSaveRecord,
+    onUpdateRecord,
+    onDeleteRecord,
     existingRecords = []
 }) => {
     // Estado do painel de anotações (esquerda)
@@ -38,6 +42,9 @@ export const MedicalRecord: React.FC<MedicalRecordProps> = ({
 
     // Histórico expandido
     const [showHistory, setShowHistory] = useState(false);
+
+    // Edição de registro existente
+    const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
 
     // Seleção de registros para download
     const [selectedRecords, setSelectedRecords] = useState<Set<string>>(new Set());
@@ -345,7 +352,43 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
         }
     };
 
-    // Salvar registro
+    // Editar registro existente (preenche o formulário)
+    const handleEditRecord = (record: MedicalRecordChunk) => {
+        setEditingRecordId(record.id);
+        setFormattedRecord({
+            type: record.type,
+            content: record.content,
+            behavior: record.behavior || '',
+            intervention: record.intervention || '',
+            nextSteps: record.nextSteps || ''
+        });
+        setFrequency(record.frequency || 'Semanal');
+        if (record.frequency === 'Mensal') {
+            const d = new Date(record.date);
+            setSelectedMonth(d.getMonth());
+            setSelectedYear(d.getFullYear());
+        } else {
+            setSelectedDate(record.date);
+        }
+        setQuickNotes('');
+        // Scroll para o formulário
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    // Cancelar edição
+    const handleCancelEdit = () => {
+        setEditingRecordId(null);
+        setQuickNotes('');
+        setFormattedRecord({ type: 'Evolução', content: '', behavior: '', intervention: '', nextSteps: '' });
+    };
+
+    // Excluir registro
+    const handleDeleteRecord = (recordId: string) => {
+        if (!confirm('Tem certeza que deseja excluir este registro do prontuário?')) return;
+        onDeleteRecord(patient.id, recordId);
+    };
+
+    // Salvar registro (criar ou atualizar)
     const handleSave = () => {
         if (!formattedRecord.content.trim()) {
             alert('O conteúdo do prontuário não pode estar vazio.');
@@ -356,21 +399,40 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
             ? `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-01`
             : selectedDate;
 
-        const newRecord: MedicalRecordChunk = {
-            id: `rec-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            date: recordDate,
-            timestamp: Date.now(),
-            professionalName: currentUser.name,
-            professionalId: currentUser.id,
-            type: formattedRecord.type,
-            content: formattedRecord.content,
-            behavior: formattedRecord.behavior,
-            intervention: formattedRecord.intervention,
-            nextSteps: formattedRecord.nextSteps,
-            frequency
-        };
-
-        onSaveRecord(patient.id, newRecord);
+        if (editingRecordId) {
+            // Atualizar registro existente
+            const existing = existingRecords.find(r => r.id === editingRecordId);
+            if (existing) {
+                const updatedRecord: MedicalRecordChunk = {
+                    ...existing,
+                    date: recordDate,
+                    type: formattedRecord.type,
+                    content: formattedRecord.content,
+                    behavior: formattedRecord.behavior,
+                    intervention: formattedRecord.intervention,
+                    nextSteps: formattedRecord.nextSteps,
+                    frequency
+                };
+                onUpdateRecord(patient.id, updatedRecord);
+            }
+            setEditingRecordId(null);
+        } else {
+            // Novo registro
+            const newRecord: MedicalRecordChunk = {
+                id: `rec-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                date: recordDate,
+                timestamp: Date.now(),
+                professionalName: currentUser.name,
+                professionalId: currentUser.id,
+                type: formattedRecord.type,
+                content: formattedRecord.content,
+                behavior: formattedRecord.behavior,
+                intervention: formattedRecord.intervention,
+                nextSteps: formattedRecord.nextSteps,
+                frequency
+            };
+            onSaveRecord(patient.id, newRecord);
+        }
 
         // Limpar formulário
         setQuickNotes('');
@@ -623,15 +685,25 @@ Exemplo:
                             </div>
                         </div>
 
-                        {/* Botão Salvar */}
-                        <button
-                            onClick={handleSave}
-                            disabled={!formattedRecord.content.trim()}
-                            className="w-full py-4 bg-gradient-to-r from-[#273e44] to-[#1e2f34] hover:to-[#2d464d] border border-[#e9c49e]/30 hover:border-[#e9c49e] disabled:opacity-50 disabled:border-slate-700 text-[#e9c49e] font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-[#e9c49e]/20"
-                        >
-                            <SaveIcon className="w-5 h-5" />
-                            Salvar no Prontuário
-                        </button>
+                        {/* Botão Salvar / Atualizar */}
+                        <div className="space-y-2">
+                            <button
+                                onClick={handleSave}
+                                disabled={!formattedRecord.content.trim()}
+                                className={`w-full py-4 bg-gradient-to-r ${editingRecordId ? 'from-amber-700 to-amber-800 hover:to-amber-700 border-amber-500/30 hover:border-amber-400 text-amber-100' : 'from-[#273e44] to-[#1e2f34] hover:to-[#2d464d] border-[#e9c49e]/30 hover:border-[#e9c49e] text-[#e9c49e]'} border disabled:opacity-50 disabled:border-slate-700 font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-[#e9c49e]/20`}
+                            >
+                                <SaveIcon className="w-5 h-5" />
+                                {editingRecordId ? 'Atualizar Registro' : 'Salvar no Prontuário'}
+                            </button>
+                            {editingRecordId && (
+                                <button
+                                    onClick={handleCancelEdit}
+                                    className="w-full py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 rounded-xl text-sm transition-all"
+                                >
+                                    Cancelar Edição
+                                </button>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -724,9 +796,25 @@ Exemplo:
                                                         {record.type}
                                                     </span>
                                                 </div>
-                                                <span className="text-xs text-slate-500 font-medium font-mono">
-                                                    {new Date(record.date).toLocaleDateString('pt-BR')} • {record.professionalName}
-                                                </span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xs text-slate-500 font-medium font-mono">
+                                                        {new Date(record.date).toLocaleDateString('pt-BR')} • {record.professionalName}
+                                                    </span>
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); handleEditRecord(record); }}
+                                                        className="p-1.5 text-sky-400 hover:text-sky-300 hover:bg-sky-500/10 rounded-lg transition-all"
+                                                        title="Editar registro"
+                                                    >
+                                                        <EditIcon className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); handleDeleteRecord(record.id); }}
+                                                        className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-all"
+                                                        title="Excluir registro"
+                                                    >
+                                                        <TrashIcon className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
                                             </div>
                                             <p className="text-slate-300 text-sm line-clamp-3 leading-relaxed font-light pl-7 border-l-2 border-slate-700/50 group-hover:border-[#e9c49e]/30 transition-colors">
                                                 {record.content}

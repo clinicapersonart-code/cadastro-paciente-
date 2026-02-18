@@ -14,6 +14,13 @@ interface PatientPortalProps {
     onDeleteRecord: (patientId: string, recordId: string) => void;
     onUpdatePatient: (patient: Patient) => void;
     onBack: () => void;
+    // Documentos e Pastas
+    documents: PatientDocument[];
+    folders: DocumentFolder[];
+    onSaveDocument: (patientId: string, doc: PatientDocument) => void;
+    onDeleteDocument: (patientId: string, docId: string) => void;
+    onSaveFolder: (patientId: string, folder: DocumentFolder) => void;
+    onDeleteFolder: (patientId: string, folderId: string) => void;
 }
 
 type PortalTab = 'cadastro' | 'prontuario' | 'sessoes' | 'anamnese' | 'resumo' | 'documentos';
@@ -26,7 +33,13 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({
     onUpdateRecord,
     onDeleteRecord,
     onUpdatePatient,
-    onBack
+    onBack,
+    documents: propDocuments,
+    folders: propFolders,
+    onSaveDocument,
+    onDeleteDocument,
+    onSaveFolder,
+    onDeleteFolder
 }) => {
     const [activeTab, setActiveTab] = useState<PortalTab>('prontuario');
 
@@ -38,9 +51,13 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({
     // Estado para Anamnese
     const [anamneseType, setAnamneseType] = useState<'Infantil' | 'Adulto'>(patient.faixa === 'Criança' ? 'Infantil' : 'Adulto');
 
-    // Estado para Documentos
-    const [documents, setDocuments] = useState<PatientDocument[]>([]);
-    const [folders, setFolders] = useState<DocumentFolder[]>([]);
+    // Estado para Documentos (derivado das props)
+    const [documents, setDocuments] = useState<PatientDocument[]>(propDocuments);
+    const [folders, setFolders] = useState<DocumentFolder[]>(propFolders);
+
+    // Sincronizar com props quando mudam
+    React.useEffect(() => { setDocuments(propDocuments); }, [propDocuments]);
+    React.useEffect(() => { setFolders(propFolders); }, [propFolders]);
     const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
     const [showAddDocModal, setShowAddDocModal] = useState(false);
     const [showAddFolderModal, setShowAddFolderModal] = useState(false);
@@ -132,6 +149,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({
         };
 
         setFolders(prev => [...prev, folder]);
+        onSaveFolder(patient.id, folder);
         setNewFolderName('');
         setShowAddFolderModal(false);
     };
@@ -152,6 +170,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({
         };
 
         setDocuments(prev => [...prev, doc]);
+        onSaveDocument(patient.id, doc);
         setNewDocForm({ title: '', type: 'Outro', content: '' });
         setShowAddDocModal(false);
     };
@@ -159,8 +178,15 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({
     // Deletar pasta (move documentos para raiz)
     const handleDeleteFolder = (folderId: string) => {
         if (!confirm('Excluir pasta? Os documentos serão movidos para a raiz.')) return;
+        // Move documentos da pasta para raiz
+        const docsToUpdate = documents.filter(d => d.folderId === folderId);
+        docsToUpdate.forEach(d => {
+            const updated = { ...d, folderId: undefined };
+            onSaveDocument(patient.id, updated);
+        });
         setDocuments(prev => prev.map(d => d.folderId === folderId ? { ...d, folderId: undefined } : d));
         setFolders(prev => prev.filter(f => f.id !== folderId));
+        onDeleteFolder(patient.id, folderId);
         if (currentFolderId === folderId) setCurrentFolderId(null);
     };
 
@@ -168,6 +194,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({
     const handleDeleteDocument = (docId: string) => {
         if (!confirm('Excluir documento?')) return;
         setDocuments(prev => prev.filter(d => d.id !== docId));
+        onDeleteDocument(patient.id, docId);
     };
 
     // Documentos e pastas filtrados pela pasta atual
@@ -258,6 +285,8 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({
                         currentUser={currentUser}
                         existingRecords={existingRecords}
                         onSaveRecord={onSaveRecord}
+                        onUpdateRecord={onUpdateRecord}
+                        onDeleteRecord={onDeleteRecord}
                     />
                 )}
 

@@ -6,9 +6,10 @@ interface PatientTableProps {
     patients: Patient[];
     onEdit: (patient: Patient) => void;
     onDelete: (id: string) => void;
+    onToggleActive?: (id: string, active: boolean) => void;
 }
 
-export const PatientTable: React.FC<PatientTableProps> = ({ patients, onEdit, onDelete }) => {
+export const PatientTable: React.FC<PatientTableProps> = ({ patients, onEdit, onDelete, onToggleActive }) => {
 
     const formatShortDate = (iso?: string) => {
         if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return '';
@@ -18,13 +19,13 @@ export const PatientTable: React.FC<PatientTableProps> = ({ patients, onEdit, on
         const y = String(date.getFullYear()).slice(-2);
         return `${d}/${m}/${y}`;
     };
-    
+
     const handleDeleteClick = (id: string, name: string) => {
         if (window.confirm(`Tem certeza que deseja excluir o paciente ${name}? Esta ação não pode ser desfeita.`)) {
             onDelete(id);
         }
     };
-    
+
     return (
         <div className="overflow-auto border border-slate-700 rounded-2xl" style={{ maxHeight: '60vh' }}>
             <table className="w-full min-w-[1400px] text-sm text-left text-slate-300">
@@ -45,8 +46,13 @@ export const PatientTable: React.FC<PatientTableProps> = ({ patients, onEdit, on
                 </thead>
                 <tbody>
                     {patients.map((p) => (
-                        <tr key={p.id} className="bg-slate-900/50 border-b border-slate-800 hover:bg-slate-800/50 transition">
-                            <th scope="row" className="px-6 py-4 font-medium text-white whitespace-nowrap">{p.nome}</th>
+                        <tr key={p.id} className={`border-b border-slate-800 hover:bg-slate-800/50 transition ${p.active === false ? 'opacity-50 bg-slate-900/80' : 'bg-slate-900/50'}`}>
+                            <th scope="row" className="px-6 py-4 font-medium text-white whitespace-nowrap">
+                                {p.nome}
+                                {p.active === false && (
+                                    <span className="ml-2 text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded-full font-bold">INATIVO</span>
+                                )}
+                            </th>
                             <td className="px-6 py-4 whitespace-nowrap">{p.contato || '-'}</td>
                             <td className="px-6 py-4 max-w-[150px] truncate" title={p.email}>{p.email || '-'}</td>
                             <td className="px-6 py-4">{formatShortDate(p.nascimento)}</td>
@@ -63,6 +69,15 @@ export const PatientTable: React.FC<PatientTableProps> = ({ patients, onEdit, on
                             <td className="px-6 py-4">
                                 <div className="flex items-center gap-2">
                                     <button onClick={() => onEdit(p)} className="p-1 text-sky-400 hover:text-sky-300 transition" title="Editar"><EditIcon className="w-4 h-4" /></button>
+                                    {onToggleActive && (
+                                        <button
+                                            onClick={() => onToggleActive(p.id, p.active === false ? true : false)}
+                                            className={`p-1 transition ${p.active === false ? 'text-green-400 hover:text-green-300' : 'text-amber-400 hover:text-amber-300'}`}
+                                            title={p.active === false ? 'Reativar' : 'Desativar'}
+                                        >
+                                            {p.active === false ? '✅' : '⏸️'}
+                                        </button>
+                                    )}
                                     <button onClick={() => handleDeleteClick(p.id, p.nome)} className="p-1 text-red-400 hover:text-red-300 transition" title="Excluir"><TrashIcon className="w-4 h-4" /></button>
                                 </div>
                             </td>

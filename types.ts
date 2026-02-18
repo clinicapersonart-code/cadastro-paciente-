@@ -44,6 +44,9 @@ export interface Patient {
   escolaridade?: string;
   profissao?: string;
   primeiraSessao?: string;
+
+  // Soft-delete
+  active?: boolean; // default = true (undefined = ativo)
 }
 
 export interface Appointment {

@@ -42,6 +42,7 @@ const App: React.FC = () => {
     const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [filters, setFilters] = useState({ convenio: '', profissional: '', faixa: '' });
+    const [showInactive, setShowInactive] = useState(false);
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [view, setView] = useState<'landing' | 'login' | 'dashboard'>('landing');
     const [loginInput, setLoginInput] = useState('');
@@ -55,6 +56,10 @@ const App: React.FC = () => {
     // Estado para Prontuário
     const [selectedPatientForRecord, setSelectedPatientForRecord] = useState<Patient | null>(null);
     const [medicalRecords, setMedicalRecords] = useLocalStorage<Record<string, import('./types').MedicalRecordChunk[]>>('personart.medical_records.db', {});
+
+    // Estado para Documentos e Pastas (persistência por paciente)
+    const [patientDocuments, setPatientDocuments] = useLocalStorage<Record<string, import('./types').PatientDocument[]>>('personart.patient_documents.db', {});
+    const [documentFolders, setDocumentFolders] = useLocalStorage<Record<string, import('./types').DocumentFolder[]>>('personart.document_folders.db', {});
 
     // --- ROTEAMENTO PÚBLICO ---
     const params = new URLSearchParams(window.location.search);
@@ -198,6 +203,30 @@ const App: React.FC = () => {
 
                     setConnectionStatus('connected');
                     setDbError('');
+
+                    // Carregar documentos do paciente
+                    const { data: docData } = await supabase.from('patient_documents').select('*');
+                    if (docData && docData.length > 0) {
+                        const groupedDocs: Record<string, import('./types').PatientDocument[]> = {};
+                        docData.forEach((row: any) => {
+                            const pid = row.patient_id;
+                            if (!groupedDocs[pid]) groupedDocs[pid] = [];
+                            groupedDocs[pid].push(row.data as import('./types').PatientDocument);
+                        });
+                        setPatientDocuments(groupedDocs);
+                    }
+
+                    // Carregar pastas
+                    const { data: folderData } = await supabase.from('document_folders').select('*');
+                    if (folderData && folderData.length > 0) {
+                        const groupedFolders: Record<string, import('./types').DocumentFolder[]> = {};
+                        folderData.forEach((row: any) => {
+                            const pid = row.patient_id;
+                            if (!groupedFolders[pid]) groupedFolders[pid] = [];
+                            groupedFolders[pid].push(row.data as import('./types').DocumentFolder);
+                        });
+                        setDocumentFolders(groupedFolders);
+                    }
                 } catch (err: any) {
                     console.error('Erro de conexão:', err);
                     setDbError('Conexão instável. Operando com dados locais.');
@@ -435,9 +464,13 @@ const App: React.FC = () => {
             if (filters.convenio && p.convenio !== filters.convenio) return false;
             if (filters.profissional && !p.profissionais.includes(filters.profissional)) return false;
             if (filters.faixa && p.faixa !== filters.faixa) return false;
+
+            // Soft-delete: esconder inativos (a menos que showInactive esteja ligado)
+            if (!showInactive && p.active === false) return false;
+
             return true;
         }).sort((a, b) => a.nome.localeCompare(b.nome));
-    }, [patients, searchTerm, filters, currentUser]);
+    }, [patients, searchTerm, filters, currentUser, showInactive]);
 
     const copyLink = (path: string) => {
         const url = `${window.location.origin}${window.location.pathname}${path}`;
@@ -712,8 +745,32 @@ const App: React.FC = () => {
                                 </div>
                             </div>
 
+                            {/* Toggle Inativos */}
+                            <div className="flex items-center gap-2">
+                                <label className="flex items-center gap-2 cursor-pointer select-none">
+                                    <input
+                                        type="checkbox"
+                                        checked={showInactive}
+                                        onChange={() => setShowInactive(!showInactive)}
+                                        className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-amber-500 focus:ring-amber-500 cursor-pointer"
+                                    />
+                                    <span className="text-sm text-slate-400">Mostrar inativos</span>
+                                </label>
+                            </div>
+
                             <input type="text" placeholder="Buscar por nome ou carteirinha..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-sky-500" />
-                            <PatientTable patients={filteredPatients} onEdit={p => { setEditingPatient(p); window.scrollTo(0, 0); }} onDelete={async id => { if (confirm('Excluir?')) { await supabase?.from('patients').delete().eq('id', id).catch(() => { }); setPatients(prev => prev.filter(p => p.id !== id)); } }} />
+                            <PatientTable
+                                patients={filteredPatients}
+                                onEdit={p => { setEditingPatient(p); window.scrollTo(0, 0); }}
+                                onDelete={async id => { if (confirm('Excluir permanentemente?')) { await supabase?.from('patients').delete().eq('id', id).catch(() => { }); setPatients(prev => prev.filter(p => p.id !== id)); } }}
+                                onToggleActive={async (id, active) => {
+                                    setPatients(prev => prev.map(p => p.id === id ? { ...p, active } : p));
+                                    if (supabase) {
+                                        await supabase.from('patients').update({ active }).eq('id', id).catch(() => { });
+                                    }
+                                    showToast(active ? 'Paciente reativado!' : 'Paciente desativado.', active ? 'success' : 'info');
+                                }}
+                            />
                         </div>
                     </div>
                 )}
@@ -913,6 +970,67 @@ const App: React.FC = () => {
                                                 });
                                             }
                                             showToast('Registro excluído!', 'info');
+                                        }}
+                                        // === Documentos e Pastas ===
+                                        documents={patientDocuments[selectedPatientForRecord.id] || []}
+                                        folders={documentFolders[selectedPatientForRecord.id] || []}
+                                        onSaveDocument={(patientId, doc) => {
+                                            setPatientDocuments(prev => {
+                                                const existing = prev[patientId] || [];
+                                                const idx = existing.findIndex(d => d.id === doc.id);
+                                                return {
+                                                    ...prev,
+                                                    [patientId]: idx >= 0
+                                                        ? existing.map(d => d.id === doc.id ? doc : d)
+                                                        : [...existing, doc]
+                                                };
+                                            });
+                                            if (supabase && connectionStatus !== 'offline') {
+                                                supabase.from('patient_documents').upsert({
+                                                    id: doc.id,
+                                                    patient_id: patientId,
+                                                    data: JSON.parse(JSON.stringify(doc))
+                                                }).then(({ error }) => {
+                                                    if (error) console.error('Erro ao salvar documento na nuvem:', error);
+                                                });
+                                            }
+                                        }}
+                                        onDeleteDocument={(patientId, docId) => {
+                                            setPatientDocuments(prev => ({
+                                                ...prev,
+                                                [patientId]: (prev[patientId] || []).filter(d => d.id !== docId)
+                                            }));
+                                            if (supabase && connectionStatus !== 'offline') {
+                                                supabase.from('patient_documents').delete().eq('id', docId).then(({ error }) => {
+                                                    if (error) console.error('Erro ao deletar documento na nuvem:', error);
+                                                });
+                                            }
+                                        }}
+                                        onSaveFolder={(patientId, folder) => {
+                                            setDocumentFolders(prev => ({
+                                                ...prev,
+                                                [patientId]: [...(prev[patientId] || []), folder]
+                                            }));
+                                            if (supabase && connectionStatus !== 'offline') {
+                                                supabase.from('document_folders').upsert({
+                                                    id: folder.id,
+                                                    patient_id: patientId,
+                                                    data: JSON.parse(JSON.stringify(folder))
+                                                }).then(({ error }) => {
+                                                    if (error) console.error('Erro ao salvar pasta na nuvem:', error);
+                                                });
+                                            }
+                                        }}
+                                        onDeleteFolder={(patientId, folderId) => {
+                                            setDocumentFolders(prev => ({
+                                                ...prev,
+                                                [patientId]: (prev[patientId] || []).filter(f => f.id !== folderId)
+                                            }));
+                                            if (supabase && connectionStatus !== 'offline') {
+                                                supabase.from('document_folders').delete().eq('id', folderId).then(({ error }) => {
+                                                    if (error) console.error('Erro ao deletar pasta na nuvem:', error);
+                                                });
+                                            }
                                         }}
                                         onBack={() => setSelectedPatientForRecord(null)}
                                     />
