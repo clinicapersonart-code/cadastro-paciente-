@@ -10,6 +10,8 @@ interface PatientPortalProps {
     currentUser: UserProfile;
     existingRecords: MedicalRecordChunk[];
     onSaveRecord: (patientId: string, record: MedicalRecordChunk) => void;
+    onUpdateRecord: (patientId: string, record: MedicalRecordChunk) => void;
+    onDeleteRecord: (patientId: string, recordId: string) => void;
     onUpdatePatient: (patient: Patient) => void;
     onBack: () => void;
 }
@@ -21,6 +23,8 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({
     currentUser,
     existingRecords,
     onSaveRecord,
+    onUpdateRecord,
+    onDeleteRecord,
     onUpdatePatient,
     onBack
 }) => {
@@ -29,6 +33,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({
     // Estado para Sessões (presença)
     const [sessionAttendance, setSessionAttendance] = useState<'Compareceu' | 'Faltou' | 'Cancelado' | 'Justificado'>('Compareceu');
     const [sessionDate, setSessionDate] = useState(new Date().toISOString().split('T')[0]);
+    const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
 
     // Estado para Anamnese
     const [anamneseType, setAnamneseType] = useState<'Infantil' | 'Adulto'>(patient.faixa === 'Criança' ? 'Infantil' : 'Adulto');
@@ -69,18 +74,49 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({
 
     // Salvar presença
     const handleSaveSession = () => {
-        const sessionRecord: SessionRecord = {
-            id: `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            date: sessionDate,
-            timestamp: Date.now(),
-            professionalName: currentUser.name,
-            professionalId: currentUser.id,
-            type: 'Evolução',
-            content: `Presença registrada: ${sessionAttendance}`,
-            attendance: sessionAttendance
-        };
+        if (editingRecordId) {
+            // Atualizando registro existente
+            const existing = existingRecords.find(r => r.id === editingRecordId);
+            if (existing) {
+                const updatedRecord: MedicalRecordChunk = {
+                    ...existing,
+                    date: sessionDate,
+                    attendance: sessionAttendance,
+                    content: `Presença registrada: ${sessionAttendance}`
+                };
+                onUpdateRecord(patient.id, updatedRecord);
+            }
+            setEditingRecordId(null);
+        } else {
+            // Novo registro
+            const sessionRecord: SessionRecord = {
+                id: `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                date: sessionDate,
+                timestamp: Date.now(),
+                professionalName: currentUser.name,
+                professionalId: currentUser.id,
+                type: 'Evolução',
+                content: `Presença registrada: ${sessionAttendance}`,
+                attendance: sessionAttendance
+            };
+            onSaveRecord(patient.id, sessionRecord);
+        }
+        // Reset form
+        setSessionDate(new Date().toISOString().split('T')[0]);
+        setSessionAttendance('Compareceu');
+    };
 
-        onSaveRecord(patient.id, sessionRecord);
+    // Editar registro de presença
+    const handleEditAttendance = (record: MedicalRecordChunk) => {
+        setSessionDate(record.date);
+        setSessionAttendance((record as SessionRecord).attendance || 'Compareceu');
+        setEditingRecordId(record.id);
+    };
+
+    // Deletar registro de presença
+    const handleDeleteAttendance = (recordId: string) => {
+        if (!confirm('Tem certeza que deseja excluir este registro de presença?')) return;
+        onDeleteRecord(patient.id, recordId);
     };
 
     // === FUNÇÕES DE DOCUMENTOS ===
@@ -268,11 +304,20 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({
 
                             <button
                                 onClick={handleSaveSession}
-                                className="w-full py-3 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition"
+                                className={`w-full py-3 ${editingRecordId ? 'bg-amber-600 hover:bg-amber-500' : 'bg-purple-600 hover:bg-purple-500'} text-white font-bold rounded-xl flex items-center justify-center gap-2 transition`}
                             >
                                 <SaveIcon className="w-5 h-5" />
-                                Registrar Presença
+                                {editingRecordId ? 'Salvar Alteração' : 'Registrar Presença'}
                             </button>
+                            {editingRecordId && (
+                                <button
+                                    onClick={() => { setEditingRecordId(null); setSessionDate(new Date().toISOString().split('T')[0]); setSessionAttendance('Compareceu'); }}
+                                    className="w-full py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 font-medium rounded-xl flex items-center justify-center gap-2 transition mt-2"
+                                >
+                                    <XIcon className="w-4 h-4" />
+                                    Cancelar Edição
+                                </button>
+                            )}
                         </div>
 
                         {/* Histórico de Presenças */}
@@ -313,13 +358,29 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({
                                                             <p className="text-xs text-slate-500">{record.professionalName}</p>
                                                         </div>
                                                     </div>
-                                                    <span className={`text-sm font-medium ${att === 'Compareceu' ? 'text-green-400' :
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={`text-sm font-medium ${att === 'Compareceu' ? 'text-green-400' :
                                                             att === 'Faltou' ? 'text-red-400' :
                                                                 att === 'Cancelado' ? 'text-orange-400' :
                                                                     'text-yellow-400'
-                                                        }`}>
-                                                        {att}
-                                                    </span>
+                                                            }`}>
+                                                            {att}
+                                                        </span>
+                                                        <button
+                                                            onClick={() => handleEditAttendance(record)}
+                                                            className="p-1.5 rounded-lg bg-slate-700/50 hover:bg-slate-600 text-slate-400 hover:text-amber-400 transition"
+                                                            title="Editar"
+                                                        >
+                                                            <EditIcon className="w-3.5 h-3.5" />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDeleteAttendance(record.id)}
+                                                            className="p-1.5 rounded-lg bg-slate-700/50 hover:bg-red-600/20 text-slate-400 hover:text-red-400 transition"
+                                                            title="Excluir"
+                                                        >
+                                                            <TrashIcon className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             );
                                         })

@@ -827,6 +827,37 @@ const App: React.FC = () => {
                                             showToast('Registro salvo com sucesso!', 'success');
                                         }}
                                         onUpdatePatient={handlePatientUpdate}
+                                        onUpdateRecord={(patientId, record) => {
+                                            setMedicalRecords(prev => ({
+                                                ...prev,
+                                                [patientId]: (prev[patientId] || []).map(r => r.id === record.id ? record : r)
+                                            }));
+                                            if (supabase && connectionStatus !== 'offline') {
+                                                supabase.from('medical_records').upsert({
+                                                    id: record.id,
+                                                    patient_id: patientId,
+                                                    professional_id: record.professionalId,
+                                                    date: record.date,
+                                                    type: record.type,
+                                                    data: JSON.parse(JSON.stringify(record))
+                                                }).then(({ error }) => {
+                                                    if (error) console.error('Erro ao atualizar prontuário na nuvem:', error);
+                                                });
+                                            }
+                                            showToast('Registro atualizado!', 'success');
+                                        }}
+                                        onDeleteRecord={(patientId, recordId) => {
+                                            setMedicalRecords(prev => ({
+                                                ...prev,
+                                                [patientId]: (prev[patientId] || []).filter(r => r.id !== recordId)
+                                            }));
+                                            if (supabase && connectionStatus !== 'offline') {
+                                                supabase.from('medical_records').delete().eq('id', recordId).then(({ error }) => {
+                                                    if (error) console.error('Erro ao deletar prontuário na nuvem:', error);
+                                                });
+                                            }
+                                            showToast('Registro excluído!', 'info');
+                                        }}
                                         onBack={() => setSelectedPatientForRecord(null)}
                                     />
                                 )}
