@@ -777,20 +777,76 @@ const App: React.FC = () => {
                                     onChange={e => setSearchTerm(e.target.value)}
                                     className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 mb-4 outline-none focus:ring-2 focus:ring-green-500"
                                 />
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[60vh] overflow-y-auto">
-                                    {filteredPatients.map(patient => (
-                                        <button
-                                            key={patient.id}
-                                            onClick={() => setSelectedPatientForRecord(patient)}
-                                            className="p-4 bg-slate-900 hover:bg-slate-700 rounded-xl border border-slate-700 hover:border-green-500/50 text-left transition-all group"
-                                        >
-                                            <h3 className="font-bold text-white group-hover:text-green-400 transition-colors">{patient.nome}</h3>
-                                            <p className="text-xs text-slate-500">{patient.convenio || 'Particular'} • {patient.faixa || 'N/I'}</p>
-                                            <p className="text-xs text-slate-600 mt-1">
-                                                {(medicalRecords[patient.id]?.length || 0)} registro(s)
-                                            </p>
-                                        </button>
-                                    ))}
+                                <div className="max-h-[60vh] overflow-y-auto space-y-6">
+                                    {(() => {
+                                        // Profissional: agrupar por convênio
+                                        if (currentUser?.role === 'professional') {
+                                            const groups: Record<string, typeof filteredPatients> = {};
+                                            filteredPatients.forEach(p => {
+                                                const key = p.convenio || 'Particular';
+                                                if (!groups[key]) groups[key] = [];
+                                                groups[key].push(p);
+                                            });
+                                            return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b)).map(([convenio, pts]) => (
+                                                <div key={convenio}>
+                                                    <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+                                                        <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                                                        {convenio} <span className="text-slate-600 font-normal">({pts.length})</span>
+                                                    </h3>
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                                        {pts.map(patient => (
+                                                            <button key={patient.id} onClick={() => setSelectedPatientForRecord(patient)} className="p-4 bg-slate-900 hover:bg-slate-700 rounded-xl border border-slate-700 hover:border-green-500/50 text-left transition-all group">
+                                                                <h3 className="font-bold text-white group-hover:text-green-400 transition-colors">{patient.nome}</h3>
+                                                                <p className="text-xs text-slate-500">{patient.convenio || 'Particular'} • {patient.faixa || 'N/I'}</p>
+                                                                <p className="text-xs text-slate-600 mt-1">{(medicalRecords[patient.id]?.length || 0)} registro(s)</p>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            ));
+                                        }
+                                        // Admin: agrupar por profissional
+                                        if (currentUser?.role === 'admin') {
+                                            const groups: Record<string, typeof filteredPatients> = {};
+                                            filteredPatients.forEach(p => {
+                                                const profs = p.profissionais?.length ? p.profissionais : ['Sem profissional'];
+                                                profs.forEach(prof => {
+                                                    const key = prof.split(' - ')[0];
+                                                    if (!groups[key]) groups[key] = [];
+                                                    groups[key].push(p);
+                                                });
+                                            });
+                                            return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b)).map(([prof, pts]) => (
+                                                <div key={prof}>
+                                                    <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+                                                        <span className="w-2 h-2 rounded-full bg-sky-500"></span>
+                                                        {prof} <span className="text-slate-600 font-normal">({pts.length})</span>
+                                                    </h3>
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                                        {pts.map(patient => (
+                                                            <button key={patient.id} onClick={() => setSelectedPatientForRecord(patient)} className="p-4 bg-slate-900 hover:bg-slate-700 rounded-xl border border-slate-700 hover:border-green-500/50 text-left transition-all group">
+                                                                <h3 className="font-bold text-white group-hover:text-green-400 transition-colors">{patient.nome}</h3>
+                                                                <p className="text-xs text-slate-500">{patient.convenio || 'Particular'} • {patient.faixa || 'N/I'}</p>
+                                                                <p className="text-xs text-slate-600 mt-1">{(medicalRecords[patient.id]?.length || 0)} registro(s)</p>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            ));
+                                        }
+                                        // Clínica: flat list
+                                        return (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                                {filteredPatients.map(patient => (
+                                                    <button key={patient.id} onClick={() => setSelectedPatientForRecord(patient)} className="p-4 bg-slate-900 hover:bg-slate-700 rounded-xl border border-slate-700 hover:border-green-500/50 text-left transition-all group">
+                                                        <h3 className="font-bold text-white group-hover:text-green-400 transition-colors">{patient.nome}</h3>
+                                                        <p className="text-xs text-slate-500">{patient.convenio || 'Particular'} • {patient.faixa || 'N/I'}</p>
+                                                        <p className="text-xs text-slate-600 mt-1">{(medicalRecords[patient.id]?.length || 0)} registro(s)</p>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        );
+                                    })()}
                                 </div>
                                 {filteredPatients.length === 0 && (
                                     <p className="text-slate-500 text-center py-8">Nenhum paciente encontrado.</p>
