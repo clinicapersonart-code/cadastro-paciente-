@@ -1099,6 +1099,14 @@ const App: React.FC = () => {
                                                 });
                                             }
                                         }}
+                                        onToggleActive={async (id, active) => {
+                                            setPatients(prev => prev.map(p => p.id === id ? { ...p, active } : p));
+                                            setSelectedPatientForRecord(prev => prev ? { ...prev, active } : null);
+                                            if (supabase) {
+                                                await supabase.from('patients').update({ active }).eq('id', id).catch(() => { });
+                                            }
+                                            showToast(active ? 'Paciente reativado!' : 'Paciente desativado.', active ? 'success' : 'info');
+                                        }}
                                         onBack={() => setSelectedPatientForRecord(null)}
                                     />
                                 )}

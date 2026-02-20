@@ -13,6 +13,7 @@ interface PatientPortalProps {
     onUpdateRecord: (patientId: string, record: MedicalRecordChunk) => void;
     onDeleteRecord: (patientId: string, recordId: string) => void;
     onUpdatePatient: (patient: Patient) => void;
+    onToggleActive?: (id: string, active: boolean) => void;
     onBack: () => void;
     // Documentos e Pastas
     documents: PatientDocument[];
@@ -33,6 +34,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({
     onUpdateRecord,
     onDeleteRecord,
     onUpdatePatient,
+    onToggleActive,
     onBack,
     documents: propDocuments,
     folders: propFolders,
@@ -230,13 +232,29 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({
                     >
                         ← Voltar
                     </button>
-                    <h2 className="text-lg font-bold text-white truncate">{patient.nome}</h2>
+                    <h2 className="text-lg font-bold text-white truncate">
+                        {patient.nome}
+                        {patient.active === false && (
+                            <span className="ml-2 text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded-full font-bold align-middle">INATIVO</span>
+                        )}
+                    </h2>
                     <p className="text-sm text-slate-400">
                         {calculateAge(patient.nascimento)} anos • {patient.faixa || 'N/I'}
                     </p>
                     <p className="text-xs text-slate-500 mt-1">
                         {patient.convenio || 'Particular'}
                     </p>
+                    {onToggleActive && (
+                        <button
+                            onClick={() => onToggleActive(patient.id, patient.active === false ? true : false)}
+                            className={`mt-3 w-full py-2 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-all ${patient.active === false
+                                    ? 'bg-green-500/10 text-green-400 border border-green-500/30 hover:bg-green-500/20'
+                                    : 'bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-500/20'
+                                }`}
+                        >
+                            {patient.active === false ? '✅ Reativar Paciente' : '⏸️ Desativar Paciente'}
+                        </button>
+                    )}
                 </div>
 
                 {/* Menu de Navegação */}
