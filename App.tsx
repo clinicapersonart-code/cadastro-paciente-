@@ -55,6 +55,7 @@ const App: React.FC = () => {
 
     // Estado para Prontuário
     const [selectedPatientForRecord, setSelectedPatientForRecord] = useState<Patient | null>(null);
+    const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
     const [medicalRecords, setMedicalRecords] = useLocalStorage<Record<string, import('./types').MedicalRecordChunk[]>>('personart.medical_records.db', {});
 
     // Estado para Documentos e Pastas (persistência por paciente)
@@ -832,8 +833,17 @@ const App: React.FC = () => {
                                     placeholder="Buscar paciente por nome..."
                                     value={searchTerm}
                                     onChange={e => setSearchTerm(e.target.value)}
-                                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 mb-4 outline-none focus:ring-2 focus:ring-green-500"
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 mb-2 outline-none focus:ring-2 focus:ring-green-500"
                                 />
+                                <label className="flex items-center gap-2 cursor-pointer select-none mb-4">
+                                    <input
+                                        type="checkbox"
+                                        checked={showInactive}
+                                        onChange={() => setShowInactive(!showInactive)}
+                                        className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-amber-500 focus:ring-amber-500 cursor-pointer"
+                                    />
+                                    <span className="text-sm text-slate-400">Mostrar inativos</span>
+                                </label>
                                 <div className="max-h-[60vh] overflow-y-auto space-y-6">
                                     {(() => {
                                         // Profissional: agrupar por convênio
@@ -846,19 +856,45 @@ const App: React.FC = () => {
                                             });
                                             return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b)).map(([convenio, pts]) => (
                                                 <div key={convenio}>
-                                                    <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+                                                    <button
+                                                        onClick={() => setCollapsedGroups(prev => ({ ...prev, [convenio]: !prev[convenio] }))}
+                                                        className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2 w-full text-left hover:text-slate-200 transition-colors py-1"
+                                                    >
+                                                        <span className={`transition-transform duration-200 ${collapsedGroups[convenio] ? '' : 'rotate-90'}`}>▶</span>
                                                         <span className="w-2 h-2 rounded-full bg-green-500"></span>
                                                         {convenio} <span className="text-slate-600 font-normal">({pts.length})</span>
-                                                    </h3>
-                                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                                                        {pts.map(patient => (
-                                                            <button key={patient.id} onClick={() => setSelectedPatientForRecord(patient)} className="p-4 bg-slate-900 hover:bg-slate-700 rounded-xl border border-slate-700 hover:border-green-500/50 text-left transition-all group">
-                                                                <h3 className="font-bold text-white group-hover:text-green-400 transition-colors">{patient.nome}</h3>
-                                                                <p className="text-xs text-slate-500">{patient.convenio || 'Particular'} • {patient.faixa || 'N/I'}</p>
-                                                                <p className="text-xs text-slate-600 mt-1">{(medicalRecords[patient.id]?.length || 0)} registro(s)</p>
-                                                            </button>
-                                                        ))}
-                                                    </div>
+                                                    </button>
+                                                    {!collapsedGroups[convenio] && (
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
+                                                            {pts.map(patient => (
+                                                                <div key={patient.id} className={`p-4 bg-slate-900 hover:bg-slate-700 rounded-xl border border-slate-700 hover:border-green-500/50 text-left transition-all group relative ${patient.active === false ? 'opacity-60' : ''}`}>
+                                                                    <button onClick={() => setSelectedPatientForRecord(patient)} className="w-full text-left">
+                                                                        <h3 className="font-bold text-white group-hover:text-green-400 transition-colors">
+                                                                            {patient.nome}
+                                                                            {patient.active === false && (
+                                                                                <span className="ml-2 text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded-full font-bold">INATIVO</span>
+                                                                            )}
+                                                                        </h3>
+                                                                        <p className="text-xs text-slate-500">{patient.convenio || 'Particular'} • {patient.faixa || 'N/I'}</p>
+                                                                        <p className="text-xs text-slate-600 mt-1">{(medicalRecords[patient.id]?.length || 0)} registro(s)</p>
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            const newActive = patient.active === false ? true : false;
+                                                                            setPatients(prev => prev.map(p => p.id === patient.id ? { ...p, active: newActive } : p));
+                                                                            if (supabase) supabase.from('patients').update({ active: newActive }).eq('id', patient.id).catch(() => { });
+                                                                            showToast(newActive ? 'Paciente reativado!' : 'Paciente desativado.', newActive ? 'success' : 'info');
+                                                                        }}
+                                                                        className={`absolute top-2 right-2 p-1.5 rounded-lg text-sm opacity-0 group-hover:opacity-100 transition-all ${patient.active === false ? 'text-green-400 hover:bg-green-500/10' : 'text-amber-400 hover:bg-amber-500/10'}`}
+                                                                        title={patient.active === false ? 'Reativar' : 'Desativar'}
+                                                                    >
+                                                                        {patient.active === false ? '✅' : '⏸️'}
+                                                                    </button>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             ));
                                         }
@@ -875,19 +911,45 @@ const App: React.FC = () => {
                                             });
                                             return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b)).map(([prof, pts]) => (
                                                 <div key={prof}>
-                                                    <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+                                                    <button
+                                                        onClick={() => setCollapsedGroups(prev => ({ ...prev, [prof]: !prev[prof] }))}
+                                                        className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2 w-full text-left hover:text-slate-200 transition-colors py-1"
+                                                    >
+                                                        <span className={`transition-transform duration-200 ${collapsedGroups[prof] ? '' : 'rotate-90'}`}>▶</span>
                                                         <span className="w-2 h-2 rounded-full bg-sky-500"></span>
                                                         {prof} <span className="text-slate-600 font-normal">({pts.length})</span>
-                                                    </h3>
-                                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                                                        {pts.map(patient => (
-                                                            <button key={patient.id} onClick={() => setSelectedPatientForRecord(patient)} className="p-4 bg-slate-900 hover:bg-slate-700 rounded-xl border border-slate-700 hover:border-green-500/50 text-left transition-all group">
-                                                                <h3 className="font-bold text-white group-hover:text-green-400 transition-colors">{patient.nome}</h3>
-                                                                <p className="text-xs text-slate-500">{patient.convenio || 'Particular'} • {patient.faixa || 'N/I'}</p>
-                                                                <p className="text-xs text-slate-600 mt-1">{(medicalRecords[patient.id]?.length || 0)} registro(s)</p>
-                                                            </button>
-                                                        ))}
-                                                    </div>
+                                                    </button>
+                                                    {!collapsedGroups[prof] && (
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
+                                                            {pts.map(patient => (
+                                                                <div key={patient.id} className={`p-4 bg-slate-900 hover:bg-slate-700 rounded-xl border border-slate-700 hover:border-green-500/50 text-left transition-all group relative ${patient.active === false ? 'opacity-60' : ''}`}>
+                                                                    <button onClick={() => setSelectedPatientForRecord(patient)} className="w-full text-left">
+                                                                        <h3 className="font-bold text-white group-hover:text-green-400 transition-colors">
+                                                                            {patient.nome}
+                                                                            {patient.active === false && (
+                                                                                <span className="ml-2 text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded-full font-bold">INATIVO</span>
+                                                                            )}
+                                                                        </h3>
+                                                                        <p className="text-xs text-slate-500">{patient.convenio || 'Particular'} • {patient.faixa || 'N/I'}</p>
+                                                                        <p className="text-xs text-slate-600 mt-1">{(medicalRecords[patient.id]?.length || 0)} registro(s)</p>
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            const newActive = patient.active === false ? true : false;
+                                                                            setPatients(prev => prev.map(p => p.id === patient.id ? { ...p, active: newActive } : p));
+                                                                            if (supabase) supabase.from('patients').update({ active: newActive }).eq('id', patient.id).catch(() => { });
+                                                                            showToast(newActive ? 'Paciente reativado!' : 'Paciente desativado.', newActive ? 'success' : 'info');
+                                                                        }}
+                                                                        className={`absolute top-2 right-2 p-1.5 rounded-lg text-sm opacity-0 group-hover:opacity-100 transition-all ${patient.active === false ? 'text-green-400 hover:bg-green-500/10' : 'text-amber-400 hover:bg-amber-500/10'}`}
+                                                                        title={patient.active === false ? 'Reativar' : 'Desativar'}
+                                                                    >
+                                                                        {patient.active === false ? '✅' : '⏸️'}
+                                                                    </button>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             ));
                                         }
@@ -895,8 +957,13 @@ const App: React.FC = () => {
                                         return (
                                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                                                 {filteredPatients.map(patient => (
-                                                    <button key={patient.id} onClick={() => setSelectedPatientForRecord(patient)} className="p-4 bg-slate-900 hover:bg-slate-700 rounded-xl border border-slate-700 hover:border-green-500/50 text-left transition-all group">
-                                                        <h3 className="font-bold text-white group-hover:text-green-400 transition-colors">{patient.nome}</h3>
+                                                    <button key={patient.id} onClick={() => setSelectedPatientForRecord(patient)} className={`p-4 bg-slate-900 hover:bg-slate-700 rounded-xl border border-slate-700 hover:border-green-500/50 text-left transition-all group ${patient.active === false ? 'opacity-60' : ''}`}>
+                                                        <h3 className="font-bold text-white group-hover:text-green-400 transition-colors">
+                                                            {patient.nome}
+                                                            {patient.active === false && (
+                                                                <span className="ml-2 text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded-full font-bold">INATIVO</span>
+                                                            )}
+                                                        </h3>
                                                         <p className="text-xs text-slate-500">{patient.convenio || 'Particular'} • {patient.faixa || 'N/I'}</p>
                                                         <p className="text-xs text-slate-600 mt-1">{(medicalRecords[patient.id]?.length || 0)} registro(s)</p>
                                                     </button>
