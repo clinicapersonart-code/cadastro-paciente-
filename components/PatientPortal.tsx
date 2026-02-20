@@ -43,9 +43,17 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({
 }) => {
     const [activeTab, setActiveTab] = useState<PortalTab>('prontuario');
 
+    // Helper para data local (evita bug de fuso horário com toISOString)
+    const getLocalDateString = (d: Date = new Date()) => {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
     // Estado para Sessões (presença)
     const [sessionAttendance, setSessionAttendance] = useState<'Compareceu' | 'Faltou' | 'Cancelado' | 'Justificado'>('Compareceu');
-    const [sessionDate, setSessionDate] = useState(new Date().toISOString().split('T')[0]);
+    const [sessionDate, setSessionDate] = useState(getLocalDateString());
     const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
 
     // Estado para Anamnese
@@ -85,7 +93,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({
         compareceu: existingRecords.filter(r => (r as SessionRecord).attendance === 'Compareceu').length,
         faltou: existingRecords.filter(r => (r as SessionRecord).attendance === 'Faltou').length,
         ultimaSessao: existingRecords.length > 0
-            ? new Date(Math.max(...existingRecords.map(r => new Date(r.date).getTime()))).toLocaleDateString('pt-BR')
+            ? new Date(Math.max(...existingRecords.map(r => new Date(r.date + 'T12:00:00').getTime()))).toLocaleDateString('pt-BR')
             : 'Nenhuma'
     };
 
@@ -119,7 +127,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({
             onSaveRecord(patient.id, sessionRecord);
         }
         // Reset form
-        setSessionDate(new Date().toISOString().split('T')[0]);
+        setSessionDate(getLocalDateString());
         setSessionAttendance('Compareceu');
     };
 
@@ -265,7 +273,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({
                         </h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <InfoCard label="Nome Completo" value={patient.nome} />
-                            <InfoCard label="Data de Nascimento" value={patient.nascimento ? new Date(patient.nascimento).toLocaleDateString('pt-BR') : 'N/I'} />
+                            <InfoCard label="Data de Nascimento" value={patient.nascimento ? new Date(patient.nascimento + 'T12:00:00').toLocaleDateString('pt-BR') : 'N/I'} />
                             <InfoCard label="Faixa Etária" value={patient.faixa || 'N/I'} />
                             <InfoCard label="Responsável" value={patient.responsavel || 'N/A'} />
                             <InfoCard label="Contato" value={patient.contato || 'N/I'} />
@@ -340,7 +348,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({
                             </button>
                             {editingRecordId && (
                                 <button
-                                    onClick={() => { setEditingRecordId(null); setSessionDate(new Date().toISOString().split('T')[0]); setSessionAttendance('Compareceu'); }}
+                                    onClick={() => { setEditingRecordId(null); setSessionDate(getLocalDateString()); setSessionAttendance('Compareceu'); }}
                                     className="w-full py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 font-medium rounded-xl flex items-center justify-center gap-2 transition mt-2"
                                 >
                                     <XIcon className="w-4 h-4" />
@@ -382,7 +390,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({
                                                         <span className="text-lg">{emojiMap[att || ''] || '📅'}</span>
                                                         <div>
                                                             <p className="text-white text-sm font-medium">
-                                                                {new Date(record.date).toLocaleDateString('pt-BR')}
+                                                                {new Date(record.date + 'T12:00:00').toLocaleDateString('pt-BR')}
                                                             </p>
                                                             <p className="text-xs text-slate-500">{record.professionalName}</p>
                                                         </div>
@@ -491,7 +499,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({
                                         .map(record => (
                                             <div key={record.id} className="flex items-center justify-between p-3 bg-slate-900 rounded-lg">
                                                 <div>
-                                                    <p className="text-sm text-white">{new Date(record.date).toLocaleDateString('pt-BR')}</p>
+                                                    <p className="text-sm text-white">{new Date(record.date + 'T12:00:00').toLocaleDateString('pt-BR')}</p>
                                                     <p className="text-xs text-slate-500 truncate max-w-xs">{record.content.substring(0, 50)}...</p>
                                                 </div>
                                                 <span className={`text-xs px-2 py-1 rounded ${(record as SessionRecord).attendance === 'Compareceu' ? 'bg-green-900 text-green-300' :

@@ -33,7 +33,13 @@ export const MedicalRecord: React.FC<MedicalRecordProps> = ({
     });
 
     // Data selecionada para o registro (padrão: hoje)
-    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+    const getLocalDateString = (d: Date = new Date()) => {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+    const [selectedDate, setSelectedDate] = useState(getLocalDateString());
 
     // Frequência do prontuário
     const [frequency, setFrequency] = useState<'Semanal' | 'Mensal'>('Semanal');
@@ -77,7 +83,7 @@ export const MedicalRecord: React.FC<MedicalRecordProps> = ({
 PRONTUÁRIO PSICOLÓGICO - ${record.type.toUpperCase()}
 ═══════════════════════════════════════════════════════════════
 Paciente: ${patient.nome}
-Data: ${new Date(record.date).toLocaleDateString('pt-BR')}
+Data: ${new Date(record.date + 'T12:00:00').toLocaleDateString('pt-BR')}
 Profissional: ${record.professionalName}
 
 REGISTRO DA SESSÃO:
@@ -112,7 +118,7 @@ ${record.nextSteps || 'Não registrado'}
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `prontuario_${patient.nome.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.txt`;
+        a.download = `prontuario_${patient.nome.replace(/\s+/g, '_')}_${getLocalDateString()}.txt`;
         a.click();
         URL.revokeObjectURL(url);
     };
@@ -133,7 +139,7 @@ ${record.nextSteps || 'Não registrado'}
                         <span style="color: #e9c49e; font-size: 14px; letter-spacing: 2px; text-transform: uppercase;">${record.type}</span>
                     </div>
                     <div style="text-align: right; color: #666;">
-                        <div>Data: <strong>${new Date(record.date).toLocaleDateString('pt-BR')}</strong></div>
+                        <div>Data: <strong>${new Date(record.date + 'T12:00:00').toLocaleDateString('pt-BR')}</strong></div>
                     </div>
                 </div>
 
@@ -141,7 +147,7 @@ ${record.nextSteps || 'Não registrado'}
                     <table style="width: 100%; border-collapse: collapse;">
                         <tr>
                             <td style="padding: 5px 0;"><strong>Paciente:</strong> ${patient.nome}</td>
-                            <td style="padding: 5px 0; text-align: right;"><strong>Nascimento:</strong> ${patient.nascimento ? new Date(patient.nascimento).toLocaleDateString('pt-BR') : '-'}</td>
+                            <td style="padding: 5px 0; text-align: right;"><strong>Nascimento:</strong> ${patient.nascimento ? new Date(patient.nascimento + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}</td>
                         </tr>
                         <tr>
                             <td style="padding: 5px 0;"><strong>Profissional:</strong> ${record.professionalName}</td>
@@ -364,7 +370,7 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
         });
         setFrequency(record.frequency || 'Semanal');
         if (record.frequency === 'Mensal') {
-            const d = new Date(record.date);
+            const d = new Date(record.date + 'T12:00:00');
             setSelectedMonth(d.getMonth());
             setSelectedYear(d.getFullYear());
         } else {
@@ -798,7 +804,7 @@ Exemplo:
                                                 </div>
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-xs text-slate-500 font-medium font-mono">
-                                                        {new Date(record.date).toLocaleDateString('pt-BR')} • {record.professionalName}
+                                                        {new Date(record.date + 'T12:00:00').toLocaleDateString('pt-BR')} • {record.professionalName}
                                                     </span>
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); handleEditRecord(record); }}
