@@ -190,3 +190,14 @@ export interface AnamneseData {
 }
 
 
+
+// --- SISTEMA DE NOTIFICAÇÕES ---
+export interface ActivityLog {
+  id: string;
+  userId: string;
+  userName: string;
+  action: 'CADASTRO_PACIENTE' | 'AGENDAMENTO' | 'ALTERACAO_AGENDA' | 'EXCLUSAO_AGENDA' | 'OUTRO';
+  details: string;
+  timestamp: string;
+  data?: any;
+}

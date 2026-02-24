@@ -10,7 +10,7 @@ interface AgendaProps {
     onAddAppointment: (appt: Appointment) => void;
     onAddBatchAppointments?: (appts: Appointment[]) => void;
     onUpdateAppointment: (appt: Appointment) => void;
-    onDeleteAppointment: (id: string) => void;
+    onDeleteAppointment: (id: string, name?: string) => void;
     currentUser?: UserProfile;
 }
 
@@ -246,8 +246,13 @@ export const Agenda: React.FC<AgendaProps> = ({
 
     const getAppointmentsForSlot = (date: Date, timeSlot: string): Appointment[] => {
         const dateStr = formatDateISO(date);
+        const slotHour = timeSlot.split(':')[0]; // Ex: "14" from "14:00"
+
         return filteredAppointments
-            .filter(a => a.date === dateStr && a.time === timeSlot)
+            .filter(a => {
+                const apptHour = a.time.split(':')[0]; // Ex: "14" from "14:15"
+                return a.date === dateStr && apptHour === slotHour;
+            })
             .filter(a => !filterProfissional || a.profissional === filterProfissional);
     };
 
@@ -703,7 +708,7 @@ interface AppointmentChipProps {
     appt: Appointment;
     profissionais: string[];
     onEdit: (appt: Appointment) => void;
-    onDelete: (id: string) => void;
+    onDelete: (id: string, name?: string) => void;
     onStatusChange: (appt: Appointment, status: Appointment['status']) => void;
 }
 
@@ -716,7 +721,10 @@ const AppointmentChip: React.FC<AppointmentChipProps> = ({ appt, profissionais, 
             className={`relative group text-xs p-1.5 rounded ${color.bg} border ${color.border} ${color.text} cursor-pointer`}
             onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
         >
-            <div className="font-medium truncate">{appt.patientName.split(' ')[0]}</div>
+            <div className="font-bold flex justify-between items-center gap-1 mb-0.5">
+                <span className="truncate">{appt.patientName.split(' ')[0]}</span>
+                <span className="text-[9px] opacity-80 whitespace-nowrap">{appt.time}</span>
+            </div>
             <div className="text-[10px] opacity-70 truncate">{appt.profissional.split(' - ')[0]}</div>
 
             {showMenu && (
@@ -727,7 +735,7 @@ const AppointmentChip: React.FC<AppointmentChipProps> = ({ appt, profissionais, 
                     <button onClick={() => { onStatusChange(appt, 'Realizado'); setShowMenu(false); }} className="w-full px-3 py-2 text-left text-xs text-green-400 hover:bg-slate-700 flex items-center gap-2">
                         <CheckIcon className="w-3 h-3" /> Realizado
                     </button>
-                    <button onClick={() => { if (confirm('Excluir?')) onDelete(appt.id); setShowMenu(false); }} className="w-full px-3 py-2 text-left text-xs text-red-400 hover:bg-slate-700 flex items-center gap-2">
+                    <button onClick={() => { if (confirm('Excluir?')) onDelete(appt.id, appt.patientName); setShowMenu(false); }} className="w-full px-3 py-2 text-left text-xs text-red-400 hover:bg-slate-700 flex items-center gap-2">
                         <TrashIcon className="w-3 h-3" /> Excluir
                     </button>
                 </div>
@@ -741,7 +749,7 @@ interface AppointmentCardProps {
     appt: Appointment;
     profissionais: string[];
     onEdit: (appt: Appointment) => void;
-    onDelete: (id: string) => void;
+    onDelete: (id: string, name?: string) => void;
     onStatusChange: (appt: Appointment, status: Appointment['status']) => void;
 }
 
@@ -752,6 +760,7 @@ const AppointmentCard: React.FC<AppointmentCardProps> = ({ appt, profissionais, 
         <div className={`flex items-center justify-between p-3 rounded-xl ${color.bg} border ${color.border}`}>
             <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono bg-white/10 px-1.5 py-0.5 rounded text-white">{appt.time}</span>
                     <h4 className="font-semibold text-white truncate">{appt.patientName}</h4>
                     <span className="text-[10px] bg-slate-800/50 px-2 py-0.5 rounded text-slate-400">
                         {appt.carteirinha || 'S/ Cart.'}
@@ -769,7 +778,7 @@ const AppointmentCard: React.FC<AppointmentCardProps> = ({ appt, profissionais, 
                 <button onClick={() => onStatusChange(appt, 'Realizado')} className="p-2 text-slate-400 hover:text-green-400 transition">
                     <CheckIcon className="w-4 h-4" />
                 </button>
-                <button onClick={() => { if (confirm('Excluir?')) onDelete(appt.id); }} className="p-2 text-slate-400 hover:text-red-400 transition">
+                <button onClick={() => { if (confirm('Excluir?')) onDelete(appt.id, appt.patientName); }} className="p-2 text-slate-400 hover:text-red-400 transition">
                     <TrashIcon className="w-4 h-4" />
                 </button>
             </div>

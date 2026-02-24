@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Patient, BrandConfig, Appointment, PreCadastro, UserProfile, MedicalRecordChunk } from './types';
+import { Patient, BrandConfig, Appointment, PreCadastro, UserProfile, MedicalRecordChunk, ActivityLog } from './types';
 import { STORAGE_KEYS, DEFAULT_CONVENIOS, DEFAULT_PROFISSIONAIS, DEFAULT_ESPECIALIDADES } from './constants';
 import useLocalStorage from './hooks/useLocalStorage';
 import { downloadFile, exportToCSV } from './services/fileService';
@@ -14,7 +14,7 @@ import { LoginScreen } from './components/LoginScreen';
 import { MedicalRecord } from './components/MedicalRecord';
 import { PatientPortal } from './components/PatientPortal';
 import { UserManager } from './components/UserManager';
-import { DownloadIcon, CloudIcon, UserIcon, CalendarIcon, InboxIcon, CheckIcon, XIcon, LockIcon, FileTextIcon, StarIcon, UploadIcon, ShieldIcon, FilterIcon, EditIcon, PlusIcon } from './components/icons';
+import { DownloadIcon, CloudIcon, UserIcon, CalendarIcon, InboxIcon, CheckIcon, XIcon, BellIcon, LockIcon, FileTextIcon, StarIcon, UploadIcon, ShieldIcon, FilterIcon, EditIcon, PlusIcon } from './components/icons';
 
 const App: React.FC = () => {
     const [convenios, setConvenios] = useLocalStorage<string[]>(STORAGE_KEYS.CONVENIOS, DEFAULT_CONVENIOS);
@@ -62,26 +62,14 @@ const App: React.FC = () => {
     const [patientDocuments, setPatientDocuments] = useLocalStorage<Record<string, import('./types').PatientDocument[]>>('personart.patient_documents.db', {});
     const [documentFolders, setDocumentFolders] = useLocalStorage<Record<string, import('./types').DocumentFolder[]>>('personart.document_folders.db', {});
 
+    // --- SISTEMA DE NOTIFICAÇÕES ---
+    const [activityLogs, setActivityLogs] = useLocalStorage<ActivityLog[]>('personart.notifications.db', []);
+    const [showNotifications, setShowNotifications] = useState(false);
+    const [lastReadTimestamp, setLastReadTimestamp] = useLocalStorage<string>('personart.notifications.last_read', new Date().toISOString());
+
     // --- ROTEAMENTO PÚBLICO ---
     const params = new URLSearchParams(window.location.search);
     const pageParam = params.get('page');
-
-    if (pageParam === 'cadastro' || pageParam === 'update' || pageParam === 'vip') {
-        const isVip = pageParam === 'vip';
-        const isUpdate = pageParam === 'update';
-
-        return (
-            <PublicRegistration
-                cloudEndpoint=""
-                brandName={brand.name}
-                brandColor={brand.color}
-                brandLogo={brand.logo}
-                convenios={convenios}
-                isVipMode={isVip}
-                isUpdateMode={isUpdate}
-            />
-        );
-    }
 
     // --- INICIALIZAÇÃO E MIGRAÇÃO V2.0 ---
     useEffect(() => {
@@ -128,14 +116,13 @@ const App: React.FC = () => {
             // Se estiver na rota publica, ok. Se não, vai pro login
             if (!pageParam) setView('landing');
         }
-    }, [currentUser]);
+    }, [currentUser, pageParam]);
 
     useEffect(() => {
         if (isAuthenticated && currentUser) {
             const fetchData = async () => {
                 setIsLoading(true);
 
-                // Se não tem supabase configurado, entra em modo offline
                 if (!isSupabaseConfigured() || !supabase) {
                     setConnectionStatus('offline');
                     setIsLoading(false);
@@ -145,21 +132,14 @@ const App: React.FC = () => {
                 try {
                     const { data: patData, error: patError } = await supabase.from('patients').select('*');
                     if (patError) throw patError;
-
-                    if (patData) {
-                        // Sincroniza Nuvem -> Local
-                        setPatients(patData.map((row: any) => row.data));
-                    }
+                    if (patData) setPatients(patData.map((row: any) => row.data));
 
                     const { data: apptData, error: apptError } = await supabase.from('appointments').select('*');
-                    if (!apptError && apptData) {
-                        setAppointments(apptData.map((row: any) => row.data));
-                    }
+                    if (!apptError && apptData) setAppointments(apptData.map((row: any) => row.data));
 
                     const { data: inboxData } = await supabase.from('inbox').select('*');
                     if (inboxData) setInbox(inboxData.map((row: any) => row.data));
 
-                    // Carregar prontuários
                     const { data: recData, error: recError } = await supabase.from('medical_records').select('*');
                     const cloudIds = new Set<string>();
                     if (!recError && recData && recData.length > 0) {
@@ -174,7 +154,6 @@ const App: React.FC = () => {
                         setMedicalRecords(grouped);
                     }
 
-                    // Migração: subir registros locais que ainda não estão na nuvem
                     const localRecords = JSON.parse(localStorage.getItem('personart.medical_records.db') || '{}');
                     const toUpload: any[] = [];
                     Object.entries(localRecords).forEach(([patientId, records]: [string, any]) => {
@@ -193,21 +172,22 @@ const App: React.FC = () => {
                             });
                         }
                     });
+
                     if (toUpload.length > 0) {
                         const { error: migError } = await supabase.from('medical_records').upsert(toUpload);
-                        if (migError) {
-                            console.error('Erro na migração de prontuários:', migError);
-                        } else {
-                            console.log(`✅ Migrados ${toUpload.length} prontuário(s) local → nuvem`);
-                        }
+                        if (!migError) console.log(`✅ Migrados ${toUpload.length} prontuário(s) local → nuvem`);
+                    }
+
+                    const { data: logData, error: logError } = await supabase.from('activity_logs').select('*').order('timestamp', { ascending: false }).limit(50);
+                    if (!logError && logData) {
+                        setActivityLogs(logData.map((row: any) => row.data || row));
                     }
 
                     setConnectionStatus('connected');
                     setDbError('');
 
-                    // Carregar documentos do paciente
                     const { data: docData } = await supabase.from('patient_documents').select('*');
-                    if (docData && docData.length > 0) {
+                    if (docData) {
                         const groupedDocs: Record<string, import('./types').PatientDocument[]> = {};
                         docData.forEach((row: any) => {
                             const pid = row.patient_id;
@@ -217,9 +197,8 @@ const App: React.FC = () => {
                         setPatientDocuments(groupedDocs);
                     }
 
-                    // Carregar pastas
                     const { data: folderData } = await supabase.from('document_folders').select('*');
-                    if (folderData && folderData.length > 0) {
+                    if (folderData) {
                         const groupedFolders: Record<string, import('./types').DocumentFolder[]> = {};
                         folderData.forEach((row: any) => {
                             const pid = row.patient_id;
@@ -229,25 +208,77 @@ const App: React.FC = () => {
                         setDocumentFolders(groupedFolders);
                     }
                 } catch (err: any) {
-                    console.error('Erro de conexão:', err);
-                    setDbError('Conexão instável. Operando com dados locais.');
+                    console.error('Erro de sincronização:', err);
+                    setDbError('Conexão instável. Operando offline.');
                     setConnectionStatus('error');
-                    // Não limpamos 'patients', mantendo os dados locais visíveis
                 } finally {
                     setIsLoading(false);
                 }
             };
             fetchData();
         }
-    }, [isAuthenticated]);
+    }, [isAuthenticated, currentUser]);
+
+    // --- ROTEAMENTO PÚBLICO ---
+    if (pageParam === 'cadastro' || pageParam === 'update' || pageParam === 'vip') {
+        const isVip = pageParam === 'vip';
+        const isUpdate = pageParam === 'update';
+
+        return (
+            <PublicRegistration
+                cloudEndpoint=""
+                brandName={brand.name}
+                brandColor={brand.color}
+                brandLogo={brand.logo}
+                convenios={convenios}
+                isVipMode={isVip}
+                isUpdateMode={isUpdate}
+            />
+        );
+    }
 
     const showToast = (msg: string, type: 'success' | 'error' | 'info' = 'success') => {
         setToast({ msg, type });
         setTimeout(() => setToast(null), 4000);
     };
 
+    const logActivity = async (action: ActivityLog['action'], details: string, data?: any) => {
+        if (!currentUser) return;
+
+        const newLog: ActivityLog = {
+            id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            userId: currentUser.id,
+            userName: currentUser.name,
+            action,
+            details,
+            timestamp: new Date().toISOString(),
+            data
+        };
+
+        // 1. Atualiza Local
+        setActivityLogs(prev => [newLog, ...prev].slice(0, 100));
+
+        // 2. Tenta salvar na Nuvem
+        if (isSupabaseConfigured() && supabase) {
+            try {
+                await supabase.from('activity_logs').insert([{
+                    id: newLog.id,
+                    user_id: newLog.userId,
+                    user_name: newLog.userName,
+                    action: newLog.action,
+                    details: newLog.details,
+                    timestamp: newLog.timestamp,
+                    data: newLog
+                }]);
+            } catch (e) {
+                console.error("Erro ao salvar log:", e);
+            }
+        }
+    };
+
     const handleSavePatient = async (patient: Patient, initialAppointment?: any) => {
         const newPatientId = patient.id || `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+        const isNew = !patients.find(p => p.id === patient.id);
 
         const numAut = patient.funservConfig?.numeroAutorizacao || patient.numero_autorizacao || '';
         const dataAut = patient.funservConfig?.dataAutorizacao || patient.data_autorizacao || null;
@@ -262,8 +293,12 @@ const App: React.FC = () => {
         });
         setEditingPatient(null);
 
+        if (isNew) {
+            logActivity('CADASTRO_PACIENTE', `${currentUser?.name || 'Alguém'} cadastrou o paciente ${patient.nome}`, { patientId: newPatientId });
+        }
+
         // 2. Tenta salvar na Nuvem
-        if (supabase && connectionStatus !== 'offline') {
+        if (supabase && isSupabaseConfigured() && connectionStatus !== 'offline') {
             const { error } = await supabase.from('patients').upsert({
                 id: newPatientId,
                 nome: patientToSave.nome,
@@ -331,7 +366,13 @@ const App: React.FC = () => {
                 data_autorizacao: enrichedAppt.data_autorizacao,
                 data: JSON.parse(JSON.stringify(enrichedAppt))
             });
-            if (error) console.error("Erro agendamento nuvem:", error);
+            if (error) {
+                console.error("Erro agendamento nuvem:", error);
+            } else {
+                logActivity('AGENDAMENTO', `${currentUser?.name} agendou ${enrichedAppt.patientName} para ${enrichedAppt.date} às ${enrichedAppt.time}`, { apptId: enrichedAppt.id });
+            }
+        } else {
+            logActivity('AGENDAMENTO', `${currentUser?.name} agendou ${enrichedAppt.patientName} (Local)`, { apptId: enrichedAppt.id });
         }
     };
 
@@ -369,7 +410,7 @@ const App: React.FC = () => {
         setAppointments(prev => prev.map(x => x.id === appt.id ? appt : x));
 
         if (supabase && connectionStatus !== 'offline') {
-            await supabase.from('appointments').upsert({
+            const { error } = await supabase.from('appointments').upsert({
                 id: appt.id,
                 date: appt.date,
                 patient_id: appt.patientId,
@@ -379,13 +420,19 @@ const App: React.FC = () => {
                 data_autorizacao: appt.data_autorizacao || null,
                 data: JSON.parse(JSON.stringify(appt))
             });
+            if (!error) {
+                logActivity('ALTERACAO_AGENDA', `${currentUser?.name} alterou agendamento de ${appt.patientName}`, { apptId: appt.id });
+            }
         }
     };
 
-    const handleDeleteAppointment = async (id: string) => {
+    const handleDeleteAppointment = async (id: string, name?: string) => {
         setAppointments(prev => prev.filter(x => x.id !== id));
         if (supabase && connectionStatus !== 'offline') {
-            await supabase.from('appointments').delete().eq('id', id);
+            const { error } = await supabase.from('appointments').delete().eq('id', id);
+            if (!error) {
+                logActivity('EXCLUSAO_AGENDA', `${currentUser?.name} excluiu agendamento de ${name || 'paciente'}`, { apptId: id });
+            }
         }
     };
 
@@ -668,6 +715,74 @@ const App: React.FC = () => {
                         >
                             <EditIcon className="w-5 h-5" />
                         </button>
+
+                        {/* Botão Notificações */}
+                        <div className="relative">
+                            <button
+                                onClick={() => {
+                                    setShowNotifications(!showNotifications);
+                                    if (!showNotifications) setLastReadTimestamp(new Date().toISOString());
+                                }}
+                                className={`p-2 rounded-lg transition-colors relative ${showNotifications ? 'bg-[#e9c49e]/20 text-[#e9c49e]' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
+                                title="Notificações"
+                            >
+                                <BellIcon className="w-5 h-5" />
+                                {activityLogs.filter(log => log.timestamp > lastReadTimestamp).length > 0 && (
+                                    <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-slate-900" />
+                                )}
+                            </button>
+
+                            {/* Painel de Notificações */}
+                            {showNotifications && (
+                                <div className="absolute right-0 mt-2 w-80 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl z-50 overflow-hidden animate-fade-in">
+                                    <div className="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-800/50">
+                                        <h3 className="font-bold text-sm text-white flex items-center gap-2">
+                                            <BellIcon className="w-4 h-4 text-[#e9c49e]" /> Notificações
+                                        </h3>
+                                        <span className="text-[10px] bg-slate-700 px-2 py-0.5 rounded text-slate-400">Últimos 50</span>
+                                    </div>
+                                    <div className="max-h-96 overflow-y-auto">
+                                        {activityLogs.length === 0 ? (
+                                            <div className="p-8 text-center text-slate-500 text-xs italic">Nenhuma atividade recente.</div>
+                                        ) : (
+                                            activityLogs.map((log, i) => (
+                                                <div key={log.id} className={`p-3 border-b border-slate-800/50 hover:bg-white/5 transition-colors ${log.timestamp > lastReadTimestamp ? 'bg-sky-500/5' : ''}`}>
+                                                    <div className="flex justify-between items-start gap-2 mb-1">
+                                                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${log.action === 'CADASTRO_PACIENTE' ? 'bg-green-900/30 text-green-400' :
+                                                            log.action === 'AGENDAMENTO' ? 'bg-sky-900/30 text-sky-400' :
+                                                                log.action === 'EXCLUSAO_AGENDA' ? 'bg-red-900/30 text-red-400' :
+                                                                    'bg-slate-800 text-slate-400'
+                                                            }`}>
+                                                            {log.action.replace('_', ' ')}
+                                                        </span>
+                                                        <span className="text-[9px] text-slate-500">
+                                                            {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-xs text-slate-300 leading-relaxed font-medium">{log.details}</p>
+                                                    <div className="text-[10px] text-slate-500 mt-1 flex items-center gap-1">
+                                                        <UserIcon className="w-3 h-3 opacity-50" /> {log.userName}
+                                                    </div>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                    {activityLogs.length > 0 && (
+                                        <button
+                                            onClick={() => {
+                                                if (confirm('Limpar histórico local?')) {
+                                                    setActivityLogs([]);
+                                                    setShowNotifications(false);
+                                                }
+                                            }}
+                                            className="w-full p-3 text-center text-[10px] text-slate-500 hover:text-red-400 hover:bg-red-900/10 transition-colors border-t border-slate-800"
+                                        >
+                                            Limpar Atividades
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+                        </div>
 
                         <button onClick={handleLogout} className="p-2 text-red-400 hover:text-red-300 ml-1"><LockIcon className="w-5 h-5" /></button>
                     </nav>
