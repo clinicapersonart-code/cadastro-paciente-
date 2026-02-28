@@ -71,6 +71,39 @@ const App: React.FC = () => {
     const params = new URLSearchParams(window.location.search);
     const pageParam = params.get('page');
 
+    // --- HELPER: Sincronizar um usuário com Supabase ---
+    const syncUserToCloud = async (user: UserProfile) => {
+        if (!isSupabaseConfigured() || !supabase) return;
+        try {
+            await supabase.from('user_profiles').upsert({
+                id: user.id,
+                name: user.name,
+                role: user.role,
+                active: user.active ?? true,
+                data: JSON.parse(JSON.stringify(user))
+            });
+        } catch (e) {
+            console.error('Erro ao sincronizar usuário:', e);
+        }
+    };
+
+    const syncAllUsersToCloud = async (usersList: UserProfile[]) => {
+        if (!isSupabaseConfigured() || !supabase) return;
+        try {
+            const records = usersList.map(u => ({
+                id: u.id,
+                name: u.name,
+                role: u.role,
+                active: u.active ?? true,
+                data: JSON.parse(JSON.stringify(u))
+            }));
+            await supabase.from('user_profiles').upsert(records);
+            console.log(`✅ ${records.length} usuário(s) sincronizados com a nuvem`);
+        } catch (e) {
+            console.error('Erro ao sincronizar usuários:', e);
+        }
+    };
+
     // --- INICIALIZAÇÃO E MIGRAÇÃO V2.0 ---
     useEffect(() => {
         // 1. Seed Inicial de Usuários (se vazio)
@@ -102,7 +135,11 @@ const App: React.FC = () => {
                 pin: '1234' // Senha padrão inicial
             }));
 
-            setUsers([clinicUser, defaultAdmin, ...migratedPros]);
+            const allSeedUsers = [clinicUser, defaultAdmin, ...migratedPros];
+            setUsers(allSeedUsers);
+
+            // Sincroniza seed inicial com a nuvem
+            syncAllUsersToCloud(allSeedUsers);
         }
     }, [users.length]); // Roda apenas se users estiver vazio
 
@@ -181,6 +218,24 @@ const App: React.FC = () => {
                     const { data: logData, error: logError } = await supabase.from('activity_logs').select('*').order('timestamp', { ascending: false }).limit(50);
                     if (!logError && logData) {
                         setActivityLogs(logData.map((row: any) => row.data || row));
+                    }
+
+                    // --- SINCRONIZAÇÃO DE USUÁRIOS ---
+                    const { data: userData, error: userError } = await supabase.from('user_profiles').select('*');
+                    if (!userError && userData && userData.length > 0) {
+                        const cloudUsers: UserProfile[] = userData.map((row: any) => row.data as UserProfile);
+                        setUsers(cloudUsers);
+
+                        // Se o usuário logado existe na nuvem, atualiza a sessão com os dados mais recentes
+                        if (currentUser) {
+                            const freshUser = cloudUsers.find(u => u.id === currentUser.id);
+                            if (freshUser) {
+                                setCurrentUser(freshUser);
+                            }
+                        }
+                    } else if (!userError && (!userData || userData.length === 0) && users.length > 0) {
+                        // Nuvem está vazia mas temos dados locais → migra para a nuvem
+                        await syncAllUsersToCloud(users);
                     }
 
                     setConnectionStatus('connected');
@@ -519,10 +574,14 @@ const App: React.FC = () => {
         }
 
         // Atualiza usuário
+        const updatedUser = { ...currentUser, pin: passwordForm.new };
         setUsers(prev => prev.map(u =>
-            u.id === currentUser.id ? { ...u, pin: passwordForm.new } : u
+            u.id === currentUser.id ? updatedUser : u
         ));
-        setCurrentUser({ ...currentUser, pin: passwordForm.new });
+        setCurrentUser(updatedUser);
+
+        // Sincroniza com a nuvem
+        syncUserToCloud(updatedUser);
 
         // Limpa e fecha
         setPasswordForm({ current: '', new: '', confirm: '' });
@@ -583,6 +642,9 @@ const App: React.FC = () => {
     const handleAddUser = (newUser: UserProfile) => {
         setUsers(prev => [...prev, newUser]);
 
+        // Sincroniza com a nuvem
+        syncUserToCloud(newUser);
+
         // SINCRONIZAÇÃO: Se for profissional, adiciona na lista de profissionais
         if (newUser.role === 'professional') {
             const displayName = newUser.professionalRegister
@@ -611,6 +673,9 @@ const App: React.FC = () => {
 
     const handleUpdateUser = (updatedUser: UserProfile) => {
         setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
+
+        // Sincroniza com a nuvem
+        syncUserToCloud(updatedUser);
 
         // Atualiza sessão se for o usuário logado
         if (currentUser?.id === updatedUser.id) {
