@@ -15,6 +15,7 @@ interface PatientPortalProps {
     onDeleteRecord: (patientId: string, recordId: string) => void;
     onUpdatePatient: (patient: Patient) => void;
     onToggleActive?: (id: string, active: boolean) => void;
+    onDelete?: (id: string) => void;
     onBack: () => void;
     // Documentos e Pastas
     documents: PatientDocument[];
@@ -36,6 +37,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({
     onDeleteRecord,
     onUpdatePatient,
     onToggleActive,
+    onDelete,
     onBack,
     documents: propDocuments,
     folders: propFolders,
@@ -45,6 +47,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({
     onDeleteFolder
 }) => {
     const [activeTab, setActiveTab] = useState<PortalTab>('prontuario');
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
     // Helper para data local (evita bug de fuso horário com toISOString)
     const getLocalDateString = (d: Date = new Date()) => {
@@ -253,6 +256,14 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({
                                 }`}
                         >
                             {patient.active === false ? '✅ Reativar Paciente' : '⏸️ Desativar Paciente'}
+                        </button>
+                    )}
+                    {onDelete && (
+                        <button
+                            onClick={() => setShowDeleteConfirm(true)}
+                            className="mt-2 w-full py-2 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-all bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20"
+                        >
+                            🗑️ Apagar Paciente
                         </button>
                     )}
                 </div>
@@ -694,6 +705,46 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({
                     </div>
                 )}
             </main>
+
+            {/* Modal de Confirmação: Apagar Paciente */}
+            {showDeleteConfirm && (
+                <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={() => setShowDeleteConfirm(false)}>
+                    <div className="bg-slate-800 rounded-2xl border border-red-500/30 p-6 w-full max-w-md shadow-2xl animate-fade-in" onClick={e => e.stopPropagation()}>
+                        <div className="text-center mb-6">
+                            <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <TrashIcon className="w-8 h-8 text-red-400" />
+                            </div>
+                            <h3 className="text-lg font-bold text-white mb-2">Apagar Paciente?</h3>
+                            <p className="text-slate-400 text-sm">
+                                Tem certeza que deseja apagar <strong className="text-white">{patient.nome}</strong>?
+                            </p>
+                            <p className="text-red-400 text-xs mt-2 font-medium">
+                                ⚠️ Esta ação é permanente e irá excluir todos os dados, prontuários, agendamentos e documentos deste paciente.
+                            </p>
+                        </div>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setShowDeleteConfirm(false)}
+                                className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-white font-medium rounded-xl transition"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setShowDeleteConfirm(false);
+                                    if (onDelete) {
+                                        onDelete(patient.id);
+                                        onBack();
+                                    }
+                                }}
+                                className="flex-1 py-3 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl transition flex items-center justify-center gap-2"
+                            >
+                                <TrashIcon className="w-4 h-4" /> Apagar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

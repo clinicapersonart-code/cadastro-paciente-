@@ -226,10 +226,10 @@ const App: React.FC = () => {
                         const cloudUsers: UserProfile[] = userData.map((row: any) => row.data as UserProfile);
                         setUsers(cloudUsers);
 
-                        // Se o usuário logado existe na nuvem, atualiza a sessão com os dados mais recentes
+                        // Atualiza sessão APENAS se o pin ou dados mudaram (evita loop infinito)
                         if (currentUser) {
                             const freshUser = cloudUsers.find(u => u.id === currentUser.id);
-                            if (freshUser) {
+                            if (freshUser && freshUser.pin !== currentUser.pin) {
                                 setCurrentUser(freshUser);
                             }
                         }
@@ -1340,6 +1340,7 @@ const App: React.FC = () => {
                                             }
                                             showToast(active ? 'Paciente reativado!' : 'Paciente desativado.', active ? 'success' : 'info');
                                         }}
+                                        onDelete={handleDeletePatient}
                                         onBack={() => setSelectedPatientForRecord(null)}
                                     />
                                 )}
