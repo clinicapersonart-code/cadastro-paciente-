@@ -343,6 +343,59 @@ const App: React.FC = () => {
         showToast('Dados do paciente atualizados!', 'success');
     };
 
+    // Handler para excluir paciente permanentemente
+    const handleDeletePatient = async (id: string) => {
+        const patient = patients.find(p => p.id === id);
+        const patientName = patient?.nome || 'Paciente';
+
+        // 1. Remove do estado local
+        setPatients(prev => prev.filter(p => p.id !== id));
+
+        // Limpa prontuários do paciente
+        setMedicalRecords(prev => {
+            const updated = { ...prev };
+            delete updated[id];
+            return updated;
+        });
+
+        // Limpa agendamentos do paciente
+        setAppointments(prev => prev.filter(a => a.patientId !== id));
+
+        // Limpa documentos e pastas do paciente
+        setPatientDocuments(prev => {
+            const updated = { ...prev };
+            delete updated[id];
+            return updated;
+        });
+        setDocumentFolders(prev => {
+            const updated = { ...prev };
+            delete updated[id];
+            return updated;
+        });
+
+        // 2. Remove da nuvem (Supabase)
+        if (supabase && isSupabaseConfigured() && connectionStatus !== 'offline') {
+            try {
+                await Promise.all([
+                    supabase.from('patients').delete().eq('id', id),
+                    supabase.from('medical_records').delete().eq('patient_id', id),
+                    supabase.from('appointments').delete().eq('patient_id', id),
+                    supabase.from('patient_documents').delete().eq('patient_id', id),
+                    supabase.from('document_folders').delete().eq('patient_id', id),
+                ]);
+                showToast(`Paciente "${patientName}" excluído permanentemente.`, 'info');
+            } catch (e) {
+                console.error('Erro ao excluir da nuvem:', e);
+                showToast(`Paciente excluído localmente. Erro na nuvem.`, 'error');
+            }
+        } else {
+            showToast(`Paciente "${patientName}" excluído localmente.`, 'info');
+        }
+
+        // 3. Registra no log de atividades
+        logActivity('EXCLUSAO_PACIENTE', `${currentUser?.name || 'Alguém'} excluiu o paciente ${patientName}`, { patientId: id });
+    };
+
     const handleAddAppointment = async (appt: Appointment) => {
         const patient = patients.find(p => p.id === appt.patientId);
         const enrichedAppt = {
@@ -878,7 +931,7 @@ const App: React.FC = () => {
                             <PatientTable
                                 patients={filteredPatients}
                                 onEdit={p => { setEditingPatient(p); window.scrollTo(0, 0); }}
-                                onDelete={async id => { if (confirm('Excluir permanentemente?')) { await supabase?.from('patients').delete().eq('id', id).catch(() => { }); setPatients(prev => prev.filter(p => p.id !== id)); } }}
+                                onDelete={handleDeletePatient}
                                 onToggleActive={async (id, active) => {
                                     setPatients(prev => prev.map(p => p.id === id ? { ...p, active } : p));
                                     if (supabase) {

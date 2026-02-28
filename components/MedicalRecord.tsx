@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Patient, MedicalRecordChunk, UserProfile } from '../types';
 import { FileTextIcon, MicIcon, SparklesIcon, SaveIcon, PlusIcon, ChevronDownIcon, ChevronUpIcon, TrashIcon, EditIcon } from './icons';
 
@@ -203,8 +203,28 @@ ${record.nextSteps || 'Não registrado'}
         printWindow.print();
     };
 
-    // Ditado por voz (Web Speech API)
-    const startDictation = () => {
+    // Ditado por voz (Web Speech API) - com gerenciamento correto de instância
+    const recognitionRef = useRef<any>(null);
+    const finalTranscriptRef = useRef('');
+
+    const stopDictation = useCallback(() => {
+        if (recognitionRef.current) {
+            recognitionRef.current.onend = null; // evita reinício automático
+            recognitionRef.current.onresult = null;
+            recognitionRef.current.onerror = null;
+            recognitionRef.current.abort();
+            recognitionRef.current = null;
+        }
+        setIsListening(false);
+    }, []);
+
+    const startDictation = useCallback(() => {
+        // Se já está escutando, parar
+        if (isListening) {
+            stopDictation();
+            return;
+        }
+
         if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
             alert('Seu navegador não suporta ditado por voz. Use Chrome ou Edge.');
             return;
@@ -216,25 +236,63 @@ ${record.nextSteps || 'Não registrado'}
         recognition.continuous = true;
         recognition.interimResults = true;
 
+        finalTranscriptRef.current = '';
+
         recognition.onstart = () => setIsListening(true);
-        recognition.onend = () => setIsListening(false);
 
         recognition.onresult = (event: any) => {
-            let transcript = '';
+            let finalText = '';
             for (let i = event.resultIndex; i < event.results.length; i++) {
-                transcript += event.results[i][0].transcript;
+                const result = event.results[i];
+                if (result.isFinal) {
+                    finalText += result[0].transcript;
+                }
             }
-            setQuickNotes(prev => prev + ' ' + transcript);
+            // Só adiciona ao texto quando o resultado é final (confirmado)
+            if (finalText) {
+                setQuickNotes(prev => {
+                    const separator = prev.trim() ? ' ' : '';
+                    return prev + separator + finalText.trim();
+                });
+            }
         };
 
-        recognition.onerror = () => setIsListening(false);
+        recognition.onerror = (event: any) => {
+            console.error('Erro no reconhecimento de voz:', event.error);
+            if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+                alert('Permissão de microfone negada. Verifique as configurações do navegador.');
+                stopDictation();
+            }
+            // Para erros como 'no-speech', o reconhecimento tenta de novo automaticamente
+        };
 
-        if (isListening) {
-            recognition.stop();
-        } else {
-            recognition.start();
-        }
-    };
+        recognition.onend = () => {
+            // O Chrome pode parar o reconhecimento automaticamente.
+            // Se o usuário ainda quer escutar, reinicia.
+            if (recognitionRef.current) {
+                try {
+                    recognitionRef.current.start();
+                } catch (e) {
+                    // Se falhar ao reiniciar, para de vez
+                    stopDictation();
+                }
+            }
+        };
+
+        recognitionRef.current = recognition;
+        recognition.start();
+    }, [isListening, stopDictation]);
+
+    // Limpa o reconhecimento ao desmontar o componente
+    useEffect(() => {
+        return () => {
+            if (recognitionRef.current) {
+                recognitionRef.current.onend = null;
+                recognitionRef.current.abort();
+                recognitionRef.current = null;
+            }
+        };
+    }, []);
 
     // Estado de loading para IA
     const [isFormatting, setIsFormatting] = useState(false);

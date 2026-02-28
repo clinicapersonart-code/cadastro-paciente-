@@ -146,6 +146,12 @@ export interface MedicalRecordChunk {
   isPrivate?: boolean; // Se true, visível apenas ao criador e admin
   attendance?: 'Compareceu' | 'Faltou' | 'Cancelado' | 'Justificado';
   frequency?: 'Semanal' | 'Mensal';
+
+  // Dados estruturados (para Anamnese com templates)
+  structuredData?: {
+    templateId: string;
+    answers: Record<string, string>;
+  };
 }
 
 // --- PORTAL DO PACIENTE 2.0 ---
@@ -196,7 +202,7 @@ export interface ActivityLog {
   id: string;
   userId: string;
   userName: string;
-  action: 'CADASTRO_PACIENTE' | 'AGENDAMENTO' | 'ALTERACAO_AGENDA' | 'EXCLUSAO_AGENDA' | 'OUTRO';
+  action: 'CADASTRO_PACIENTE' | 'AGENDAMENTO' | 'ALTERACAO_AGENDA' | 'EXCLUSAO_AGENDA' | 'EXCLUSAO_PACIENTE' | 'OUTRO';
   details: string;
   timestamp: string;
   data?: any;

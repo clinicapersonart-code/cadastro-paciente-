@@ -4,6 +4,7 @@ import { UserIcon, FileTextIcon, CalendarIcon, ClipboardIcon, FolderIcon, ChartB
 
 // Sub-componentes para cada aba
 import { MedicalRecord } from './MedicalRecord';
+import { StructuredAnamnese } from './StructuredAnamnese';
 
 interface PatientPortalProps {
     patient: Patient;
@@ -59,7 +60,6 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({
     const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
 
     // Estado para Anamnese
-    const [anamneseType, setAnamneseType] = useState<'Infantil' | 'Adulto'>(patient.faixa === 'Criança' ? 'Infantil' : 'Adulto');
 
     // Estado para Documentos (derivado das props)
     const [documents, setDocuments] = useState<PatientDocument[]>(propDocuments);
@@ -248,8 +248,8 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({
                         <button
                             onClick={() => onToggleActive(patient.id, patient.active === false ? true : false)}
                             className={`mt-3 w-full py-2 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-all ${patient.active === false
-                                    ? 'bg-green-500/10 text-green-400 border border-green-500/30 hover:bg-green-500/20'
-                                    : 'bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-500/20'
+                                ? 'bg-green-500/10 text-green-400 border border-green-500/30 hover:bg-green-500/20'
+                                : 'bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-500/20'
                                 }`}
                         >
                             {patient.active === false ? '✅ Reativar Paciente' : '⏸️ Desativar Paciente'}
@@ -454,38 +454,14 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({
                             Anamnese
                         </h3>
 
-                        {/* Seletor de Tipo */}
-                        <div className="flex gap-2">
-                            <button
-                                onClick={() => setAnamneseType('Infantil')}
-                                className={`flex-1 py-3 rounded-xl font-medium transition ${anamneseType === 'Infantil'
-                                    ? 'bg-amber-600 text-white'
-                                    : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                                    }`}
-                            >
-                                👶 Infantil / Adolescente
-                            </button>
-                            <button
-                                onClick={() => setAnamneseType('Adulto')}
-                                className={`flex-1 py-3 rounded-xl font-medium transition ${anamneseType === 'Adulto'
-                                    ? 'bg-amber-600 text-white'
-                                    : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                                    }`}
-                            >
-                                🧑 Adulto
-                            </button>
-                        </div>
-
-                        {/* Placeholder para Formulários */}
-                        <div className="bg-slate-800 rounded-xl border border-slate-700 p-8 text-center">
-                            <ClipboardIcon className="w-12 h-12 text-slate-600 mx-auto mb-4" />
-                            <p className="text-slate-400">
-                                Formulário de <strong className="text-amber-400">{anamneseType}</strong> em construção.
-                            </p>
-                            <p className="text-sm text-slate-500 mt-2">
-                                Aguardando recebimento do template.
-                            </p>
-                        </div>
+                        {/* Formulário de Anamnese Estruturada */}
+                        <StructuredAnamnese
+                            patient={patient}
+                            currentUser={currentUser}
+                            existingRecords={existingRecords}
+                            onSaveRecord={onSaveRecord}
+                            onUpdateRecord={onUpdateRecord}
+                        />
                     </div>
                 )}
 
