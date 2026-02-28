@@ -78,5 +78,92 @@ export const ANAMNESE_TEMPLATES: AnamneseTemplate[] = [
                 description: 'Observação sistemática de aparência, comportamento, humor/afeto, pensamento, percepção, cognição, insight e julgamento no momento da entrevista.'
             }
         ]
+    },
+    {
+        id: 'modelo-infantil',
+        name: 'Modelo 2 - Anamnese (Criança e Adolescente)',
+        description: 'Roteiro completo voltado para o atendimento infantil e de adolescentes, incluindo visão dos pais e do paciente.',
+        topics: [
+            {
+                id: 'motivo_encaminhamento',
+                title: 'Motivo do encaminhamento e percepção dos pais',
+                description: 'Investigar motivos da busca, percepção dos pais sobre o problema e coincidência com o comportamento real. Quem encaminhou? Qual a expectativa? A criança entende por que está aqui?'
+            },
+            {
+                id: 'desenvolvimento_infantil',
+                title: 'Desenvolvimento infantil',
+                description: 'Marcos do desenvolvimento, vínculo parental, complicações no parto, amamentação, quando sentou, andou, falou, etc.'
+            },
+            {
+                id: 'vida_escolar_pais',
+                title: 'Vida escolar e aprendizado (Visão dos Pais)',
+                description: 'Histórico escolar, rendimento, queixas da escola, reprovações, trocas de escola, apoio nos estudos.'
+            },
+            {
+                id: 'rotina_pais',
+                title: 'Rotina, sono e alimentação (Visão dos Pais)',
+                description: 'Qualidade da rotina, atividades extracurriculares, sono (horário/qualidade), alimentação, supervisão de higiene.'
+            },
+            {
+                id: 'relacoes_familiares_pais',
+                title: 'Relações familiares (Visão dos Pais)',
+                description: 'Configuração familiar, qualidade dos vínculos, perdas significativas, histórico de terapia dos pais.'
+            },
+            {
+                id: 'historico_saude',
+                title: 'Histórico de saúde',
+                description: 'Doenças diagnosticadas, medicação, internações, atendimentos anteriores (psicologia, fono, etc.).'
+            },
+            {
+                id: 'historico_familiar_psiquico',
+                title: 'Histórico familiar de sofrimento psíquico',
+                description: 'Transtornos mentais na família, dependência de substâncias, suicídio, histórico de violência.'
+            },
+            {
+                id: 'expectativas_valores',
+                title: 'Expectativas e valores familiares',
+                description: 'Valores que desejam transmitir, expectativas de futuro, crenças religiosas e costumes.'
+            },
+            {
+                id: 'vinculo_terapia_paciente',
+                title: 'Vínculo com a terapia (Visão do Paciente)',
+                description: 'Compreensão do paciente sobre o processo, se quis vir, se gosta de vir, experiências anteriores.'
+            },
+            {
+                id: 'vida_escolar_paciente',
+                title: 'Vida escolar (Visão do Paciente)',
+                description: 'Experiência subjetiva na escola, amigos, matérias favoritas/difíceis, relação com professores.'
+            },
+            {
+                id: 'rotina_interesses_paciente',
+                title: 'Rotina e interesses (Visão do Paciente)',
+                description: 'O que faz na semana/tempo livre, hobbies, autonomia nas escolhas de atividades.'
+            },
+            {
+                id: 'autocuidado_paciente',
+                title: 'Sono, alimentação e higiene (Visão do Paciente)',
+                description: 'Qualidade do sono, pesadelos, alimentação, autonomia no banho e higiene.'
+            },
+            {
+                id: 'relacoes_familiares_paciente',
+                title: 'Relações familiares (Visão do Paciente)',
+                description: 'Com quem mora, relação com pais e irmãos, quem cuida mais, quem briga mais.'
+            },
+            {
+                id: 'reacoes_comportamentos',
+                title: 'Reações e comportamentos',
+                description: 'Manejo da frustração, reações a broncas/castigos, expressões de sofrimento (se machucar, chorar muito).'
+            },
+            {
+                id: 'sexualidade_seguranca',
+                title: 'Sexualidade e segurança (para adolescentes)',
+                description: 'Percepção sobre sexualidade, consentimento, riscos, educação sexual, exposição indevida.'
+            },
+            {
+                id: 'saude_corpo',
+                title: 'Saúde e corpo',
+                description: 'Percepção do próprio corpo, queixas somáticas (dor de barriga, cabeça), uso de óculos/aparelho.'
+            }
+        ]
     }
 ];
