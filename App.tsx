@@ -106,40 +106,63 @@ const App: React.FC = () => {
 
     // --- INICIALIZAÇÃO E MIGRAÇÃO V2.0 ---
     useEffect(() => {
-        // 1. Seed Inicial de Usuários (se vazio)
+        // 1. Seed Inicial de Usuários (se vazio no localStorage)
         if (users.length === 0) {
-            // Clínica: acesso total ao sistema
-            const clinicUser: UserProfile = {
-                id: 'clinic-01',
-                name: 'Clínica Personart',
-                role: 'clinic',
-                active: true,
-                pin: 'personart' // Senha da clínica
+            const seedDefaults = () => {
+                // Clínica: acesso total ao sistema
+                const clinicUser: UserProfile = {
+                    id: 'clinic-01',
+                    name: 'Clínica Personart',
+                    role: 'clinic',
+                    active: true,
+                    pin: 'personart' // Senha da clínica
+                };
+
+                // Responsável Técnico: apenas prontuário (todos pacientes)
+                const defaultAdmin: UserProfile = {
+                    id: 'admin-01',
+                    name: 'Responsável Técnico',
+                    role: 'admin',
+                    active: true,
+                    pin: '1234'
+                };
+
+                // Tenta migrar profissionais da lista antiga para usuários
+                const migratedPros: UserProfile[] = profissionais.map(p => ({
+                    id: `pro-${Math.random().toString(36).substr(2, 9)}`,
+                    name: p.replace(/ - CRP.*/, ''), // Remove CRP do nome se tiver
+                    role: 'professional',
+                    active: true,
+                    pin: '1234' // Senha padrão inicial
+                }));
+
+                const allSeedUsers = [clinicUser, defaultAdmin, ...migratedPros];
+                setUsers(allSeedUsers);
+
+                // Sincroniza seed inicial com a nuvem
+                syncAllUsersToCloud(allSeedUsers);
             };
 
-            // Responsável Técnico: apenas prontuário (todos pacientes)
-            const defaultAdmin: UserProfile = {
-                id: 'admin-01',
-                name: 'Responsável Técnico',
-                role: 'admin',
-                active: true,
-                pin: '1234'
-            };
-
-            // Tenta migrar profissionais da lista antiga para usuários
-            const migratedPros: UserProfile[] = profissionais.map(p => ({
-                id: `pro-${Math.random().toString(36).substr(2, 9)}`,
-                name: p.replace(/ - CRP.*/, ''), // Remove CRP do nome se tiver
-                role: 'professional',
-                active: true,
-                pin: '1234' // Senha padrão inicial
-            }));
-
-            const allSeedUsers = [clinicUser, defaultAdmin, ...migratedPros];
-            setUsers(allSeedUsers);
-
-            // Sincroniza seed inicial com a nuvem
-            syncAllUsersToCloud(allSeedUsers);
+            // IMPORTANTE: Primeiro tenta carregar da nuvem para não sobrescrever senhas alteradas
+            if (isSupabaseConfigured() && supabase) {
+                supabase.from('user_profiles').select('*').then(({ data, error }) => {
+                    if (!error && data && data.length > 0) {
+                        // Nuvem tem dados → usa eles (preserva senhas alteradas)
+                        const cloudUsers: UserProfile[] = data.map((row: any) => row.data as UserProfile);
+                        setUsers(cloudUsers);
+                        console.log(`✅ ${cloudUsers.length} usuário(s) carregados da nuvem`);
+                    } else {
+                        // Nuvem vazia → seed padrão
+                        seedDefaults();
+                    }
+                }).catch(() => {
+                    // Erro de conexão → seed padrão (modo offline)
+                    seedDefaults();
+                });
+            } else {
+                // Sem Supabase configurado → seed padrão
+                seedDefaults();
+            }
         }
     }, [users.length]); // Roda apenas se users estiver vazio
 
@@ -550,7 +573,7 @@ const App: React.FC = () => {
         setView('landing');
     };
 
-    const handleChangePassword = () => {
+    const handleChangePassword = async () => {
         setPasswordError('');
 
         if (!currentUser) return;
@@ -580,8 +603,8 @@ const App: React.FC = () => {
         ));
         setCurrentUser(updatedUser);
 
-        // Sincroniza com a nuvem
-        syncUserToCloud(updatedUser);
+        // Sincroniza com a nuvem (com await para garantir persistência)
+        await syncUserToCloud(updatedUser);
 
         // Limpa e fecha
         setPasswordForm({ current: '', new: '', confirm: '' });
