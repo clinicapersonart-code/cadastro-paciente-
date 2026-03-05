@@ -197,12 +197,28 @@ export interface AnamneseData {
 
 
 
+// --- SISTEMA DE SOLICITAÇÕES DE ALTERAÇÃO DE AGENDA ---
+export interface ScheduleChangeRequest {
+  id: string;
+  appointmentId: string;
+  type: 'UPDATE' | 'DELETE';
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  requestedBy: string; // userId
+  requestedByName: string;
+  timestamp: string;
+  oldData: Appointment; // snapshot antes da alteração
+  newData?: Appointment; // dados novos (para UPDATE)
+  reviewedBy?: string; // userId de quem aceitou/rejeitou
+  reviewedByName?: string;
+  reviewedAt?: string;
+}
+
 // --- SISTEMA DE NOTIFICAÇÕES ---
 export interface ActivityLog {
   id: string;
   userId: string;
   userName: string;
-  action: 'CADASTRO_PACIENTE' | 'AGENDAMENTO' | 'ALTERACAO_AGENDA' | 'EXCLUSAO_AGENDA' | 'EXCLUSAO_PACIENTE' | 'OUTRO';
+  action: 'CADASTRO_PACIENTE' | 'AGENDAMENTO' | 'ALTERACAO_AGENDA' | 'EXCLUSAO_AGENDA' | 'EXCLUSAO_PACIENTE' | 'SOLICITACAO_ALTERACAO' | 'APROVACAO_ALTERACAO' | 'REJEICAO_ALTERACAO' | 'OUTRO';
   details: string;
   timestamp: string;
   data?: any;

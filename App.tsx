@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Patient, BrandConfig, Appointment, PreCadastro, UserProfile, MedicalRecordChunk, ActivityLog } from './types';
+import { Patient, BrandConfig, Appointment, PreCadastro, UserProfile, MedicalRecordChunk, ActivityLog, ScheduleChangeRequest } from './types';
 import { STORAGE_KEYS, DEFAULT_CONVENIOS, DEFAULT_PROFISSIONAIS, DEFAULT_ESPECIALIDADES } from './constants';
 import useLocalStorage from './hooks/useLocalStorage';
 import { downloadFile, exportToCSV } from './services/fileService';
@@ -66,6 +66,9 @@ const App: React.FC = () => {
     const [activityLogs, setActivityLogs] = useLocalStorage<ActivityLog[]>('personart.notifications.db', []);
     const [showNotifications, setShowNotifications] = useState(false);
     const [lastReadTimestamp, setLastReadTimestamp] = useLocalStorage<string>('personart.notifications.last_read', new Date().toISOString());
+
+    // --- SOLICITAÇÕES DE ALTERAÇÃO DE AGENDA ---
+    const [scheduleChangeRequests, setScheduleChangeRequests] = useLocalStorage<ScheduleChangeRequest[]>('personart.schedule_requests.db', []);
 
     // --- ROTEAMENTO PÚBLICO ---
     const params = new URLSearchParams(window.location.search);
@@ -241,6 +244,16 @@ const App: React.FC = () => {
                     const { data: logData, error: logError } = await supabase.from('activity_logs').select('*').order('timestamp', { ascending: false }).limit(50);
                     if (!logError && logData) {
                         setActivityLogs(logData.map((row: any) => row.data || row));
+                    }
+
+                    // --- CARREGAR SOLICITAÇÕES DE ALTERAÇÃO ---
+                    try {
+                        const { data: reqData, error: reqError } = await supabase.from('schedule_change_requests').select('*').order('timestamp', { ascending: false });
+                        if (!reqError && reqData) {
+                            setScheduleChangeRequests(reqData.map((row: any) => row.data as ScheduleChangeRequest));
+                        }
+                    } catch (e) {
+                        console.error('Erro ao carregar solicitações:', e);
                     }
 
                     // --- SINCRONIZAÇÃO DE USUÁRIOS ---
@@ -538,6 +551,48 @@ const App: React.FC = () => {
     };
 
     const handleUpdateAppointment = async (appt: Appointment) => {
+        // Profissionais: cria solicitação pendente em vez de alterar diretamente
+        if (currentUser?.role === 'professional') {
+            const oldAppt = appointments.find(x => x.id === appt.id);
+            if (!oldAppt) return;
+
+            const request: ScheduleChangeRequest = {
+                id: `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                appointmentId: appt.id,
+                type: 'UPDATE',
+                status: 'PENDING',
+                requestedBy: currentUser.id,
+                requestedByName: currentUser.name,
+                timestamp: new Date().toISOString(),
+                oldData: { ...oldAppt },
+                newData: { ...appt }
+            };
+
+            setScheduleChangeRequests(prev => [request, ...prev]);
+
+            // Salva na nuvem
+            if (supabase && connectionStatus !== 'offline') {
+                try {
+                    await supabase.from('schedule_change_requests').upsert({
+                        id: request.id,
+                        appointment_id: request.appointmentId,
+                        type: request.type,
+                        status: request.status,
+                        requested_by: request.requestedBy,
+                        timestamp: request.timestamp,
+                        data: JSON.parse(JSON.stringify(request))
+                    });
+                } catch (e) {
+                    console.error('Erro ao salvar solicitação:', e);
+                }
+            }
+
+            logActivity('SOLICITACAO_ALTERACAO', `${currentUser.name} solicitou alteração no agendamento de ${appt.patientName} (${appt.date} ${appt.time})`, { requestId: request.id, apptId: appt.id });
+            showToast('Solicitação de alteração enviada para a clínica!', 'info');
+            return;
+        }
+
+        // Clínica/Admin: aplica diretamente
         setAppointments(prev => prev.map(x => x.id === appt.id ? appt : x));
 
         if (supabase && connectionStatus !== 'offline') {
@@ -558,6 +613,46 @@ const App: React.FC = () => {
     };
 
     const handleDeleteAppointment = async (id: string, name?: string) => {
+        // Profissionais: cria solicitação pendente
+        if (currentUser?.role === 'professional') {
+            const oldAppt = appointments.find(x => x.id === id);
+            if (!oldAppt) return;
+
+            const request: ScheduleChangeRequest = {
+                id: `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                appointmentId: id,
+                type: 'DELETE',
+                status: 'PENDING',
+                requestedBy: currentUser.id,
+                requestedByName: currentUser.name,
+                timestamp: new Date().toISOString(),
+                oldData: { ...oldAppt }
+            };
+
+            setScheduleChangeRequests(prev => [request, ...prev]);
+
+            if (supabase && connectionStatus !== 'offline') {
+                try {
+                    await supabase.from('schedule_change_requests').upsert({
+                        id: request.id,
+                        appointment_id: request.appointmentId,
+                        type: request.type,
+                        status: request.status,
+                        requested_by: request.requestedBy,
+                        timestamp: request.timestamp,
+                        data: JSON.parse(JSON.stringify(request))
+                    });
+                } catch (e) {
+                    console.error('Erro ao salvar solicitação:', e);
+                }
+            }
+
+            logActivity('SOLICITACAO_ALTERACAO', `${currentUser.name} solicitou exclusão do agendamento de ${name || 'paciente'} (${oldAppt.date} ${oldAppt.time})`, { requestId: request.id, apptId: id });
+            showToast('Solicitação de exclusão enviada para a clínica!', 'info');
+            return;
+        }
+
+        // Clínica/Admin: aplica diretamente
         setAppointments(prev => prev.filter(x => x.id !== id));
         if (supabase && connectionStatus !== 'offline') {
             const { error } = await supabase.from('appointments').delete().eq('id', id);
@@ -565,6 +660,103 @@ const App: React.FC = () => {
                 logActivity('EXCLUSAO_AGENDA', `${currentUser?.name} excluiu agendamento de ${name || 'paciente'}`, { apptId: id });
             }
         }
+    };
+
+    // --- HANDLERS DE APROVAÇÃO/REJEIÇÃO DE SOLICITAÇÕES ---
+    const handleApproveChange = async (requestId: string) => {
+        const request = scheduleChangeRequests.find(r => r.id === requestId);
+        if (!request || request.status !== 'PENDING') return;
+
+        if (request.type === 'UPDATE' && request.newData) {
+            // Aplica a alteração no agendamento
+            setAppointments(prev => prev.map(x => x.id === request.appointmentId ? request.newData! : x));
+
+            if (supabase && connectionStatus !== 'offline') {
+                await supabase.from('appointments').upsert({
+                    id: request.newData.id,
+                    date: request.newData.date,
+                    patient_id: request.newData.patientId,
+                    status: request.newData.status,
+                    carteirinha: request.newData.carteirinha || '',
+                    numero_autorizacao: request.newData.numero_autorizacao || '',
+                    data_autorizacao: request.newData.data_autorizacao || null,
+                    data: JSON.parse(JSON.stringify(request.newData))
+                });
+            }
+        } else if (request.type === 'DELETE') {
+            // Exclui o agendamento
+            setAppointments(prev => prev.filter(x => x.id !== request.appointmentId));
+
+            if (supabase && connectionStatus !== 'offline') {
+                await supabase.from('appointments').delete().eq('id', request.appointmentId);
+            }
+        }
+
+        // Atualiza status da solicitação
+        const updatedRequest: ScheduleChangeRequest = {
+            ...request,
+            status: 'APPROVED',
+            reviewedBy: currentUser?.id,
+            reviewedByName: currentUser?.name,
+            reviewedAt: new Date().toISOString()
+        };
+
+        setScheduleChangeRequests(prev => prev.map(r => r.id === requestId ? updatedRequest : r));
+
+        if (supabase && connectionStatus !== 'offline') {
+            try {
+                await supabase.from('schedule_change_requests').upsert({
+                    id: updatedRequest.id,
+                    appointment_id: updatedRequest.appointmentId,
+                    type: updatedRequest.type,
+                    status: updatedRequest.status,
+                    requested_by: updatedRequest.requestedBy,
+                    timestamp: updatedRequest.timestamp,
+                    data: JSON.parse(JSON.stringify(updatedRequest))
+                });
+            } catch (e) {
+                console.error('Erro ao atualizar solicitação:', e);
+            }
+        }
+
+        const actionLabel = request.type === 'UPDATE' ? 'alteração' : 'exclusão';
+        logActivity('APROVACAO_ALTERACAO', `${currentUser?.name} aprovou ${actionLabel} de ${request.oldData.patientName} solicitada por ${request.requestedByName}`, { requestId, apptId: request.appointmentId });
+        showToast(`Solicitação aprovada! Agendamento ${request.type === 'DELETE' ? 'excluído' : 'atualizado'}.`, 'success');
+    };
+
+    const handleRejectChange = async (requestId: string) => {
+        const request = scheduleChangeRequests.find(r => r.id === requestId);
+        if (!request || request.status !== 'PENDING') return;
+
+        const updatedRequest: ScheduleChangeRequest = {
+            ...request,
+            status: 'REJECTED',
+            reviewedBy: currentUser?.id,
+            reviewedByName: currentUser?.name,
+            reviewedAt: new Date().toISOString()
+        };
+
+        setScheduleChangeRequests(prev => prev.map(r => r.id === requestId ? updatedRequest : r));
+
+        if (supabase && connectionStatus !== 'offline') {
+            try {
+                await supabase.from('schedule_change_requests').upsert({
+                    id: updatedRequest.id,
+                    appointment_id: updatedRequest.appointmentId,
+                    type: updatedRequest.type,
+                    status: updatedRequest.status,
+                    requested_by: updatedRequest.requestedBy,
+                    timestamp: updatedRequest.timestamp,
+                    data: JSON.parse(JSON.stringify(updatedRequest))
+                });
+            } catch (e) {
+                console.error('Erro ao atualizar solicitação:', e);
+            }
+        }
+
+        const actionLabel = request.type === 'UPDATE' ? 'alteração' : 'exclusão';
+        logActivity('REJEICAO_ALTERACAO', `${currentUser?.name} rejeitou ${actionLabel} de ${request.oldData.patientName} solicitada por ${request.requestedByName}`, { requestId, apptId: request.appointmentId });
+        showToast('Solicitação rejeitada. O agendamento permanece inalterado.', 'info');
     };
 
     const handleLogout = () => {
@@ -868,20 +1060,72 @@ const App: React.FC = () => {
                                 title="Notificações"
                             >
                                 <BellIcon className="w-5 h-5" />
-                                {activityLogs.filter(log => log.timestamp > lastReadTimestamp).length > 0 && (
+                                {(activityLogs.filter(log => log.timestamp > lastReadTimestamp).length > 0 || scheduleChangeRequests.filter(r => r.status === 'PENDING').length > 0) && (
                                     <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-slate-900" />
                                 )}
                             </button>
 
                             {/* Painel de Notificações */}
                             {showNotifications && (
-                                <div className="absolute right-0 mt-2 w-80 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl z-50 overflow-hidden animate-fade-in">
+                                <div className="absolute right-0 mt-2 w-96 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl z-50 overflow-hidden animate-fade-in">
                                     <div className="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-800/50">
                                         <h3 className="font-bold text-sm text-white flex items-center gap-2">
                                             <BellIcon className="w-4 h-4 text-[#e9c49e]" /> Notificações
                                         </h3>
-                                        <span className="text-[10px] bg-slate-700 px-2 py-0.5 rounded text-slate-400">Últimos 50</span>
+                                        <div className="flex items-center gap-2">
+                                            {scheduleChangeRequests.filter(r => r.status === 'PENDING').length > 0 && (
+                                                <span className="text-[10px] bg-amber-900/30 text-amber-400 px-2 py-0.5 rounded font-bold animate-pulse">
+                                                    {scheduleChangeRequests.filter(r => r.status === 'PENDING').length} pendente(s)
+                                                </span>
+                                            )}
+                                            <span className="text-[10px] bg-slate-700 px-2 py-0.5 rounded text-slate-400">Últimos 50</span>
+                                        </div>
                                     </div>
+
+                                    {/* Solicitações Pendentes — visível apenas para clínica */}
+                                    {currentUser?.role === 'clinic' && scheduleChangeRequests.filter(r => r.status === 'PENDING').length > 0 && (
+                                        <div className="border-b border-amber-500/20 bg-amber-900/10">
+                                            <div className="px-4 py-2 flex items-center gap-2 border-b border-amber-500/10">
+                                                <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">⏳ Solicitações Pendentes</span>
+                                            </div>
+                                            {scheduleChangeRequests.filter(r => r.status === 'PENDING').map(req => (
+                                                <div key={req.id} className="p-3 border-b border-amber-500/10 hover:bg-amber-500/5 transition-colors">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${req.type === 'UPDATE' ? 'bg-amber-900/30 text-amber-400' : 'bg-red-900/30 text-red-400'}`}>
+                                                            {req.type === 'UPDATE' ? 'ALTERAÇÃO' : 'EXCLUSÃO'}
+                                                        </span>
+                                                        <span className="text-[9px] text-slate-500">
+                                                            {new Date(req.timestamp).toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-xs text-slate-300 font-medium mb-1">
+                                                        <span className="text-[#e9c49e]">{req.requestedByName}</span> solicitou {req.type === 'UPDATE' ? 'alteração' : 'exclusão'} do agendamento de <span className="text-white font-bold">{req.oldData.patientName}</span>
+                                                    </p>
+                                                    <p className="text-[10px] text-slate-500 mb-2">
+                                                        📅 {req.oldData.date} às {req.oldData.time} • {req.oldData.profissional}
+                                                        {req.type === 'UPDATE' && req.newData && (
+                                                            <span className="text-amber-400"> → {req.newData.date} às {req.newData.time}</span>
+                                                        )}
+                                                    </p>
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            onClick={() => handleApproveChange(req.id)}
+                                                            className="flex-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold rounded-lg transition-colors flex items-center justify-center gap-1"
+                                                        >
+                                                            <CheckIcon className="w-3 h-3" /> Aceitar
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleRejectChange(req.id)}
+                                                            className="flex-1 px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-[11px] font-bold rounded-lg transition-colors flex items-center justify-center gap-1"
+                                                        >
+                                                            <XIcon className="w-3 h-3" /> Rejeitar
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
                                     <div className="max-h-96 overflow-y-auto">
                                         {activityLogs.length === 0 ? (
                                             <div className="p-8 text-center text-slate-500 text-xs italic">Nenhuma atividade recente.</div>
@@ -890,11 +1134,14 @@ const App: React.FC = () => {
                                                 <div key={log.id} className={`p-3 border-b border-slate-800/50 hover:bg-white/5 transition-colors ${log.timestamp > lastReadTimestamp ? 'bg-sky-500/5' : ''}`}>
                                                     <div className="flex justify-between items-start gap-2 mb-1">
                                                         <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${log.action === 'CADASTRO_PACIENTE' ? 'bg-green-900/30 text-green-400' :
-                                                            log.action === 'AGENDAMENTO' ? 'bg-sky-900/30 text-sky-400' :
-                                                                log.action === 'EXCLUSAO_AGENDA' ? 'bg-red-900/30 text-red-400' :
-                                                                    'bg-slate-800 text-slate-400'
+                                                                log.action === 'AGENDAMENTO' ? 'bg-sky-900/30 text-sky-400' :
+                                                                    log.action === 'EXCLUSAO_AGENDA' ? 'bg-red-900/30 text-red-400' :
+                                                                        log.action === 'SOLICITACAO_ALTERACAO' ? 'bg-amber-900/30 text-amber-400' :
+                                                                            log.action === 'APROVACAO_ALTERACAO' ? 'bg-emerald-900/30 text-emerald-400' :
+                                                                                log.action === 'REJEICAO_ALTERACAO' ? 'bg-rose-900/30 text-rose-400' :
+                                                                                    'bg-slate-800 text-slate-400'
                                                             }`}>
-                                                            {log.action.replace('_', ' ')}
+                                                            {log.action.replace(/_/g, ' ')}
                                                         </span>
                                                         <span className="text-[9px] text-slate-500">
                                                             {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
