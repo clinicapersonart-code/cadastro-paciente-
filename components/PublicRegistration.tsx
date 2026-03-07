@@ -55,6 +55,32 @@ export const PublicRegistration: React.FC<PublicRegistrationProps> = ({
         }
     });
     const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
+    const [nascimentoDisplay, setNascimentoDisplay] = useState('');
+
+    // Máscara para data de nascimento: DD/MM/AAAA
+    const handleNascimentoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        let value = e.target.value.replace(/\D/g, ''); // só números
+        if (value.length > 8) value = value.slice(0, 8);
+
+        // Aplica máscara DD/MM/AAAA
+        let masked = '';
+        if (value.length > 0) masked += value.slice(0, 2);
+        if (value.length > 2) masked += '/' + value.slice(2, 4);
+        if (value.length > 4) masked += '/' + value.slice(4, 8);
+
+        setNascimentoDisplay(masked);
+
+        // Converte para ISO (YYYY-MM-DD) quando data completa
+        if (value.length === 8) {
+            const day = value.slice(0, 2);
+            const month = value.slice(2, 4);
+            const year = value.slice(4, 8);
+            const isoDate = `${year}-${month}-${day}`;
+            setFormData(prev => ({ ...prev, nascimento: isoDate }));
+        } else {
+            setFormData(prev => ({ ...prev, nascimento: '' }));
+        }
+    };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -188,7 +214,16 @@ export const PublicRegistration: React.FC<PublicRegistrationProps> = ({
 
                     <div>
                         <label className="block text-sm font-medium text-slate-400 mb-1">Data de Nascimento *</label>
-                        <input required type="date" name="nascimento" value={formData.nascimento} onChange={handleChange} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-3 text-white focus:ring-2 focus:ring-sky-500 outline-none transition" />
+                        <input
+                            required
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="DD/MM/AAAA"
+                            value={nascimentoDisplay}
+                            onChange={handleNascimentoChange}
+                            maxLength={10}
+                            className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-3 text-white focus:ring-2 focus:ring-sky-500 outline-none transition"
+                        />
                     </div>
 
                     {isChild && (
