@@ -827,8 +827,8 @@ const App: React.FC = () => {
 
                 // Busca correspondência parcial (ex: "Simone" bate com "Simone - CRP 06/123")
                 const isAssigned = patientProfessionals.some(prof =>
-                    prof.toLowerCase().includes(professionalName.toLowerCase()) ||
-                    professionalName.toLowerCase().includes(prof.toLowerCase().split(' - ')[0])
+                    prof && (prof.toLowerCase().includes(professionalName.toLowerCase()) ||
+                        professionalName.toLowerCase().includes((prof.split(' - ')[0] || '').toLowerCase()))
                 );
 
                 if (!isAssigned) return false;
@@ -837,7 +837,7 @@ const App: React.FC = () => {
             const s = searchTerm.toLowerCase();
             if (s && !p.nome.toLowerCase().includes(s) && !p.carteirinha?.includes(s)) return false;
             if (filters.convenio && p.convenio !== filters.convenio) return false;
-            if (filters.profissional && !p.profissionais.includes(filters.profissional)) return false;
+            if (filters.profissional && !(p.profissionais || []).includes(filters.profissional)) return false;
             if (filters.faixa && p.faixa !== filters.faixa) return false;
 
             // Soft-delete: esconder inativos (a menos que showInactive esteja ligado)
@@ -1134,12 +1134,12 @@ const App: React.FC = () => {
                                                 <div key={log.id} className={`p-3 border-b border-slate-800/50 hover:bg-white/5 transition-colors ${log.timestamp > lastReadTimestamp ? 'bg-sky-500/5' : ''}`}>
                                                     <div className="flex justify-between items-start gap-2 mb-1">
                                                         <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${log.action === 'CADASTRO_PACIENTE' ? 'bg-green-900/30 text-green-400' :
-                                                                log.action === 'AGENDAMENTO' ? 'bg-sky-900/30 text-sky-400' :
-                                                                    log.action === 'EXCLUSAO_AGENDA' ? 'bg-red-900/30 text-red-400' :
-                                                                        log.action === 'SOLICITACAO_ALTERACAO' ? 'bg-amber-900/30 text-amber-400' :
-                                                                            log.action === 'APROVACAO_ALTERACAO' ? 'bg-emerald-900/30 text-emerald-400' :
-                                                                                log.action === 'REJEICAO_ALTERACAO' ? 'bg-rose-900/30 text-rose-400' :
-                                                                                    'bg-slate-800 text-slate-400'
+                                                            log.action === 'AGENDAMENTO' ? 'bg-sky-900/30 text-sky-400' :
+                                                                log.action === 'EXCLUSAO_AGENDA' ? 'bg-red-900/30 text-red-400' :
+                                                                    log.action === 'SOLICITACAO_ALTERACAO' ? 'bg-amber-900/30 text-amber-400' :
+                                                                        log.action === 'APROVACAO_ALTERACAO' ? 'bg-emerald-900/30 text-emerald-400' :
+                                                                            log.action === 'REJEICAO_ALTERACAO' ? 'bg-rose-900/30 text-rose-400' :
+                                                                                'bg-slate-800 text-slate-400'
                                                             }`}>
                                                             {log.action.replace(/_/g, ' ')}
                                                         </span>
@@ -1407,7 +1407,7 @@ const App: React.FC = () => {
                                             filteredPatients.forEach(p => {
                                                 const profs = p.profissionais?.length ? p.profissionais : ['Sem profissional'];
                                                 profs.forEach(prof => {
-                                                    const key = prof.split(' - ')[0];
+                                                    const key = (prof || 'Sem profissional').split(' - ')[0];
                                                     if (!groups[key]) groups[key] = [];
                                                     groups[key].push(p);
                                                 });
