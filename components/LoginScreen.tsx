@@ -41,15 +41,20 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ users, brand, onLogin 
                     </div>
 
                     <div className="grid grid-cols-1 gap-3 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
-                        {users.filter(u => u.active).map(user => (
+                        {users.filter(u => u.active).sort((a, b) => {
+                            const roleOrder: Record<string, number> = { clinic: 0, admin: 1, professional: 2 };
+                            const orderDiff = (roleOrder[a.role] ?? 9) - (roleOrder[b.role] ?? 9);
+                            if (orderDiff !== 0) return orderDiff;
+                            return a.name.localeCompare(b.name);
+                        }).map(user => (
                             <button
                                 key={user.id}
                                 onClick={() => { setSelectedUser(user); setError(''); }}
                                 className="flex items-center gap-4 p-4 rounded-xl bg-slate-700/50 hover:bg-slate-700 hover:scale-[1.02] transition-all group text-left border border-transparent hover:border-sky-500/30"
                             >
                                 <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold ${user.role === 'clinic' ? 'bg-purple-500/20 text-purple-500' :
-                                        user.role === 'admin' ? 'bg-amber-500/20 text-amber-500' :
-                                            'bg-sky-500/20 text-sky-500'
+                                    user.role === 'admin' ? 'bg-amber-500/20 text-amber-500' :
+                                        'bg-sky-500/20 text-sky-500'
                                     }`}>
                                     {user.name.charAt(0).toUpperCase()}
                                 </div>

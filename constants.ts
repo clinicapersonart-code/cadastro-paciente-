@@ -44,6 +44,7 @@ export const DEFAULT_ORIGINS = [
   'Google / Pesquisa',
   'Instagram',
   'Facebook',
+  'Doctoralia',
   'Recomendação de Amigo/Parente',
   'Encaminhamento Médico',
   'Passou em frente',
