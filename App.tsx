@@ -1713,9 +1713,17 @@ const App: React.FC = () => {
                                     <select
                                         id="prePro"
                                         className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white"
+                                        disabled={currentUser?.role === 'professional'}
+                                        defaultValue={currentUser?.role === 'professional' ? (profissionais.find(p => p.toLowerCase().includes(currentUser.name.toLowerCase())) || '') : ''}
                                     >
-                                        <option value="">Profissional (opcional)</option>
-                                        {profissionais.map(p => <option key={p} value={p}>{p}</option>)}
+                                        {currentUser?.role === 'professional' ? (
+                                            <option value={profissionais.find(p => p.toLowerCase().includes(currentUser.name.toLowerCase())) || currentUser.name}>{profissionais.find(p => p.toLowerCase().includes(currentUser.name.toLowerCase())) || currentUser.name}</option>
+                                        ) : (
+                                            <>
+                                                <option value="">Profissional (opcional)</option>
+                                                {profissionais.map(p => <option key={p} value={p}>{p}</option>)}
+                                            </>
+                                        )}
                                     </select>
                                     <div className="grid grid-cols-2 gap-2">
                                         <select
