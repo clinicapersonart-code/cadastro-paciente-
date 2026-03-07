@@ -19,6 +19,8 @@ export const MedicalRecord: React.FC<MedicalRecordProps> = ({
     onDeleteRecord,
     existingRecords = []
 }) => {
+    // Filtrar apenas registros de prontuário (excluir registros de presença/sessão)
+    const prontuarioRecords = existingRecords.filter(r => !(r as any).attendance);
     // Estado do painel de anotações (esquerda)
     const [quickNotes, setQuickNotes] = useState('');
     const [isListening, setIsListening] = useState(false);
@@ -69,7 +71,7 @@ export const MedicalRecord: React.FC<MedicalRecordProps> = ({
     };
 
     const selectAllRecords = () => {
-        setSelectedRecords(new Set(existingRecords.map(r => r.id)));
+        setSelectedRecords(new Set(prontuarioRecords.map(r => r.id)));
     };
 
     const deselectAllRecords = () => {
@@ -465,7 +467,7 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
 
         if (editingRecordId) {
             // Atualizar registro existente
-            const existing = existingRecords.find(r => r.id === editingRecordId);
+            const existing = prontuarioRecords.find(r => r.id === editingRecordId);
             if (existing) {
                 const updatedRecord: MedicalRecordChunk = {
                     ...existing,
@@ -773,7 +775,7 @@ Exemplo:
             </div>
 
             {/* Histórico de Registros */}
-            {existingRecords.length > 0 && (
+            {prontuarioRecords.length > 0 && (
                 <div className="border-t border-slate-700/50 mt-6 pt-2">
                     <button
                         onClick={() => setShowHistory(!showHistory)}
@@ -781,7 +783,7 @@ Exemplo:
                     >
                         <span className="font-bold flex items-center gap-2 group-hover:translate-x-1 transition-transform">
                             <FileTextIcon className="w-4 h-4" />
-                            Histórico de Registros <span className="text-xs py-0.5 px-2 bg-slate-800 rounded-full border border-slate-700 text-slate-400 ml-2">{existingRecords.length}</span>
+                            Histórico de Registros <span className="text-xs py-0.5 px-2 bg-slate-800 rounded-full border border-slate-700 text-slate-400 ml-2">{prontuarioRecords.length}</span>
                         </span>
                         {showHistory ? <ChevronUpIcon className="w-5 h-5" /> : <ChevronDownIcon className="w-5 h-5" />}
                     </button>
@@ -794,13 +796,13 @@ Exemplo:
                                     <div className="flex items-center gap-2 px-2">
                                         <input
                                             type="checkbox"
-                                            checked={selectedRecords.size === existingRecords.length && existingRecords.length > 0}
-                                            onChange={() => selectedRecords.size === existingRecords.length ? deselectAllRecords() : selectAllRecords()}
+                                            checked={selectedRecords.size === prontuarioRecords.length && prontuarioRecords.length > 0}
+                                            onChange={() => selectedRecords.size === prontuarioRecords.length ? deselectAllRecords() : selectAllRecords()}
                                             className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-[#e9c49e] focus:ring-[#e9c49e] cursor-pointer"
                                         />
                                         <span className="text-xs font-medium text-slate-400">
                                             {selectedRecords.size === 0 ? 'Selecionar todos' :
-                                                selectedRecords.size === existingRecords.length ? 'Todos selecionados' :
+                                                selectedRecords.size === prontuarioRecords.length ? 'Todos selecionados' :
                                                     `${selectedRecords.size} selecionado(s)`}
                                         </span>
                                     </div>
@@ -809,7 +811,7 @@ Exemplo:
                                     <div className="flex gap-2">
                                         <button
                                             onClick={() => {
-                                                const records = existingRecords.filter(r => selectedRecords.has(r.id));
+                                                const records = prontuarioRecords.filter(r => selectedRecords.has(r.id));
                                                 downloadAsTxt(records);
                                             }}
                                             className="px-3 py-1.5 bg-[#273e44] hover:bg-[#345057] border border-[#e9c49e]/30 text-[#e9c49e] text-xs font-bold rounded-lg flex items-center gap-2 transition hover:shadow-lg shadow-[#e9c49e]/5"
@@ -819,7 +821,7 @@ Exemplo:
                                         </button>
                                         <button
                                             onClick={() => {
-                                                const records = existingRecords.filter(r => selectedRecords.has(r.id));
+                                                const records = prontuarioRecords.filter(r => selectedRecords.has(r.id));
                                                 downloadAsPdf(records);
                                             }}
                                             className="px-3 py-1.5 bg-gradient-to-r from-red-900/80 to-red-800/80 hover:from-red-800 hover:to-red-700 border border-red-500/30 text-red-100 text-xs font-bold rounded-lg flex items-center gap-2 transition hover:shadow-lg shadow-red-500/10"
@@ -833,7 +835,7 @@ Exemplo:
 
                             {/* Lista de registros */}
                             <div className="space-y-3 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
-                                {existingRecords
+                                {prontuarioRecords
                                     .sort((a, b) => b.timestamp - a.timestamp)
                                     .map(record => (
                                         <div

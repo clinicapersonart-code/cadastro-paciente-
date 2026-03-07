@@ -109,16 +109,18 @@ export const Agenda: React.FC<AgendaProps> = ({
     // RBAC: Filtrar agendamentos para profissionais
     const filteredAppointments = useMemo(() => {
         if (!appointments || appointments.length === 0) return [];
+        // Filtra agendamentos com dados obrigatórios válidos
+        const validAppointments = appointments.filter(a => a && a.date && a.time && a.profissional);
         if (currentUser?.role === 'professional' && currentUser?.name) {
             const professionalName = currentUser.name;
-            return appointments.filter(appt => {
+            return validAppointments.filter(appt => {
                 if (!appt?.profissional) return false;
                 // Correspondência parcial do nome do profissional
                 return appt.profissional.toLowerCase().includes(professionalName.toLowerCase()) ||
-                    professionalName.toLowerCase().includes(appt.profissional.toLowerCase().split(' - ')[0]);
+                    professionalName.toLowerCase().includes((appt.profissional || '').toLowerCase().split(' - ')[0]);
             });
         }
-        return appointments;
+        return validAppointments;
     }, [appointments, currentUser]);
 
     const [selectedDate, setSelectedDate] = useLocalStorage<string>('personart.agenda.date', new Date().toISOString().split('T')[0]);
@@ -246,11 +248,12 @@ export const Agenda: React.FC<AgendaProps> = ({
 
     const getAppointmentsForSlot = (date: Date, timeSlot: string): Appointment[] => {
         const dateStr = formatDateISO(date);
-        const slotHour = timeSlot.split(':')[0]; // Ex: "14" from "14:00"
+        const slotHour = (timeSlot || '').split(':')[0]; // Ex: "14" from "14:00"
 
         return filteredAppointments
             .filter(a => {
-                const apptHour = a.time.split(':')[0]; // Ex: "14" from "14:15"
+                if (!a || !a.time || !a.date) return false;
+                const apptHour = (a.time || '').split(':')[0]; // Ex: "14" from "14:15"
                 return a.date === dateStr && apptHour === slotHour;
             })
             .filter(a => !filterProfissional || a.profissional === filterProfissional);
@@ -633,9 +636,9 @@ const MonthView: React.FC<MonthViewProps> = ({ monthDays, getAppointmentsForDay,
                                         return (
                                             <div
                                                 key={appt.id}
-                                                className={`text-[10px] px-1.5 py-0.5 rounded truncate ${color.bg} ${color.text}`}
+                                                className={`text-[10px] px-1.5 py-0.5 rounded truncate ${color?.bg || ''} ${color?.text || ''}`}
                                             >
-                                                {appt.time} {appt.patientName.split(' ')[0]}
+                                                {appt.time || ''} {(appt.patientName || '').split(' ')[0]}
                                             </div>
                                         );
                                     })}
@@ -722,10 +725,10 @@ const AppointmentChip: React.FC<AppointmentChipProps> = ({ appt, profissionais, 
             onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
         >
             <div className="font-bold flex justify-between items-center gap-1 mb-0.5">
-                <span className="truncate">{appt.patientName.split(' ')[0]}</span>
-                <span className="text-[9px] opacity-80 whitespace-nowrap">{appt.time}</span>
+                <span className="truncate">{(appt.patientName || '').split(' ')[0]}</span>
+                <span className="text-[9px] opacity-80 whitespace-nowrap">{appt.time || ''}</span>
             </div>
-            <div className="text-[10px] opacity-70 truncate">{appt.profissional.split(' - ')[0]}</div>
+            <div className="text-[10px] opacity-70 truncate">{(appt.profissional || '').split(' - ')[0]}</div>
 
             {showMenu && (
                 <div className="absolute top-full left-0 mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-xl z-20 min-w-[120px]">
@@ -760,8 +763,8 @@ const AppointmentCard: React.FC<AppointmentCardProps> = ({ appt, profissionais, 
         <div className={`flex items-center justify-between p-3 rounded-xl ${color.bg} border ${color.border}`}>
             <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono bg-white/10 px-1.5 py-0.5 rounded text-white">{appt.time}</span>
-                    <h4 className="font-semibold text-white truncate">{appt.patientName}</h4>
+                    <span className="text-xs font-mono bg-white/10 px-1.5 py-0.5 rounded text-white">{appt.time || ''}</span>
+                    <h4 className="font-semibold text-white truncate">{appt.patientName || 'Sem nome'}</h4>
                     <span className="text-[10px] bg-slate-800/50 px-2 py-0.5 rounded text-slate-400">
                         {appt.carteirinha || 'S/ Cart.'}
                     </span>
@@ -769,7 +772,7 @@ const AppointmentCard: React.FC<AppointmentCardProps> = ({ appt, profissionais, 
                         <span className="text-[10px] bg-green-900/50 text-green-400 px-2 py-0.5 rounded">Realizado</span>
                     )}
                 </div>
-                <p className={`text-sm ${color.text}`}>{appt.profissional}</p>
+                <p className={`text-sm ${color?.text || ''}`}>{appt.profissional || ''}</p>
             </div>
             <div className="flex gap-1">
                 <button onClick={() => onEdit(appt)} className="p-2 text-slate-400 hover:text-white transition">
