@@ -1323,7 +1323,7 @@ const App: React.FC = () => {
                         }}
                     />
                 )}
-                {activeTab === 'prontuario' && (
+                {activeTab === 'prontuario' && currentUser?.role !== 'clinic' && (
                     <div className="space-y-6">
                         {!selectedPatientForRecord ? (
                             <div className="bg-slate-800 rounded-2xl border border-slate-700 p-6">
