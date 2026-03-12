@@ -151,7 +151,15 @@ const App: React.FC = () => {
                 supabase.from('user_profiles').select('*').then(({ data, error }) => {
                     if (!error && data && data.length > 0) {
                         // Nuvem tem dados → usa eles (preserva senhas alteradas)
-                        const cloudUsers: UserProfile[] = data.map((row: any) => row.data as UserProfile);
+                        const rawUsers: UserProfile[] = data.map((row: any) => row.data as UserProfile);
+                        // Deduplica por nome+role para evitar usuários repetidos
+                        const seen = new Set<string>();
+                        const cloudUsers = rawUsers.filter(u => {
+                            const key = `${u.name}::${u.role}`;
+                            if (seen.has(key)) return false;
+                            seen.add(key);
+                            return true;
+                        });
                         setUsers(cloudUsers);
                         console.log(`✅ ${cloudUsers.length} usuário(s) carregados da nuvem`);
                     } else {
@@ -259,7 +267,15 @@ const App: React.FC = () => {
                     // --- SINCRONIZAÇÃO DE USUÁRIOS ---
                     const { data: userData, error: userError } = await supabase.from('user_profiles').select('*');
                     if (!userError && userData && userData.length > 0) {
-                        const cloudUsers: UserProfile[] = userData.map((row: any) => row.data as UserProfile);
+                        const rawUsers: UserProfile[] = userData.map((row: any) => row.data as UserProfile);
+                        // Deduplica por nome+role para evitar usuários repetidos na tela de login
+                        const seenKeys = new Set<string>();
+                        const cloudUsers = rawUsers.filter(u => {
+                            const key = `${u.name}::${u.role}`;
+                            if (seenKeys.has(key)) return false;
+                            seenKeys.add(key);
+                            return true;
+                        });
                         setUsers(cloudUsers);
 
                         // Atualiza sessão APENAS se o pin ou dados mudaram (evita loop infinito)
