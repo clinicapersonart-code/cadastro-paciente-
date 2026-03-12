@@ -1138,10 +1138,12 @@ const App: React.FC = () => {
                                     )}
 
                                     <div className="max-h-96 overflow-y-auto">
-                                        {activityLogs.length === 0 ? (
+                                        {activityLogs.filter(log => currentUser?.role !== 'professional' || log.userName === currentUser?.name || log.details.includes(currentUser?.name || '')).length === 0 ? (
                                             <div className="p-8 text-center text-slate-500 text-xs italic">Nenhuma atividade recente.</div>
                                         ) : (
-                                            activityLogs.map((log, i) => (
+                                            activityLogs
+                                                .filter(log => currentUser?.role !== 'professional' || log.userName === currentUser?.name || log.details.includes(currentUser?.name || ''))
+                                                .map((log, i) => (
                                                 <div key={log.id} className={`p-3 border-b border-slate-800/50 hover:bg-white/5 transition-colors ${log.timestamp > lastReadTimestamp ? 'bg-sky-500/5' : ''}`}>
                                                     <div className="flex justify-between items-start gap-2 mb-1">
                                                         <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${log.action === 'CADASTRO_PACIENTE' ? 'bg-green-900/30 text-green-400' :

@@ -53,6 +53,18 @@ export const MedicalRecord: React.FC<MedicalRecordProps> = ({
     // Record selection for download
     const [selectedRecords, setSelectedRecords] = useState<Set<string>>(new Set());
 
+    // Expanded records
+    const [expandedRecords, setExpandedRecords] = useState<Set<string>>(new Set());
+
+    const toggleExpandedRecord = (recordId: string) => {
+        setExpandedRecords(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(recordId)) newSet.delete(recordId);
+            else newSet.add(recordId);
+            return newSet;
+        });
+    };
+
     // Selection functions
     const toggleRecordSelection = (recordId: string) => {
         setSelectedRecords(prev => {
@@ -75,6 +87,7 @@ export const MedicalRecord: React.FC<MedicalRecordProps> = ({
     };
 
     // Format record to text
+    // formatRecordToText can be kept if we want, but downloadAsTxt is removed
     const formatRecordToText = (record: MedicalRecordChunk): string => {
         return `
 ═══════════════════════════════════════════════════════════════
@@ -97,28 +110,6 @@ PRÓXIMOS PASSOS:
 ${record.nextSteps || 'Não registrado'}
 ═══════════════════════════════════════════════════════════════
 `;
-    };
-
-    // Download as TXT
-    const downloadAsTxt = (records: MedicalRecordChunk[]) => {
-        const content = records.map(formatRecordToText).join('\n\n');
-        const header = `
-╔═══════════════════════════════════════════════════════════════╗
-║           CLÍNICA PERSONART - PRONTUÁRIO ELETRÔNICO           ║
-║                    Padrão CFP - Res. 001/2009                 ║
-╠═══════════════════════════════════════════════════════════════╣
-║ Paciente: ${patient.nome.padEnd(51)}║
-║ Convênio: ${(patient.convenio || 'Particular').padEnd(51)}║
-║ Data de Exportação: ${new Date().toLocaleString('pt-BR').padEnd(41)}║
-╚═══════════════════════════════════════════════════════════════╝
-`;
-        const blob = new Blob([header + content], { type: 'text/plain;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `prontuario_${patient.nome.replace(/\s+/g, '_')}_${getLocalDateString()}.txt`;
-        a.click();
-        URL.revokeObjectURL(url);
     };
 
     // Download as PDF
@@ -527,16 +518,6 @@ ${record.nextSteps || 'Não registrado'}
                                         <button
                                             onClick={() => {
                                                 const records = prontuarioRecords.filter(r => selectedRecords.has(r.id));
-                                                downloadAsTxt(records);
-                                            }}
-                                            className="px-3 py-1.5 bg-[#273e44] hover:bg-[#345057] border border-[#e9c49e]/30 text-[#e9c49e] text-xs font-bold rounded-lg flex items-center gap-2 transition hover:shadow-lg shadow-[#e9c49e]/5"
-                                        >
-                                            <FileTextIcon className="w-3 h-3" />
-                                            DOC/TXT
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                const records = prontuarioRecords.filter(r => selectedRecords.has(r.id));
                                                 downloadAsPdf(records);
                                             }}
                                             className="px-3 py-1.5 bg-gradient-to-r from-red-900/80 to-red-800/80 hover:from-red-800 hover:to-red-700 border border-red-500/30 text-red-100 text-xs font-bold rounded-lg flex items-center gap-2 transition hover:shadow-lg shadow-red-500/10"
@@ -605,9 +586,19 @@ ${record.nextSteps || 'Não registrado'}
                                                     ) : null}
                                                 </div>
                                             </div>
-                                            <p className="text-slate-300 text-sm line-clamp-3 leading-relaxed font-light pl-7 border-l-2 border-slate-700/50 group-hover:border-[#e9c49e]/30 transition-colors">
-                                                {record.content}
-                                            </p>
+                                            <div className="pl-7 border-l-2 border-slate-700/50 group-hover:border-[#e9c49e]/30 transition-colors">
+                                                <p className={`text-slate-300 text-sm leading-relaxed font-light ${expandedRecords.has(record.id) ? 'whitespace-pre-wrap' : 'line-clamp-3'}`}>
+                                                    {record.content}
+                                                </p>
+                                                {record.content && record.content.length > 150 && (
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); toggleExpandedRecord(record.id); }}
+                                                        className="mt-2 text-xs font-bold text-[#e9c49e] hover:text-[#d4af8a] transition-colors"
+                                                    >
+                                                        {expandedRecords.has(record.id) ? 'Ver Menos' : 'Ler Mais'}
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                     ))}
                             </div>
