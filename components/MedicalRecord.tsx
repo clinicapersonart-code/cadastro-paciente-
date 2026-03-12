@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Patient, MedicalRecordChunk, UserProfile } from '../types';
-import { FileTextIcon, MicIcon, SparklesIcon, SaveIcon, PlusIcon, ChevronDownIcon, ChevronUpIcon, TrashIcon, EditIcon } from './icons';
+import { FileTextIcon, ShieldIcon, SaveIcon, PlusIcon, ChevronDownIcon, ChevronUpIcon, TrashIcon, EditIcon } from './icons';
 
 interface MedicalRecordProps {
     patient: Patient;
@@ -21,11 +21,7 @@ export const MedicalRecord: React.FC<MedicalRecordProps> = ({
 }) => {
     // Filtrar apenas registros de prontuário (excluir registros de presença/sessão)
     const prontuarioRecords = existingRecords.filter(r => !(r as any).attendance);
-    // Estado do painel de anotações (esquerda)
-    const [quickNotes, setQuickNotes] = useState('');
-    const [isListening, setIsListening] = useState(false);
-
-    // Estado do prontuário formatado (direita)
+    // State for the record
     const [formattedRecord, setFormattedRecord] = useState({
         type: 'Evolução' as 'Anamnese' | 'Evolução' | 'Encerramento',
         content: '',
@@ -34,7 +30,7 @@ export const MedicalRecord: React.FC<MedicalRecordProps> = ({
         nextSteps: ''
     });
 
-    // Data selecionada para o registro (padrão: hoje)
+    // Selected date for the record (default: today)
     const getLocalDateString = (d: Date = new Date()) => {
         const year = d.getFullYear();
         const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -43,21 +39,21 @@ export const MedicalRecord: React.FC<MedicalRecordProps> = ({
     };
     const [selectedDate, setSelectedDate] = useState(getLocalDateString());
 
-    // Frequência do prontuário
+    // Record frequency
     const [frequency, setFrequency] = useState<'Semanal' | 'Mensal'>('Semanal');
     const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth()); // 0-11
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
-    // Histórico expandido
+    // History expanded
     const [showHistory, setShowHistory] = useState(false);
 
-    // Edição de registro existente
+    // Editing existing record
     const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
 
-    // Seleção de registros para download
+    // Record selection for download
     const [selectedRecords, setSelectedRecords] = useState<Set<string>>(new Set());
 
-    // Funções de seleção
+    // Selection functions
     const toggleRecordSelection = (recordId: string) => {
         setSelectedRecords(prev => {
             const newSet = new Set(prev);
@@ -78,7 +74,7 @@ export const MedicalRecord: React.FC<MedicalRecordProps> = ({
         setSelectedRecords(new Set());
     };
 
-    // Formatar registro para texto
+    // Format record to text
     const formatRecordToText = (record: MedicalRecordChunk): string => {
         return `
 ═══════════════════════════════════════════════════════════════
@@ -103,7 +99,7 @@ ${record.nextSteps || 'Não registrado'}
 `;
     };
 
-    // Download como TXT (simula DOC)
+    // Download as TXT
     const downloadAsTxt = (records: MedicalRecordChunk[]) => {
         const content = records.map(formatRecordToText).join('\n\n');
         const header = `
@@ -125,7 +121,7 @@ ${record.nextSteps || 'Não registrado'}
         URL.revokeObjectURL(url);
     };
 
-    // Download como PDF (usando print)
+    // Download as PDF
     const downloadAsPdf = (records: MedicalRecordChunk[]) => {
         const printWindow = window.open('', '_blank');
         if (!printWindow) {
@@ -205,220 +201,7 @@ ${record.nextSteps || 'Não registrado'}
         printWindow.print();
     };
 
-    // Ditado por voz (Web Speech API) - com gerenciamento correto de instância
-    const recognitionRef = useRef<any>(null);
-    const finalTranscriptRef = useRef('');
-
-    const stopDictation = useCallback(() => {
-        if (recognitionRef.current) {
-            recognitionRef.current.onend = null; // evita reinício automático
-            recognitionRef.current.onresult = null;
-            recognitionRef.current.onerror = null;
-            recognitionRef.current.abort();
-            recognitionRef.current = null;
-        }
-        setIsListening(false);
-    }, []);
-
-    const startDictation = useCallback(() => {
-        // Se já está escutando, parar
-        if (isListening) {
-            stopDictation();
-            return;
-        }
-
-        if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-            alert('Seu navegador não suporta ditado por voz. Use Chrome ou Edge.');
-            return;
-        }
-
-        const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
-        const recognition = new SpeechRecognition();
-        recognition.lang = 'pt-BR';
-        recognition.continuous = true;
-        recognition.interimResults = true;
-
-        finalTranscriptRef.current = '';
-
-        recognition.onstart = () => setIsListening(true);
-
-        recognition.onresult = (event: any) => {
-            let finalText = '';
-            for (let i = event.resultIndex; i < event.results.length; i++) {
-                const result = event.results[i];
-                if (result.isFinal) {
-                    finalText += result[0].transcript;
-                }
-            }
-            // Só adiciona ao texto quando o resultado é final (confirmado)
-            if (finalText) {
-                setQuickNotes(prev => {
-                    const separator = prev.trim() ? ' ' : '';
-                    return prev + separator + finalText.trim();
-                });
-            }
-        };
-
-        recognition.onerror = (event: any) => {
-            console.error('Erro no reconhecimento de voz:', event.error);
-            if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-                alert('Permissão de microfone negada. Verifique as configurações do navegador.');
-                stopDictation();
-            }
-            // Para erros como 'no-speech', o reconhecimento tenta de novo automaticamente
-        };
-
-        recognition.onend = () => {
-            // O Chrome pode parar o reconhecimento automaticamente.
-            // Se o usuário ainda quer escutar, reinicia.
-            if (recognitionRef.current) {
-                try {
-                    recognitionRef.current.start();
-                } catch (e) {
-                    // Se falhar ao reiniciar, para de vez
-                    stopDictation();
-                }
-            }
-        };
-
-        recognitionRef.current = recognition;
-        recognition.start();
-    }, [isListening, stopDictation]);
-
-    // Limpa o reconhecimento ao desmontar o componente
-    useEffect(() => {
-        return () => {
-            if (recognitionRef.current) {
-                recognitionRef.current.onend = null;
-                recognitionRef.current.abort();
-                recognitionRef.current = null;
-            }
-        };
-    }, []);
-
-    // Estado de loading para IA
-    const [isFormatting, setIsFormatting] = useState(false);
-
-    // Prompt para formatação CRP
-    const buildPrompt = (notes: string) => `Você é um assistente de psicólogo clínico. Formate as seguintes anotações de sessão em um prontuário profissional padrão CRP.
-
-ANOTAÇÕES DA SESSÃO:
-${notes}
-
-Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicações):
-{
-    "content": "Resumo profissional da sessão em terceira pessoa",
-    "behavior": "Estado emocional e comportamental observado",
-    "intervention": "Técnicas e intervenções utilizadas",
-    "nextSteps": "Encaminhamentos e próximos passos"
-}`;
-
-    // Processar resposta da IA
-    const processAIResponse = (aiResponse: string) => {
-        const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-            try {
-                const parsed = JSON.parse(jsonMatch[0]);
-                setFormattedRecord(prev => ({
-                    ...prev,
-                    content: parsed.content || quickNotes,
-                    behavior: parsed.behavior || '',
-                    intervention: parsed.intervention || '',
-                    nextSteps: parsed.nextSteps || ''
-                }));
-                return true;
-            } catch {
-                setFormattedRecord(prev => ({ ...prev, content: aiResponse || quickNotes }));
-                return true;
-            }
-        }
-        setFormattedRecord(prev => ({ ...prev, content: aiResponse || quickNotes }));
-        return true;
-    };
-
-    // Tentar Groq Cloud (funciona em produção)
-    const tryGroq = async (prompt: string): Promise<boolean> => {
-        const apiKey = import.meta.env.VITE_GROQ_API_KEY;
-        if (!apiKey) return false;
-
-        try {
-            const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${apiKey}`
-                },
-                body: JSON.stringify({
-                    model: 'llama-3.3-70b-versatile',
-                    messages: [{ role: 'user', content: prompt }],
-                    temperature: 0.3,
-                    max_tokens: 1000
-                })
-            });
-
-            if (!response.ok) throw new Error('Groq API error');
-
-            const data = await response.json();
-            const aiResponse = data.choices?.[0]?.message?.content || '';
-            return processAIResponse(aiResponse);
-        } catch (error) {
-            console.error('Groq error:', error);
-            return false;
-        }
-    };
-
-    // Tentar Ollama Local (funciona em desenvolvimento)
-    const tryOllama = async (prompt: string): Promise<boolean> => {
-        try {
-            const response = await fetch('http://localhost:11434/api/generate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    model: 'qwen3-coder:30b',
-                    prompt: prompt,
-                    stream: false,
-                    options: { temperature: 0.3, num_predict: 1000 }
-                })
-            });
-
-            if (!response.ok) throw new Error('Ollama error');
-
-            const data = await response.json();
-            return processAIResponse(data.response || '');
-        } catch (error) {
-            console.error('Ollama error:', error);
-            return false;
-        }
-    };
-
-    // Formatar com IA (tenta Groq primeiro, depois Ollama)
-    const formatWithAI = async () => {
-        if (!quickNotes.trim()) {
-            alert('Digite algumas anotações para formatar.');
-            return;
-        }
-
-        setIsFormatting(true);
-        const prompt = buildPrompt(quickNotes);
-
-        try {
-            // Tenta Groq Cloud primeiro (funciona no Vercel)
-            const groqSuccess = await tryGroq(prompt);
-            if (groqSuccess) return;
-
-            // Fallback: tenta Ollama local
-            const ollamaSuccess = await tryOllama(prompt);
-            if (ollamaSuccess) return;
-
-            // Se nenhum funcionou
-            alert('Não foi possível conectar à IA. Verifique sua conexão.');
-            setFormattedRecord(prev => ({ ...prev, content: quickNotes }));
-        } finally {
-            setIsFormatting(false);
-        }
-    };
-
-    // Editar registro existente (preenche o formulário)
+    // Edit existing record
     const handleEditRecord = (record: MedicalRecordChunk) => {
         setEditingRecordId(record.id);
         setFormattedRecord({
@@ -436,25 +219,23 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
         } else {
             setSelectedDate(record.date);
         }
-        setQuickNotes('');
-        // Scroll para o formulário
+        // Scroll to form
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
-    // Cancelar edição
+    // Cancel edit
     const handleCancelEdit = () => {
         setEditingRecordId(null);
-        setQuickNotes('');
         setFormattedRecord({ type: 'Evolução', content: '', behavior: '', intervention: '', nextSteps: '' });
     };
 
-    // Excluir registro
+    // Delete record
     const handleDeleteRecord = (recordId: string) => {
         if (!confirm('Tem certeza que deseja excluir este registro do prontuário?')) return;
         onDeleteRecord(patient.id, recordId);
     };
 
-    // Salvar registro (criar ou atualizar)
+    // Save record
     const handleSave = () => {
         if (!formattedRecord.content.trim()) {
             alert('O conteúdo do prontuário não pode estar vazio.');
@@ -466,7 +247,6 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
             : selectedDate;
 
         if (editingRecordId) {
-            // Atualizar registro existente
             const existing = prontuarioRecords.find(r => r.id === editingRecordId);
             if (existing) {
                 const updatedRecord: MedicalRecordChunk = {
@@ -483,7 +263,6 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
             }
             setEditingRecordId(null);
         } else {
-            // Novo registro
             const newRecord: MedicalRecordChunk = {
                 id: `rec-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                 date: recordDate,
@@ -500,8 +279,7 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
             onSaveRecord(patient.id, newRecord);
         }
 
-        // Limpar formulário
-        setQuickNotes('');
+        // Clear form
         setFormattedRecord({
             type: 'Evolução',
             content: '',
@@ -511,7 +289,7 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
         });
     };
 
-    // Calcular idade do paciente
+    // Calculate patient age
     const calculateAge = (birthDate?: string) => {
         if (!birthDate) return 'N/I';
         const birth = new Date(birthDate);
@@ -524,13 +302,13 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
 
     return (
         <div className="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden">
-            {/* Cabeçalho - Dados do Paciente (Folha de Rosto) */}
+            {/* Header */}
             <div className="bg-slate-900 p-4 border-b border-slate-700">
                 <div className="flex items-center justify-between">
                     <div>
                         <h2 className="text-xl font-bold text-white flex items-center gap-2">
                             <FileTextIcon className="w-5 h-5 text-sky-400" />
-                            Prontuário Eletrônico
+                            Prontuário Psicológico
                         </h2>
                         <p className="text-slate-400 text-sm mt-1">Padrão CFP - Resolução 001/2009</p>
                     </div>
@@ -541,147 +319,61 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
                         </p>
                     </div>
                 </div>
-
-                {/* Dados de Identificação (Resumo) */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 text-sm">
-                    <div>
-                        <span className="text-slate-500">Convênio:</span>
-                        <p className="text-white font-medium">{patient.convenio || 'Particular'}</p>
-                    </div>
-                    <div>
-                        <span className="text-slate-500">Carteirinha:</span>
-                        <p className="text-white font-medium">{patient.carteirinha || 'N/A'}</p>
-                    </div>
-                    <div>
-                        <span className="text-slate-500">Profissional:</span>
-                        <p className="text-white font-medium">{currentUser.name}</p>
-                    </div>
-                    <div>
-                        <span className="text-slate-500">Data:</span>
-                        <p className="text-white font-medium">{new Date().toLocaleDateString('pt-BR')}</p>
-                    </div>
-                </div>
             </div>
 
-            {/* Corpo - Layout Dual */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-0 lg:divide-x divide-slate-700">
-                {/* Painel Esquerdo - Anotações e Voz */}
-                <div className="md:col-span-1 space-y-4">
-                    <div className="p-5 bg-slate-900/50 backdrop-blur-sm border border-slate-700/50 rounded-2xl shadow-xl">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="font-bold text-[#e9c49e] flex items-center gap-2">
-                                <MicIcon className="w-5 h-5 text-[#e9c49e]" />
-                                Anotações da Sessão
-                            </h3>
-                            <button
-                                onClick={startDictation}
-                                className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-2 transition-all shadow-lg ${isListening
-                                    ? 'bg-red-500/20 text-red-400 border border-red-500/50 animate-pulse'
-                                    : 'bg-[#273e44] text-slate-300 hover:bg-[#345057] border border-slate-600/50'
-                                    }`}
-                            >
-                                <MicIcon className="w-4 h-4" />
-                                {isListening ? 'Parar' : 'Ditar'}
-                            </button>
-                        </div>
-
-                        <textarea
-                            value={quickNotes}
-                            onChange={(e) => setQuickNotes(e.target.value)}
-                            placeholder="Digite suas anotações aqui ou use o botão 'Ditar' para falar...
-
-Exemplo:
-- Paciente relatou melhora no humor
-- Técnica aplicada: TCC - reestruturação cognitiva
-- Próxima sessão: continuar trabalho de exposição"
-                            className="w-full h-[400px] bg-slate-950/50 border border-slate-700/50 rounded-xl p-4 text-slate-200 placeholder-slate-500 resize-none focus:outline-none focus:ring-2 focus:ring-[#e9c49e]/50 focus:border-[#e9c49e]/30 transition-all font-light"
-                        />
-
-                        <button
-                            onClick={formatWithAI}
-                            disabled={!quickNotes.trim() || isFormatting}
-                            className="mt-4 w-full py-3 bg-gradient-to-r from-[#273e44] to-[#1e2f34] border border-slate-600/50 hover:border-[#e9c49e]/50 disabled:opacity-50 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-[#e9c49e]/10 group"
-                        >
-                            {isFormatting ? (
-                                <>
-                                    <div className="w-5 h-5 border-2 border-white/30 border-t-[#e9c49e] rounded-full animate-spin" />
-                                    Formatando...
-                                </>
-                            ) : (
-                                <>
-                                    <SparklesIcon className="w-5 h-5 text-[#e9c49e]" />
-                                    <span className="text-slate-200 group-hover:text-white transition-colors">Formatar com IA</span>
-                                </>
-                            )}
-                        </button>
-                        <p className="text-xs text-slate-500 text-center mt-3 font-medium">
-                            A IA estrutura o texto no padrão <span className="text-[#e9c49e]">CRP (Res. 001/2009)</span>
-                        </p>
+            {/* Body - Single Column Form */}
+            <div className="max-w-4xl mx-auto p-6 space-y-8">
+                <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-6 shadow-xl">
+                    <div className="flex items-center gap-2 mb-6 border-b border-slate-700 pb-4">
+                        <EditIcon className="w-5 h-5 text-[#e9c49e]" />
+                        <h3 className="font-bold text-[#e9c49e] uppercase tracking-wider text-sm">Registro de Atendimento</h3>
                     </div>
-                </div>
 
-                {/* Painel Direito - Prontuário Formatado */}
-                <div className="md:col-span-1 border-l border-slate-700/50">
-                    <div className="p-5 h-full bg-slate-900/30 backdrop-blur-sm">
-                        <h3 className="font-bold text-[#e9c49e] mb-4 flex items-center gap-2">
-                            <FileTextIcon className="w-5 h-5 text-[#e9c49e]" />
-                            Prontuário Padrão CRP
-                        </h3>
-
-                        {/* Frequência do Prontuário */}
-                        <div className="mb-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                        {/* Frequency Selection */}
+                        <div>
                             <label className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-2 block">Frequência</label>
                             <div className="flex gap-2">
                                 <button
                                     onClick={() => setFrequency('Semanal')}
-                                    className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${frequency === 'Semanal'
-                                        ? 'bg-[#e9c49e]/20 text-[#e9c49e] border border-[#e9c49e]/50'
-                                        : 'bg-slate-950/50 text-slate-400 border border-slate-700/50 hover:bg-slate-800'
-                                        }`}
-                                >
-                                    📅 Semanal
-                                </button>
+                                    className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all ${frequency === 'Semanal' ? 'bg-[#e9c49e]/20 text-[#e9c49e] border border-[#e9c49e]/50' : 'bg-slate-950/50 text-slate-400 border border-slate-700/50'}`}
+                                >📅 Semanal</button>
                                 <button
                                     onClick={() => setFrequency('Mensal')}
-                                    className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${frequency === 'Mensal'
-                                        ? 'bg-[#e9c49e]/20 text-[#e9c49e] border border-[#e9c49e]/50'
-                                        : 'bg-slate-950/50 text-slate-400 border border-slate-700/50 hover:bg-slate-800'
-                                        }`}
-                                >
-                                    🗓️ Mensal
-                                </button>
+                                    className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all ${frequency === 'Mensal' ? 'bg-[#e9c49e]/20 text-[#e9c49e] border border-[#e9c49e]/50' : 'bg-slate-950/50 text-slate-400 border border-slate-700/50'}`}
+                                >🗓️ Mensal</button>
                             </div>
                         </div>
 
-                        {/* Data da Sessão / Mês+Ano */}
-                        <div className="mb-4">
+                        {/* Date Selection */}
+                        <div className="md:col-span-1">
                             {frequency === 'Semanal' ? (
                                 <>
-                                    <label className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-1 block">Data da Sessão</label>
+                                    <label className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-2 block">Data da Sessão</label>
                                     <input
                                         type="date"
                                         value={selectedDate}
                                         onChange={(e) => setSelectedDate(e.target.value)}
-                                        className="w-full bg-slate-950/50 border border-slate-700/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-[#e9c49e]/50 focus:border-[#e9c49e]/30 transition-all shadow-inner"
+                                        className="w-full bg-slate-950/50 border border-slate-700/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-1 focus:ring-[#e9c49e]/50 text-sm"
                                     />
                                 </>
                             ) : (
                                 <>
-                                    <label className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-1 block">Mês / Ano</label>
+                                    <label className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-2 block">Mês / Ano</label>
                                     <div className="grid grid-cols-2 gap-2">
                                         <select
                                             value={selectedMonth}
                                             onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                                            className="bg-slate-950/50 border border-slate-700/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-[#e9c49e]/50 focus:border-[#e9c49e]/30 transition-all shadow-inner"
+                                            className="bg-slate-950/50 border border-slate-700/50 rounded-lg px-2 py-2 text-white text-xs"
                                         >
-                                            {['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'].map((m, i) => (
+                                            {['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'].map((m, i) => (
                                                 <option key={i} value={i}>{m}</option>
                                             ))}
                                         </select>
                                         <select
                                             value={selectedYear}
                                             onChange={(e) => setSelectedYear(Number(e.target.value))}
-                                            className="bg-slate-950/50 border border-slate-700/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-[#e9c49e]/50 focus:border-[#e9c49e]/30 transition-all shadow-inner"
+                                            className="bg-slate-950/50 border border-slate-700/50 rounded-lg px-2 py-2 text-white text-xs"
                                         >
                                             {[2024, 2025, 2026, 2027, 2028].map(y => (
                                                 <option key={y} value={y}>{y}</option>
@@ -692,87 +384,110 @@ Exemplo:
                             )}
                         </div>
 
-                        {/* Tipo de Registro */}
-                        <div className="mb-4">
-                            <label className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-1 block">Tipo de Registro</label>
+                        {/* Record Type */}
+                        <div>
+                            <label className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-2 block">Tipo de Registro</label>
                             <select
                                 value={formattedRecord.type}
                                 onChange={(e) => setFormattedRecord(prev => ({ ...prev, type: e.target.value as any }))}
-                                className="w-full bg-slate-950/50 border border-slate-700/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-[#e9c49e]/50 focus:border-[#e9c49e]/30 transition-all appearance-none shadow-inner"
+                                className="w-full bg-slate-950/50 border border-slate-700/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-1 focus:ring-[#e9c49e]/50 text-sm"
                             >
-                                <option value="Anamnese">Anamnese (Primeira Sessão)</option>
-                                <option value="Evolução">Evolução (Sessão Regular)</option>
-                                <option value="Encerramento">Encerramento / Alta</option>
+                                <option value="Anamnese">Anamnese</option>
+                                <option value="Evolução">Evolução</option>
+                                <option value="Encerramento">Encerramento</option>
                             </select>
                         </div>
+                    </div>
 
-                        {/* Conteúdo Principal */}
-                        <div className="mb-4">
-                            <label className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-1 block">Registro da Sessão</label>
+                    {/* Content Fields */}
+                    <div className="space-y-6">
+                        <div>
+                            <label className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-2 block">Registro da Sessão / Evolução</label>
                             <textarea
                                 value={formattedRecord.content}
                                 onChange={(e) => setFormattedRecord(prev => ({ ...prev, content: e.target.value }))}
-                                placeholder="Descrição completa da sessão..."
-                                className="w-full h-32 bg-slate-950/50 border border-slate-700/50 rounded-lg p-3 text-slate-200 placeholder-slate-500 resize-none focus:outline-none focus:ring-2 focus:ring-[#e9c49e]/50 focus:border-[#e9c49e]/30 transition-all font-light shadow-inner"
+                                placeholder="Descreva os principais tópicos abordados, observações clínicas e o desenvolvimento do paciente..."
+                                className="w-full h-48 bg-slate-950/50 border border-slate-700/50 rounded-xl p-4 text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-[#e9c49e]/30 resize-none leading-relaxed font-light"
                             />
                         </div>
 
-                        {/* Campos Específicos CRP */}
-                        <div className="space-y-4 mb-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
-                                <label className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-1 block">Comportamento / Humor</label>
+                                <label className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-2 block">Comportamento / Humor</label>
                                 <input
                                     type="text"
                                     value={formattedRecord.behavior}
                                     onChange={(e) => setFormattedRecord(prev => ({ ...prev, behavior: e.target.value }))}
-                                    placeholder="Ex: Paciente apresentou-se colaborativo..."
-                                    className="w-full bg-slate-950/50 border border-slate-700/50 rounded-lg px-3 py-2 text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#e9c49e]/50 focus:border-[#e9c49e]/30 transition-all shadow-inner"
+                                    placeholder="Ex: Colaborativo, ansioso, orientado..."
+                                    className="w-full bg-slate-950/50 border border-slate-700/50 rounded-lg px-4 py-2 text-slate-200 text-sm"
                                 />
                             </div>
                             <div>
-                                <label className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-1 block">Intervenção / Técnica</label>
+                                <label className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-2 block">Intervenção / Técnica</label>
                                 <input
                                     type="text"
                                     value={formattedRecord.intervention}
                                     onChange={(e) => setFormattedRecord(prev => ({ ...prev, intervention: e.target.value }))}
-                                    placeholder="Ex: TCC - Reestruturação Cognitiva..."
-                                    className="w-full bg-slate-950/50 border border-slate-700/50 rounded-lg px-3 py-2 text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#e9c49e]/50 focus:border-[#e9c49e]/30 transition-all shadow-inner"
-                                />
-                            </div>
-                            <div>
-                                <label className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-1 block">Próximos Passos</label>
-                                <input
-                                    type="text"
-                                    value={formattedRecord.nextSteps}
-                                    onChange={(e) => setFormattedRecord(prev => ({ ...prev, nextSteps: e.target.value }))}
-                                    placeholder="Ex: Avaliar medicação..."
-                                    className="w-full bg-slate-950/50 border border-slate-700/50 rounded-lg px-3 py-2 text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#e9c49e]/50 focus:border-[#e9c49e]/30 transition-all shadow-inner"
+                                    placeholder="Ex: Escuta ativa, psicoeducação..."
+                                    className="w-full bg-slate-950/50 border border-slate-700/50 rounded-lg px-4 py-2 text-slate-200 text-sm"
                                 />
                             </div>
                         </div>
 
-                        {/* Botão Salvar / Atualizar */}
-                        <div className="space-y-2">
-                            <button
-                                onClick={handleSave}
-                                disabled={!formattedRecord.content.trim()}
-                                className={`w-full py-4 bg-gradient-to-r ${editingRecordId ? 'from-amber-700 to-amber-800 hover:to-amber-700 border-amber-500/30 hover:border-amber-400 text-amber-100' : 'from-[#273e44] to-[#1e2f34] hover:to-[#2d464d] border-[#e9c49e]/30 hover:border-[#e9c49e] text-[#e9c49e]'} border disabled:opacity-50 disabled:border-slate-700 font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-[#e9c49e]/20`}
-                            >
-                                <SaveIcon className="w-5 h-5" />
-                                {editingRecordId ? 'Atualizar Registro' : 'Salvar no Prontuário'}
-                            </button>
-                            {editingRecordId && (
-                                <button
-                                    onClick={handleCancelEdit}
-                                    className="w-full py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 rounded-xl text-sm transition-all"
-                                >
-                                    Cancelar Edição
-                                </button>
-                            )}
+                        <div>
+                            <label className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-2 block">Próximos Passos / Encaminhamentos</label>
+                            <input
+                                type="text"
+                                value={formattedRecord.nextSteps}
+                                onChange={(e) => setFormattedRecord(prev => ({ ...prev, nextSteps: e.target.value }))}
+                                placeholder="Ex: Manutenção do plano terapêutico..."
+                                className="w-full bg-slate-950/50 border border-slate-700/50 rounded-lg px-4 py-2 text-slate-200 text-sm"
+                            />
                         </div>
                     </div>
+
+                    <div className="mt-8 pt-6 border-t border-slate-700 flex gap-4">
+                        <button
+                            onClick={handleSave}
+                            disabled={!formattedRecord.content.trim()}
+                            className="flex-1 py-4 bg-gradient-to-r from-[#e9c49e] to-[#d4af8a] hover:from-white hover:to-[#e9c49e] text-slate-900 font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg disabled:opacity-30"
+                        >
+                            <SaveIcon className="w-5 h-5" />
+                            {editingRecordId ? 'Atualizar Registro' : 'Salvar no Prontuário'}
+                        </button>
+                        {editingRecordId && (
+                            <button
+                                onClick={handleCancelEdit}
+                                className="px-6 py-4 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl transition-all border border-slate-700"
+                            >Cancelar</button>
+                        )}
+                    </div>
+                </div>
+
+                {/* CFP Guidelines Section */}
+                <div className="bg-sky-950/20 border border-sky-500/20 rounded-2xl p-6">
+                    <h4 className="flex items-center gap-2 text-sky-400 font-bold mb-4">
+                        <ShieldIcon className="w-4 h-4" />
+                        Guia Profissional: Resolução CFP 001/2009
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-[13px] text-slate-400 leading-relaxed">
+                        <ul className="space-y-3 list-disc pl-4">
+                            <li><strong>Identificação:</strong> Nome do paciente, idade, profissional e registro CRP.</li>
+                            <li><strong>Evolução:</strong> Registro contínuo que permite o acompanhamento do processo.</li>
+                            <li><strong>Procedimentos:</strong> Descrição das técnicas e intervenções utilizadas.</li>
+                        </ul>
+                        <ul className="space-y-3 list-disc pl-4">
+                            <li><strong>Demanda:</strong> Relato das condições que motivaram o atendimento.</li>
+                            <li><strong>Encaminhamento:</strong> Registro de contatos com outros profissionais.</li>
+                            <li><strong>Sigilo:</strong> Acesso restrito apenas ao profissional e instâncias legais.</li>
+                        </ul>
+                    </div>
+                    <p className="mt-4 text-[11px] text-slate-500 italic border-t border-sky-500/10 pt-4">
+                        O prontuário é um documento obrigatório e deve ser mantido por no mínimo 5 anos. Todo registro deve ser datado e assinado digitalmente ou fisicamente pelo profissional responsável.
+                    </p>
                 </div>
             </div>
+
 
             {/* Histórico de Registros */}
             {prontuarioRecords.length > 0 && (
