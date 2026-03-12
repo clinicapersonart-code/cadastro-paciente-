@@ -866,20 +866,28 @@ Exemplo:
                                                     <span className="text-xs text-slate-500 font-medium font-mono">
                                                         {new Date(record.date + 'T12:00:00').toLocaleDateString('pt-BR')} • {record.professionalName}
                                                     </span>
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); handleEditRecord(record); }}
-                                                        className="p-1.5 text-sky-400 hover:text-sky-300 hover:bg-sky-500/10 rounded-lg transition-all"
-                                                        title="Editar registro"
-                                                    >
-                                                        <EditIcon className="w-3.5 h-3.5" />
-                                                    </button>
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); handleDeleteRecord(record.id); }}
-                                                        className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-all"
-                                                        title="Excluir registro"
-                                                    >
-                                                        <TrashIcon className="w-3.5 h-3.5" />
-                                                    </button>
+                                                    {record.type === 'Encerramento' ? (
+                                                        <span className="text-[9px] font-bold bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-1 rounded-md uppercase tracking-wider">
+                                                            🔒 Finalizado
+                                                        </span>
+                                                    ) : (
+                                                        <>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); handleEditRecord(record); }}
+                                                                className="p-1.5 text-sky-400 hover:text-sky-300 hover:bg-sky-500/10 rounded-lg transition-all"
+                                                                title="Editar registro"
+                                                            >
+                                                                <EditIcon className="w-3.5 h-3.5" />
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); handleDeleteRecord(record.id); }}
+                                                                className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-all"
+                                                                title="Excluir registro"
+                                                            >
+                                                                <TrashIcon className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        </>
+                                                    )}
                                                 </div>
                                             </div>
                                             <p className="text-slate-300 text-sm line-clamp-3 leading-relaxed font-light pl-7 border-l-2 border-slate-700/50 group-hover:border-[#e9c49e]/30 transition-colors">

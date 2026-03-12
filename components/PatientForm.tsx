@@ -21,6 +21,7 @@ interface PatientFormProps {
     lockedProfessional?: string;
     hideProfessionalAdd?: boolean;
     hideEspecialidadeAdd?: boolean;
+    hideProntuario?: boolean;
 }
 
 const emptyPatient: Patient = {
@@ -40,7 +41,7 @@ export const PatientForm: React.FC<PatientFormProps> = ({
     editingPatient, onSave, onClear, convenios, profissionais, especialidades,
     onAddConvenio, onAddProfissional, onAddEspecialidade,
     onRemoveConvenio, onRemoveProfissional, onRemoveEspecialidade,
-    lockedProfessional, hideProfessionalAdd, hideEspecialidadeAdd
+    lockedProfessional, hideProfessionalAdd, hideEspecialidadeAdd, hideProntuario
 }) => {
     const [formData, setFormData] = useState<Patient>(emptyPatient);
     const [activeTab, setActiveTab] = useState<'cadastro' | 'prontuario'>('cadastro');
@@ -209,7 +210,7 @@ export const PatientForm: React.FC<PatientFormProps> = ({
                 <h2 className="text-xl font-bold text-slate-100">{editingPatient ? 'Editar Paciente' : 'Novo Paciente'}</h2>
 
                 {/* Tabs */}
-                {editingPatient && (
+                {editingPatient && !hideProntuario && (
                     <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-700">
                         <button
                             type="button"

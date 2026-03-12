@@ -1201,6 +1201,7 @@ const App: React.FC = () => {
                             onRemoveConvenio={c => setConvenios(prev => prev.filter(x => x !== c))}
                             onRemoveProfissional={p => setProfissionais(prev => prev.filter(x => x !== p))}
                             onRemoveEspecialidade={e => setEspecialidades(prev => prev.filter(x => x !== e))}
+                            hideProntuario={currentUser?.role === 'clinic'}
                         />
                         <div className="space-y-4">
                             <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-3">

@@ -427,13 +427,22 @@ export const Agenda: React.FC<AgendaProps> = ({
                                 <option value="">Selecione o paciente...</option>
                                 {patients
                                     .filter(p => {
-                                        if (currentUser?.role === 'professional' && currentUser?.name) {
-                                            const normalizedPro = currentUser.name.toLowerCase();
-                                            // Verifica se o paciente tem lista de profissionais E se inclui o logado
+                                        if ((currentUser?.role === 'professional' || currentUser?.role === 'admin') && currentUser?.name) {
+                                            const normalizedPro = currentUser.name.toLowerCase().trim();
+                                            // Encontra a entrada exata do profissional na lista global
+                                            const matchingProEntry = profissionais.find(pr =>
+                                                pr.toLowerCase().includes(normalizedPro) ||
+                                                normalizedPro.includes(pr.toLowerCase().split(' - ')[0].trim())
+                                            );
+                                            // Verifica se o paciente tem este profissional vinculado
+                                            if (matchingProEntry) {
+                                                return p.profissionais?.some(prof => prof === matchingProEntry) ?? false;
+                                            }
+                                            // Fallback: comparação parcial caso não encontre entrada exata
                                             return p.profissionais?.some(prof =>
                                                 prof.toLowerCase().includes(normalizedPro) ||
-                                                normalizedPro.includes(prof.toLowerCase().split(' - ')[0])
-                                            );
+                                                normalizedPro.includes(prof.toLowerCase().split(' - ')[0].trim())
+                                            ) ?? false;
                                         }
                                         return true;
                                     })
@@ -448,10 +457,10 @@ export const Agenda: React.FC<AgendaProps> = ({
 
                             <select
                                 required
-                                value={currentUser?.role === 'professional' ? (profissionais.find(p => p.toLowerCase().includes(currentUser.name.toLowerCase()) || currentUser.name.toLowerCase().includes(p.toLowerCase().split(' - ')[0])) || formProfissional) : formProfissional}
+                                value={(currentUser?.role === 'professional' || currentUser?.role === 'admin') ? (profissionais.find(p => p.toLowerCase().includes(currentUser.name.toLowerCase()) || currentUser.name.toLowerCase().includes(p.toLowerCase().split(' - ')[0])) || formProfissional) : formProfissional}
                                 onChange={e => setFormProfissional(e.target.value)}
-                                disabled={currentUser?.role === 'professional'}
-                                className={`w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white ${currentUser?.role === 'professional' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                disabled={currentUser?.role === 'professional' || currentUser?.role === 'admin'}
+                                className={`w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white ${(currentUser?.role === 'professional' || currentUser?.role === 'admin') ? 'opacity-50 cursor-not-allowed' : ''}`}
                             >
                                 <option value="">Selecione o profissional...</option>
                                 {profissionais.map(p => <option key={p} value={p}>{p}</option>)}
