@@ -109,73 +109,68 @@ const App: React.FC = () => {
 
     // --- INICIALIZAÇÃO E MIGRAÇÃO V2.0 ---
     useEffect(() => {
-        // 1. Seed Inicial de Usuários (se vazio no localStorage)
-        if (users.length === 0) {
-            const seedDefaults = () => {
-                // Clínica: acesso total ao sistema
-                const clinicUser: UserProfile = {
-                    id: 'clinic-01',
-                    name: 'Clínica Personart',
-                    role: 'clinic',
-                    active: true,
-                    pin: 'personart' // Senha da clínica
-                };
-
-                // Responsável Técnico: apenas prontuário (todos pacientes)
-                const defaultAdmin: UserProfile = {
-                    id: 'admin-01',
-                    name: 'Responsável Técnico',
-                    role: 'admin',
-                    active: true,
-                    pin: '1234'
-                };
-
-                // Tenta migrar profissionais da lista antiga para usuários
-                const migratedPros: UserProfile[] = profissionais.map(p => ({
-                    id: `pro-${Math.random().toString(36).substr(2, 9)}`,
-                    name: p.replace(/ - CRP.*/, ''), // Remove CRP do nome se tiver
-                    role: 'professional',
-                    active: true,
-                    pin: '1234' // Senha padrão inicial
-                }));
-
-                const allSeedUsers = [clinicUser, defaultAdmin, ...migratedPros];
-                setUsers(allSeedUsers);
-
-                // Sincroniza seed inicial com a nuvem
-                syncAllUsersToCloud(allSeedUsers);
-            };
-
-            // IMPORTANTE: Primeiro tenta carregar da nuvem para não sobrescrever senhas alteradas
-            if (isSupabaseConfigured() && supabase) {
-                supabase.from('user_profiles').select('*').then(({ data, error }) => {
-                    if (!error && data && data.length > 0) {
-                        // Nuvem tem dados → usa eles (preserva senhas alteradas)
-                        const rawUsers: UserProfile[] = data.map((row: any) => row.data as UserProfile);
-                        // Deduplica por nome+role para evitar usuários repetidos
-                        const seen = new Set<string>();
-                        const cloudUsers = rawUsers.filter(u => {
-                            const key = `${u.name}::${u.role}`;
-                            if (seen.has(key)) return false;
-                            seen.add(key);
-                            return true;
-                        });
-                        setUsers(cloudUsers);
-                        console.log(`✅ ${cloudUsers.length} usuário(s) carregados da nuvem`);
-                    } else {
-                        // Nuvem vazia → seed padrão
-                        seedDefaults();
-                    }
-                }).catch(() => {
-                    // Erro de conexão → seed padrão (modo offline)
-                    seedDefaults();
-                });
-            } else {
-                // Sem Supabase configurado → seed padrão
-                seedDefaults();
+        // 1. Deduplica usuários atuais (limpeza de estado legado no localStorage)
+        if (users.length > 0) {
+            const seen = new Set<string>();
+            const unique = users.filter(u => {
+                const key = `${u.name.trim()}::${u.role}`;
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            });
+            if (unique.length !== users.length) {
+                setUsers(unique);
             }
         }
-    }, [users.length]); // Roda apenas se users estiver vazio
+
+        // 2. Sempre tenta carregar da nuvem para garantir lista limpa e senhas atuais
+        const seedDefaults = () => {
+            const clinicUser: UserProfile = { id: 'clinic-01', name: 'Clínica Personart', role: 'clinic', active: true, pin: 'personart' };
+            const defaultAdmin: UserProfile = { id: 'admin-01', name: 'Responsável Técnico', role: 'admin', active: true, pin: '1234' };
+            const migratedPros: UserProfile[] = profissionais.map(p => ({
+                id: `pro-${Math.random().toString(36).substr(2, 9)}`,
+                name: p.replace(/ - CRP.*/, '').trim(),
+                role: 'professional',
+                active: true,
+                pin: '1234'
+            }));
+
+            const allSeedUsers = [clinicUser, defaultAdmin, ...migratedPros];
+            // Deduplica o seed antes de salvar
+            const seenSeed = new Set<string>();
+            const uniqueSeed = allSeedUsers.filter(u => {
+                const key = `${u.name.trim()}::${u.role}`;
+                if (seenSeed.has(key)) return false;
+                seenSeed.add(key);
+                return true;
+            });
+            setUsers(uniqueSeed);
+            syncAllUsersToCloud(uniqueSeed);
+        };
+
+        if (isSupabaseConfigured() && supabase) {
+            supabase.from('user_profiles').select('*').then(({ data, error }) => {
+                if (!error && data && data.length > 0) {
+                    const rawUsers: UserProfile[] = data.map((row: any) => row.data as UserProfile);
+                    const seenKeys = new Set<string>();
+                    const cloudUsers = rawUsers.filter(u => {
+                        const key = `${u.name.trim()}::${u.role}`;
+                        if (seenKeys.has(key)) return false;
+                        seenKeys.add(key);
+                        return true;
+                    });
+                    setUsers(cloudUsers);
+                    console.log(`✅ ${cloudUsers.length} usuário(s) sincronizados da nuvem`);
+                } else if (users.length === 0) {
+                    seedDefaults();
+                }
+            }).catch(() => {
+                if (users.length === 0) seedDefaults();
+            });
+        } else if (users.length === 0) {
+            seedDefaults();
+        }
+    }, []); // Roda apenas no mount para garantir sincronização inicial limpa
 
     useEffect(() => {
         // Validação de Sessão
