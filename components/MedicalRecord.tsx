@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Patient, MedicalRecordChunk, UserProfile } from '../types';
-import { FileTextIcon, ShieldIcon, SaveIcon, PlusIcon, ChevronDownIcon, ChevronUpIcon, TrashIcon, EditIcon } from './icons';
+import { FileTextIcon, ShieldIcon, SaveIcon, PlusIcon, ChevronDownIcon, ChevronUpIcon, TrashIcon, EditIcon, MicIcon, SparklesIcon } from './icons';
 
 interface MedicalRecordProps {
     patient: Patient;
@@ -21,6 +21,11 @@ export const MedicalRecord: React.FC<MedicalRecordProps> = ({
 }) => {
     // Filtrar apenas registros de prontuário (excluir registros de presença/sessão)
     const prontuarioRecords = existingRecords.filter(r => !(r as any).attendance);
+
+    // Estado do painel de anotações (esquerda)
+    const [quickNotes, setQuickNotes] = useState('');
+    const [isListening, setIsListening] = useState(false);
+
     // State for the record
     const [formattedRecord, setFormattedRecord] = useState({
         type: 'Evolução' as 'Anamnese' | 'Evolução' | 'Encerramento',
@@ -192,6 +197,219 @@ ${record.nextSteps || 'Não registrado'}
         printWindow.print();
     };
 
+    // Ditado por voz (Web Speech API) - com gerenciamento correto de instância
+    const recognitionRef = useRef<any>(null);
+    const finalTranscriptRef = useRef('');
+
+    const stopDictation = useCallback(() => {
+        if (recognitionRef.current) {
+            recognitionRef.current.onend = null; // evita reinício automático
+            recognitionRef.current.onresult = null;
+            recognitionRef.current.onerror = null;
+            recognitionRef.current.abort();
+            recognitionRef.current = null;
+        }
+        setIsListening(false);
+    }, []);
+
+    const startDictation = useCallback(() => {
+        // Se já está escutando, parar
+        if (isListening) {
+            stopDictation();
+            return;
+        }
+
+        if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+            alert('Seu navegador não suporta ditado por voz. Use Chrome ou Edge.');
+            return;
+        }
+
+        const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'pt-BR';
+        recognition.continuous = true;
+        recognition.interimResults = true;
+
+        finalTranscriptRef.current = '';
+
+        recognition.onstart = () => setIsListening(true);
+
+        recognition.onresult = (event: any) => {
+            let finalText = '';
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                const result = event.results[i];
+                if (result.isFinal) {
+                    finalText += result[0].transcript;
+                }
+            }
+            // Só adiciona ao texto quando o resultado é final (confirmado)
+            if (finalText) {
+                setQuickNotes(prev => {
+                    const separator = prev.trim() ? ' ' : '';
+                    return prev + separator + finalText.trim();
+                });
+            }
+        };
+
+        recognition.onerror = (event: any) => {
+            console.error('Erro no reconhecimento de voz:', event.error);
+            if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+                alert('Permissão de microfone negada. Verifique as configurações do navegador.');
+                stopDictation();
+            }
+            // Para erros como 'no-speech', o reconhecimento tenta de novo automaticamente
+        };
+
+        recognition.onend = () => {
+            // O Chrome pode parar o reconhecimento automaticamente.
+            // Se o usuário ainda quer escutar, reinicia.
+            if (recognitionRef.current) {
+                try {
+                    recognitionRef.current.start();
+                } catch (e) {
+                    // Se falhar ao reiniciar, para de vez
+                    stopDictation();
+                }
+            }
+        };
+
+        recognitionRef.current = recognition;
+        recognition.start();
+    }, [isListening, stopDictation]);
+
+    // Limpa o reconhecimento ao desmontar o componente
+    useEffect(() => {
+        return () => {
+            if (recognitionRef.current) {
+                recognitionRef.current.onend = null;
+                recognitionRef.current.abort();
+                recognitionRef.current = null;
+            }
+        };
+    }, []);
+
+    // Estado de loading para IA
+    const [isFormatting, setIsFormatting] = useState(false);
+
+    // Prompt para formatação CRP
+    const buildPrompt = (notes: string) => `Você é um assistente de psicólogo clínico. Formate as seguintes anotações de sessão em um prontuário profissional padrão CRP.
+
+ANOTAÇÕES DA SESSÃO:
+${notes}
+
+Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicações):
+{
+    "content": "Resumo profissional da sessão em terceira pessoa",
+    "behavior": "Estado emocional e comportamental observado",
+    "intervention": "Técnicas e intervenções utilizadas",
+    "nextSteps": "Encaminhamentos e próximos passos"
+}`;
+
+    // Processar resposta da IA
+    const processAIResponse = (aiResponse: string) => {
+        const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+            try {
+                const parsed = JSON.parse(jsonMatch[0]);
+                setFormattedRecord(prev => ({
+                    ...prev,
+                    content: parsed.content || quickNotes,
+                    behavior: parsed.behavior || '',
+                    intervention: parsed.intervention || '',
+                    nextSteps: parsed.nextSteps || ''
+                }));
+                return true;
+            } catch {
+                setFormattedRecord(prev => ({ ...prev, content: aiResponse || quickNotes }));
+                return true;
+            }
+        }
+        setFormattedRecord(prev => ({ ...prev, content: aiResponse || quickNotes }));
+        return true;
+    };
+
+    // Tentar Groq Cloud (funciona em produção)
+    const tryGroq = async (prompt: string): Promise<boolean> => {
+        const apiKey = import.meta.env.VITE_GROQ_API_KEY;
+        if (!apiKey) return false;
+
+        try {
+            const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify({
+                    model: 'llama-3.3-70b-versatile',
+                    messages: [{ role: 'user', content: prompt }],
+                    temperature: 0.3,
+                    max_tokens: 1000
+                })
+            });
+
+            if (!response.ok) throw new Error('Groq API error');
+
+            const data = await response.json();
+            const aiResponse = data.choices?.[0]?.message?.content || '';
+            return processAIResponse(aiResponse);
+        } catch (error) {
+            console.error('Groq error:', error);
+            return false;
+        }
+    };
+
+    // Tentar Ollama Local (funciona em desenvolvimento)
+    const tryOllama = async (prompt: string): Promise<boolean> => {
+        try {
+            const response = await fetch('http://localhost:11434/api/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: 'qwen3-coder:30b',
+                    prompt: prompt,
+                    stream: false,
+                    options: { temperature: 0.3, num_predict: 1000 }
+                })
+            });
+
+            if (!response.ok) throw new Error('Ollama error');
+
+            const data = await response.json();
+            return processAIResponse(data.response || '');
+        } catch (error) {
+            console.error('Ollama error:', error);
+            return false;
+        }
+    };
+
+    // Formatar com IA (tenta Groq primeiro, depois Ollama)
+    const formatWithAI = async () => {
+        if (!quickNotes.trim()) {
+            alert('Digite algumas anotações para formatar.');
+            return;
+        }
+
+        setIsFormatting(true);
+        const prompt = buildPrompt(quickNotes);
+
+        try {
+            // Tenta Groq Cloud primeiro (funciona no Vercel)
+            const groqSuccess = await tryGroq(prompt);
+            if (groqSuccess) return;
+
+            // Fallback: tenta Ollama local
+            const ollamaSuccess = await tryOllama(prompt);
+            if (ollamaSuccess) return;
+
+            // Se nenhum funcionou
+            alert('Não foi possível conectar à IA. Verifique sua conexão.');
+            setFormattedRecord(prev => ({ ...prev, content: quickNotes }));
+        } finally {
+            setIsFormatting(false);
+        }
+    };
+
     // Edit existing record
     const handleEditRecord = (record: MedicalRecordChunk) => {
         setEditingRecordId(record.id);
@@ -210,6 +428,7 @@ ${record.nextSteps || 'Não registrado'}
         } else {
             setSelectedDate(record.date);
         }
+        setQuickNotes('');
         // Scroll to form
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
@@ -217,6 +436,7 @@ ${record.nextSteps || 'Não registrado'}
     // Cancel edit
     const handleCancelEdit = () => {
         setEditingRecordId(null);
+        setQuickNotes('');
         setFormattedRecord({ type: 'Evolução', content: '', behavior: '', intervention: '', nextSteps: '' });
     };
 
@@ -271,6 +491,7 @@ ${record.nextSteps || 'Não registrado'}
         }
 
         // Clear form
+        setQuickNotes('');
         setFormattedRecord({
             type: 'Evolução',
             content: '',
@@ -312,13 +533,77 @@ ${record.nextSteps || 'Não registrado'}
                 </div>
             </div>
 
-            {/* Body - Single Column Form */}
-            <div className="max-w-4xl mx-auto p-6 space-y-8">
-                <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-6 shadow-xl">
-                    <div className="flex items-center gap-2 mb-6 border-b border-slate-700 pb-4">
-                        <EditIcon className="w-5 h-5 text-[#e9c49e]" />
-                        <h3 className="font-bold text-[#e9c49e] uppercase tracking-wider text-sm">Registro de Atendimento</h3>
+            {/* Corpo - Layout Dual */}
+            <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 p-6">
+                
+                {/* Painel Esquerdo - Anotações e Voz */}
+                <div className="xl:col-span-5 space-y-4">
+                    <div className="p-5 bg-slate-900/50 backdrop-blur-sm border border-slate-700/50 rounded-2xl shadow-xl sticky top-6">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="font-bold text-[#e9c49e] flex items-center gap-2">
+                                <MicIcon className="w-5 h-5 text-[#e9c49e]" />
+                                Anotações Rápidas
+                            </h3>
+                            <button
+                                onClick={startDictation}
+                                className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-2 transition-all shadow-lg ${isListening
+                                    ? 'bg-red-500/20 text-red-400 border border-red-500/50 animate-pulse'
+                                    : 'bg-[#273e44] text-slate-300 hover:bg-[#345057] border border-slate-600/50'
+                                    }`}
+                            >
+                                <MicIcon className="w-4 h-4" />
+                                {isListening ? 'Parar' : 'Ditar voz'}
+                            </button>
+                        </div>
+
+                        <textarea
+                            value={quickNotes}
+                            onChange={(e) => setQuickNotes(e.target.value)}
+                            placeholder="Digite suas anotações da sessão aqui ou clique no botão 'Ditar voz' para capturar o áudio...
+
+A inteligência artificial vai formatar este rascunho em um prontuário clínico detalhado no padrão CRP."
+                            className="w-full h-[460px] bg-slate-950/50 border border-slate-700/50 rounded-xl p-4 text-slate-200 placeholder-slate-500 resize-none focus:outline-none focus:ring-1 focus:ring-[#e9c49e]/50 font-light"
+                        />
+
+                        <button
+                            onClick={formatWithAI}
+                            disabled={!quickNotes.trim() || isFormatting}
+                            className="mt-4 w-full py-3 bg-gradient-to-r from-[#273e44] to-[#1e2f34] border border-slate-600/50 hover:border-[#e9c49e]/50 disabled:opacity-50 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-[#e9c49e]/10 group"
+                        >
+                            {isFormatting ? (
+                                <>
+                                    <div className="w-5 h-5 border-2 border-white/30 border-t-[#e9c49e] rounded-full animate-spin" />
+                                    Formatando...
+                                </>
+                            ) : (
+                                <>
+                                    <SparklesIcon className="w-5 h-5 text-[#e9c49e]" />
+                                    <span className="text-slate-200 group-hover:text-white transition-colors">Formatar com IA</span>
+                                </>
+                            )}
+                        </button>
+                        <p className="text-xs text-slate-500 text-center mt-3 font-medium">
+                            A IA não salva dados, apenas os processa localmente.
+                        </p>
                     </div>
+                </div>
+
+                {/* Painel Direito - Prontuário Formatado */}
+                <div className="xl:col-span-7 space-y-6">
+                    <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-6 shadow-xl relative">
+                        {isFormatting && (
+                            <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[2px] rounded-2xl z-10 flex items-center justify-center">
+                                <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-2xl text-center max-w-sm">
+                                    <SparklesIcon className="w-8 h-8 text-[#e9c49e] mx-auto mb-4 animate-bounce" />
+                                    <h4 className="text-white font-bold mb-2">Estruturando Prontuário</h4>
+                                    <p className="text-sm text-slate-400">A Inteligência Artificial está transformando suas anotações no padrão clínico do CRP...</p>
+                                </div>
+                            </div>
+                        )}
+                        <div className="flex items-center gap-2 mb-6 border-b border-slate-700 pb-4">
+                            <EditIcon className="w-5 h-5 text-[#e9c49e]" />
+                            <h3 className="font-bold text-[#e9c49e] uppercase tracking-wider text-sm">Registro de Atendimento Estruturado</h3>
+                        </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
                         {/* Frequency Selection */}
@@ -454,7 +739,10 @@ ${record.nextSteps || 'Não registrado'}
                         )}
                     </div>
                 </div>
+            </div>
+            </div>
 
+            <div className="px-6 mb-6">
                 {/* CFP Guidelines Section */}
                 <div className="bg-sky-950/20 border border-sky-500/20 rounded-2xl p-6">
                     <h4 className="flex items-center gap-2 text-sky-400 font-bold mb-4">
