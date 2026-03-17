@@ -22,6 +22,21 @@ export const MedicalRecord: React.FC<MedicalRecordProps> = ({
     // Filtrar apenas registros de prontuário (excluir registros de presença/sessão)
     const prontuarioRecords = existingRecords.filter(r => !(r as any).attendance);
 
+    // Função de renderização de Markdown simplificado
+    const renderMarkdown = (text: string) => {
+        if (!text) return '';
+        // Protege contra HTML injections basicas
+        const escapedText = text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        
+        // Aplica negrito **texto**
+        let formatted = escapedText.replace(/\*\*(.*?)\*\*/g, '<strong class="text-white font-semibold">$1</strong>');
+        // Aplica itálico *texto*
+        formatted = formatted.replace(/\*(.*?)\*/g, '<em class="text-slate-200">$1</em>');
+        // Aplica quebra de linha
+        formatted = formatted.replace(/\n/g, '<br/>');
+        return formatted;
+    };
+
     // Estado do painel de anotações (esquerda)
     const [quickNotes, setQuickNotes] = useState('');
     const [isListening, setIsListening] = useState(false);
@@ -854,7 +869,7 @@ A inteligência artificial vai formatar este rascunho em um prontuário clínico
                                                         <span className="text-[9px] font-bold bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-1 rounded-md uppercase tracking-wider">
                                                             🔒 Finalizado
                                                         </span>
-                                                    ) : record.type === 'Anamnese' ? (
+                                                    ) : (
                                                         <>
                                                             <button
                                                                 onClick={(e) => { e.stopPropagation(); handleEditRecord(record); }}
@@ -871,19 +886,42 @@ A inteligência artificial vai formatar este rascunho em um prontuário clínico
                                                                 <TrashIcon className="w-3.5 h-3.5" />
                                                             </button>
                                                         </>
-                                                    ) : null}
+                                                    )}
                                                 </div>
                                             </div>
                                             <div className="pl-7 border-l-2 border-slate-700/50 group-hover:border-[#e9c49e]/30 transition-colors">
-                                                <p className={`text-slate-300 text-sm leading-relaxed font-light ${expandedRecords.has(record.id) ? 'whitespace-pre-wrap' : 'line-clamp-3'}`}>
-                                                    {record.content}
-                                                </p>
-                                                {record.content && record.content.length > 150 && (
+                                                <div 
+                                                    className={`text-slate-300 text-sm leading-relaxed font-light ${expandedRecords.has(record.id) ? '' : 'line-clamp-3'}`}
+                                                    dangerouslySetInnerHTML={{ __html: renderMarkdown(record.content) }}
+                                                />
+                                                {expandedRecords.has(record.id) && (record.behavior || record.intervention || record.nextSteps) && (
+                                                    <div className="mt-4 space-y-3 pt-3 border-t border-slate-700/50">
+                                                        {record.behavior && (
+                                                            <div>
+                                                                <h4 className="text-xs font-bold text-[#e9c49e] uppercase mb-1">Comportamento / Humor</h4>
+                                                                <p className="text-sm text-slate-400 font-light italic">{record.behavior}</p>
+                                                            </div>
+                                                        )}
+                                                        {record.intervention && (
+                                                            <div>
+                                                                <h4 className="text-xs font-bold text-[#e9c49e] uppercase mb-1">Intervenção / Técnica</h4>
+                                                                <p className="text-sm text-slate-400 font-light italic">{record.intervention}</p>
+                                                            </div>
+                                                        )}
+                                                        {record.nextSteps && (
+                                                            <div>
+                                                                <h4 className="text-xs font-bold text-[#e9c49e] uppercase mb-1">Próximos Passos</h4>
+                                                                <p className="text-sm text-slate-400 font-light italic">{record.nextSteps}</p>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                                {((record.content && record.content.length > 150) || record.behavior || record.intervention || record.nextSteps) && (
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); toggleExpandedRecord(record.id); }}
-                                                        className="mt-2 text-xs font-bold text-[#e9c49e] hover:text-[#d4af8a] transition-colors"
+                                                        className="mt-3 text-xs font-bold text-[#e9c49e] hover:text-[#d4af8a] transition-colors bg-slate-800/80 px-3 py-1.5 rounded-md border border-slate-700/50"
                                                     >
-                                                        {expandedRecords.has(record.id) ? 'Ver Menos' : 'Ler Mais'}
+                                                        {expandedRecords.has(record.id) ? 'Recolher Detalhes' : 'Ver Detalhes Completos'}
                                                     </button>
                                                 )}
                                             </div>
