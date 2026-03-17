@@ -137,8 +137,12 @@ export const Agenda: React.FC<AgendaProps> = ({
     const [time, setTime] = useState('08:00');
     const [type, setType] = useState<'Convênio' | 'Particular'>('Convênio');
     const [obs, setObs] = useState('');
-    const [recurrence, setRecurrence] = useState<'none' | 'weekly' | 'biweekly'>('none');
+    const [recurrence, setRecurrence] = useState<'none' | 'weekly' | 'biweekly' | 'monthly'>('none');
     const [recurrenceEndDate, setRecurrenceEndDate] = useState<string>('');
+
+    // Edição: aplicar recorrência na edição
+    const [editApplyScope, setEditApplyScope] = useState<'single' | 'future'>('single');
+    const [editRecurrence, setEditRecurrence] = useState<'none' | 'weekly' | 'biweekly' | 'monthly'>('none');
     const [cancelModal, setCancelModal] = useState<{ isOpen: boolean; appt: Appointment | null; reason: string }>({ isOpen: false, appt: null, reason: '' });
 
     const handleStatusChange = (appt: Appointment, status: Appointment['status']) => {
@@ -170,6 +174,16 @@ export const Agenda: React.FC<AgendaProps> = ({
             if (selectedDate && !selectedSlot) setFormDate(selectedDate);
         }
     }, [showForm, formId, selectedDate, selectedSlot]);
+
+    const toISODate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+    const addInterval = (start: Date, index: number, interval: 'weekly' | 'biweekly' | 'monthly') => {
+        const d = new Date(start);
+        if (interval === 'weekly') d.setDate(d.getDate() + (7 * index));
+        else if (interval === 'biweekly') d.setDate(d.getDate() + (14 * index));
+        else d.setMonth(d.getMonth() + index);
+        return d;
+    };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -203,7 +217,55 @@ export const Agenda: React.FC<AgendaProps> = ({
         });
 
         if (formId) {
-            onUpdateAppointment(createAppointmentObj(formDate, formId));
+            const updatedSingle = createAppointmentObj(formDate, formId);
+
+            // Se o usuário escolheu aplicar para futuros, recalcula toda a sequência existente.
+            if (editApplyScope === 'future') {
+                const baseProf = (effectiveProfissional || '').split(' - ')[0].trim().toLowerCase();
+                const originAppt = appointments.find(a => a.id === formId);
+                const originDate = originAppt?.date || updatedSingle.date;
+
+                const series = appointments
+                    .filter(a => a.patientId === patient.id)
+                    .filter(a => ((a.profissional || '').split(' - ')[0].trim().toLowerCase() === baseProf) || (a.profissional || '').toLowerCase().includes(baseProf))
+                    .filter(a => a.date >= originDate)
+                    .sort((a, b) => (a.date + 'T' + a.time).localeCompare(b.date + 'T' + b.time));
+
+                // Garante que o atual esteja incluso
+                if (!series.some(a => a.id === formId)) series.unshift(originAppt || updatedSingle);
+
+                if (editRecurrence === 'none') {
+                    // Mantém apenas este (atualizado) e remove futuros
+                    onUpdateAppointment(updatedSingle);
+                    series.filter(a => a.id !== formId).forEach(a => onDeleteAppointment(a.id, a.patientName));
+                    closeForm();
+                    return;
+                }
+
+                const [sy, sm, sd] = updatedSingle.date.split('-').map(Number);
+                const start = new Date(sy, sm - 1, sd);
+
+                series.forEach((old, i) => {
+                    const nextDate = toISODate(addInterval(start, i, editRecurrence));
+                    onUpdateAppointment({
+                        ...old,
+                        patientId: updatedSingle.patientId,
+                        patientName: updatedSingle.patientName,
+                        carteirinha: updatedSingle.carteirinha,
+                        profissional: updatedSingle.profissional,
+                        date: nextDate,
+                        time: updatedSingle.time,
+                        type: updatedSingle.type,
+                        convenioName: updatedSingle.convenioName,
+                        obs: updatedSingle.obs
+                    });
+                });
+
+                closeForm();
+                return;
+            }
+
+            onUpdateAppointment(updatedSingle);
             closeForm();
             return;
         }
@@ -213,7 +275,7 @@ export const Agenda: React.FC<AgendaProps> = ({
         const currentDateCalculator = new Date(y, m - 1, d);
         
         let totalToCreate = 1;
-        const intervalDays = recurrence === 'weekly' ? 7 : 14;
+        const intervalDays = recurrence === 'weekly' ? 7 : recurrence === 'biweekly' ? 14 : 30;
 
         if (recurrence !== 'none') {
             if (recurrenceEndDate) {
@@ -242,7 +304,8 @@ export const Agenda: React.FC<AgendaProps> = ({
             newBatch.push(createAppointmentObj(isoDate, undefined, suffix, i));
 
             if (recurrence !== 'none') {
-                currentDateCalculator.setDate(currentDateCalculator.getDate() + intervalDays);
+                if (recurrence === 'monthly') currentDateCalculator.setMonth(currentDateCalculator.getMonth() + 1);
+                else currentDateCalculator.setDate(currentDateCalculator.getDate() + intervalDays);
             }
         }
 
@@ -269,6 +332,8 @@ export const Agenda: React.FC<AgendaProps> = ({
         setType(appt.type);
         setObs(appt.obs || '');
         setRecurrence('none');
+        setEditApplyScope('single');
+        setEditRecurrence('none');
         setShowForm(true);
     };
 
@@ -544,11 +609,11 @@ export const Agenda: React.FC<AgendaProps> = ({
                                 {profissionais.map(p => <option key={p} value={p}>{p}</option>)}
                             </select>
 
-                            {!formId && (
+                            {!formId ? (
                                 <div className="bg-slate-900/50 rounded-lg p-3 space-y-3">
                                     <label className="text-xs text-slate-400 font-medium">Recorrência</label>
                                     <div className="flex gap-2">
-                                        {(['none', 'weekly', 'biweekly'] as const).map(r => (
+                                        {(['none', 'weekly', 'biweekly', 'monthly'] as const).map(r => (
                                             <button
                                                 key={r}
                                                 type="button"
@@ -556,7 +621,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                                                 className={`flex-1 py-2 text-xs rounded-lg transition ${recurrence === r ? 'bg-sky-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
                                                     }`}
                                             >
-                                                {r === 'none' ? 'Única' : r === 'weekly' ? 'Semanal' : 'Quinzenal'}
+                                                {r === 'none' ? 'Única' : r === 'weekly' ? 'Semanal' : r === 'biweekly' ? 'Quinzenal' : 'Mensal'}
                                             </button>
                                         ))}
                                     </div>
@@ -572,6 +637,33 @@ export const Agenda: React.FC<AgendaProps> = ({
                                             />
                                         </div>
                                     )}
+                                </div>
+                            ) : (
+                                <div className="bg-slate-900/50 rounded-lg p-3 space-y-3">
+                                    <label className="text-xs text-slate-400 font-medium">Repetição (editar)</label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <select
+                                            value={editRecurrence}
+                                            onChange={e => setEditRecurrence(e.target.value as any)}
+                                            className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                                        >
+                                            <option value="none">Não repetir</option>
+                                            <option value="weekly">Semanal</option>
+                                            <option value="biweekly">Quinzenal</option>
+                                            <option value="monthly">Mensal</option>
+                                        </select>
+                                        <select
+                                            value={editApplyScope}
+                                            onChange={e => setEditApplyScope(e.target.value as any)}
+                                            className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                                        >
+                                            <option value="single">Só este</option>
+                                            <option value="future">Este e próximos</option>
+                                        </select>
+                                    </div>
+                                    <p className="text-[11px] text-slate-500">
+                                        Dica: use “Este e próximos” pra mudar horário/dia da série sem editar um por um.
+                                    </p>
                                 </div>
                             )}
 

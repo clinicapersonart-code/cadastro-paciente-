@@ -49,9 +49,15 @@ const App: React.FC = () => {
     const [toast, setToast] = useState<{ msg: string, type: 'success' | 'error' | 'info' } | null>(null);
     const [showLinksModal, setShowLinksModal] = useState(false);
     const [showPasswordModal, setShowPasswordModal] = useState(false);
+    const [showProfileModal, setShowProfileModal] = useState(false);
     const [showUserManager, setShowUserManager] = useState(false);
     const [passwordForm, setPasswordForm] = useState({ current: '', new: '', confirm: '' });
     const [passwordError, setPasswordError] = useState('');
+
+    const [profileForm, setProfileForm] = useState({
+        specialty: '',
+        professionalRegister: ''
+    });
 
     // Estado para Prontuário
     const [selectedPatientForRecord, setSelectedPatientForRecord] = useState<Patient | null>(null);
@@ -839,6 +845,65 @@ const App: React.FC = () => {
         showToast('Senha alterada com sucesso!', 'success');
     };
 
+    const handleSaveMyProfile = async () => {
+        if (!currentUser) return;
+
+        const updatedUser: UserProfile = {
+            ...currentUser,
+            specialty: profileForm.specialty?.trim() || '',
+            professionalRegister: profileForm.professionalRegister?.trim() || ''
+        };
+
+        // Atualiza usuário local
+        setUsers(prev => prev.map(u => u.id === currentUser.id ? updatedUser : u));
+        setCurrentUser(updatedUser);
+
+        // Sincroniza com a nuvem
+        await syncUserToCloud(updatedUser);
+
+        // Mantém lista de profissionais/pacientes/agenda consistente com o "Nome - Registro"
+        if (updatedUser.role === 'professional') {
+            const newDisplayName = updatedUser.professionalRegister
+                ? `${updatedUser.name} - ${updatedUser.professionalRegister}`
+                : updatedUser.name;
+
+            // Atualiza lista de profissionais
+            setProfissionais(prev => prev.map(p => {
+                const base = (p || '').split(' - ')[0].trim();
+                if (base.toLowerCase() === updatedUser.name.toLowerCase()) return newDisplayName;
+                if ((p || '').toLowerCase().includes(updatedUser.name.toLowerCase())) return newDisplayName;
+                return p;
+            }));
+
+            // Atualiza pacientes atribuídos
+            setPatients(prev => prev.map(pt => {
+                const list = pt.profissionais || [];
+                const updatedList = list.map(p => {
+                    const base = (p || '').split(' - ')[0].trim();
+                    if (base.toLowerCase() === updatedUser.name.toLowerCase()) return newDisplayName;
+                    if ((p || '').toLowerCase().includes(updatedUser.name.toLowerCase())) return newDisplayName;
+                    return p;
+                });
+                return { ...pt, profissionais: updatedList };
+            }));
+
+            // Atualiza agenda (campo profissional)
+            setAppointments(prev => prev.map(a => {
+                const base = (a.profissional || '').split(' - ')[0].trim();
+                if (base.toLowerCase() === updatedUser.name.toLowerCase()) {
+                    return { ...a, profissional: newDisplayName };
+                }
+                if ((a.profissional || '').toLowerCase().includes(updatedUser.name.toLowerCase())) {
+                    return { ...a, profissional: newDisplayName };
+                }
+                return a;
+            }));
+        }
+
+        setShowProfileModal(false);
+        showToast('Cadastro atualizado!', 'success');
+    };
+
     const handleLoginSuccess = (user: UserProfile) => {
         setCurrentUser(user);
         setIsAuthenticated(true);
@@ -1074,6 +1139,23 @@ const App: React.FC = () => {
                         >
                             <UploadIcon className="w-5 h-5" />
                         </button>
+
+                        {/* Botão Meu Cadastro */}
+                        {(currentUser?.role === 'admin' || currentUser?.role === 'professional') && (
+                            <button
+                                onClick={() => {
+                                    setProfileForm({
+                                        specialty: currentUser?.specialty || '',
+                                        professionalRegister: (currentUser as any)?.professionalRegister || (currentUser as any)?.crp || ''
+                                    });
+                                    setShowProfileModal(true);
+                                }}
+                                className="p-2 text-slate-400 hover:text-[#e9c49e] ml-1"
+                                title="Meu cadastro"
+                            >
+                                <UserIcon className="w-5 h-5" />
+                            </button>
+                        )}
 
                         {/* Botão Alterar Senha */}
                         <button
@@ -1815,6 +1897,65 @@ const App: React.FC = () => {
                                     </button>
                                 </div>
                             )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal Meu Cadastro */}
+            {showProfileModal && currentUser && (
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+                    <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-sm p-6 shadow-2xl relative animate-fade-in">
+                        <button onClick={() => setShowProfileModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-white"><XIcon className="w-6 h-6" /></button>
+                        <h3 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
+                            <UserIcon className="w-5 h-5 text-[#e9c49e]" />
+                            Meu cadastro
+                        </h3>
+                        <p className="text-xs text-slate-400 mb-6">
+                            Atualize seus dados (ex: CRP/CRM) para aparecer corretamente nos PDFs.
+                        </p>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm text-slate-400 mb-1">Nome</label>
+                                <input
+                                    type="text"
+                                    value={currentUser.name}
+                                    disabled
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-slate-400 outline-none opacity-70 cursor-not-allowed"
+                                />
+                                <p className="text-[11px] text-slate-500 mt-1">(Nome é alterado apenas pela clínica, para evitar bagunçar atribuições.)</p>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm text-slate-400 mb-1">Especialidade</label>
+                                <input
+                                    type="text"
+                                    value={profileForm.specialty}
+                                    onChange={e => setProfileForm(prev => ({ ...prev, specialty: e.target.value }))}
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white outline-none focus:ring-2 focus:ring-[#e9c49e]"
+                                    placeholder="Ex: Psicologia"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm text-slate-400 mb-1">Registro (CRP/CRM)</label>
+                                <input
+                                    type="text"
+                                    value={profileForm.professionalRegister}
+                                    onChange={e => setProfileForm(prev => ({ ...prev, professionalRegister: e.target.value }))}
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white outline-none focus:ring-2 focus:ring-[#e9c49e]"
+                                    placeholder="Ex: CRP 06/12345"
+                                />
+                            </div>
+
+
+                            <button
+                                onClick={handleSaveMyProfile}
+                                className="w-full bg-[#273e44] hover:bg-[#2f4d54] text-[#e9c49e] font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 border border-[#e9c49e]/10"
+                            >
+                                <CheckIcon className="w-5 h-5" /> Salvar
+                            </button>
                         </div>
                     </div>
                 </div>
