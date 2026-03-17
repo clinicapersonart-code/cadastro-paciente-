@@ -562,8 +562,34 @@ const App: React.FC = () => {
     };
 
     const handleUpdateAppointment = async (appt: Appointment) => {
-        // Profissionais: cria solicitação pendente em vez de alterar diretamente
+        // Aplica a alteração diretamente no estado local
+        setAppointments(prev => prev.map(x => x.id === appt.id ? appt : x));
+
+        // Aplica na nuvem
+        if (supabase && connectionStatus !== 'offline') {
+            const { error } = await supabase.from('appointments').upsert({
+                id: appt.id,
+                date: appt.date,
+                patient_id: appt.patientId,
+                status: appt.status,
+                carteirinha: appt.carteirinha || '',
+                numero_autorizacao: appt.numero_autorizacao || '',
+                data_autorizacao: appt.data_autorizacao || null,
+                data: JSON.parse(JSON.stringify(appt))
+            });
+            if (!error) {
+                logActivity('ALTERACAO_AGENDA', `${currentUser?.name} alterou agendamento de ${appt.patientName}`, { apptId: appt.id });
+            }
+        }
+
+        // Se for profissional, TAMBÉM cria solicitação pendente para a clínica revisar
         if (currentUser?.role === 'professional') {
+            // Tentamos encontrar os dados antigos no estado atual antes de ter atualizado
+            // (Neste ponto já alterou o estado na tela, o ideal seria pegar a cópia antiga ANTES)
+            // Mas como temos hooks, prev state pode não estar disponível sincronicamente,
+            // Felizmente, o objeto oldAppt ainda não foi mutado (o map cria novo ref), e este closure tem acesso ao appointments antigo?
+            // De qualquer forma, a UI passa os dados novos. 
+            // Uma ideia mais segura: o appt veio modificado do form. A busca em `appointments` (closure) ainda tem o original.
             const oldAppt = appointments.find(x => x.id === appt.id);
             if (!oldAppt) return;
 
@@ -575,13 +601,13 @@ const App: React.FC = () => {
                 requestedBy: currentUser.id,
                 requestedByName: currentUser.name,
                 timestamp: new Date().toISOString(),
-                oldData: { ...oldAppt },
+                oldData: { ...oldAppt }, // o estado antigo antes desta renderização
                 newData: { ...appt }
             };
 
             setScheduleChangeRequests(prev => [request, ...prev]);
 
-            // Salva na nuvem
+            // Salva a requisição na nuvem
             if (supabase && connectionStatus !== 'offline') {
                 try {
                     await supabase.from('schedule_change_requests').upsert({
@@ -598,37 +624,31 @@ const App: React.FC = () => {
                 }
             }
 
-            logActivity('SOLICITACAO_ALTERACAO', `${currentUser.name} solicitou alteração no agendamento de ${appt.patientName} (${appt.date} ${appt.time})`, { requestId: request.id, apptId: appt.id });
-            showToast('Solicitação de alteração enviada para a clínica!', 'info');
-            return;
-        }
-
-        // Clínica/Admin: aplica diretamente
-        setAppointments(prev => prev.map(x => x.id === appt.id ? appt : x));
-
-        if (supabase && connectionStatus !== 'offline') {
-            const { error } = await supabase.from('appointments').upsert({
-                id: appt.id,
-                date: appt.date,
-                patient_id: appt.patientId,
-                status: appt.status,
-                carteirinha: appt.carteirinha || '',
-                numero_autorizacao: appt.numero_autorizacao || '',
-                data_autorizacao: appt.data_autorizacao || null,
-                data: JSON.parse(JSON.stringify(appt))
-            });
-            if (!error) {
-                logActivity('ALTERACAO_AGENDA', `${currentUser?.name} alterou agendamento de ${appt.patientName}`, { apptId: appt.id });
-            }
+            logActivity('SOLICITACAO_ALTERACAO', `${currentUser.name} alterou agendamento de ${appt.patientName} (${appt.date} ${appt.time})`, { requestId: request.id, apptId: appt.id });
+            showToast('Alteração salva (Notificação enviada à clínica)', 'success');
+        } else {
+             // Admin feedback
+             showToast('Agendamento atualizado com sucesso!', 'success');
         }
     };
 
     const handleDeleteAppointment = async (id: string, name?: string) => {
-        // Profissionais: cria solicitação pendente
-        if (currentUser?.role === 'professional') {
-            const oldAppt = appointments.find(x => x.id === id);
-            if (!oldAppt) return;
+        // Resgata o agendamento antigo
+        const oldAppt = appointments.find(x => x.id === id);
 
+        // Aplica exclusão imediatamente no local
+        setAppointments(prev => prev.filter(x => x.id !== id));
+
+        // Aplica na nuvem imediatamente
+        if (supabase && connectionStatus !== 'offline') {
+            const { error } = await supabase.from('appointments').delete().eq('id', id);
+            if (!error) {
+                logActivity('EXCLUSAO_AGENDA', `${currentUser?.name} excluiu agendamento de ${name || 'paciente'}`, { apptId: id });
+            }
+        }
+
+        // Se for profissional, cria requisição para o log da clínica
+        if (currentUser?.role === 'professional' && oldAppt) {
             const request: ScheduleChangeRequest = {
                 id: `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                 appointmentId: id,
@@ -657,19 +677,10 @@ const App: React.FC = () => {
                     console.error('Erro ao salvar solicitação:', e);
                 }
             }
-
-            logActivity('SOLICITACAO_ALTERACAO', `${currentUser.name} solicitou exclusão do agendamento de ${name || 'paciente'} (${oldAppt.date} ${oldAppt.time})`, { requestId: request.id, apptId: id });
-            showToast('Solicitação de exclusão enviada para a clínica!', 'info');
-            return;
-        }
-
-        // Clínica/Admin: aplica diretamente
-        setAppointments(prev => prev.filter(x => x.id !== id));
-        if (supabase && connectionStatus !== 'offline') {
-            const { error } = await supabase.from('appointments').delete().eq('id', id);
-            if (!error) {
-                logActivity('EXCLUSAO_AGENDA', `${currentUser?.name} excluiu agendamento de ${name || 'paciente'}`, { apptId: id });
-            }
+            logActivity('SOLICITACAO_ALTERACAO', `${currentUser.name} excluiu agendamento de ${name || 'paciente'} (${oldAppt.date} ${oldAppt.time})`, { requestId: request.id, apptId: id });
+            showToast('Exclusão realizada (Notificação enviada à clínica)', 'success');
+        } else {
+             showToast('Agendamento excluído com sucesso!', 'success');
         }
     };
 
@@ -678,30 +689,8 @@ const App: React.FC = () => {
         const request = scheduleChangeRequests.find(r => r.id === requestId);
         if (!request || request.status !== 'PENDING') return;
 
-        if (request.type === 'UPDATE' && request.newData) {
-            // Aplica a alteração no agendamento
-            setAppointments(prev => prev.map(x => x.id === request.appointmentId ? request.newData! : x));
-
-            if (supabase && connectionStatus !== 'offline') {
-                await supabase.from('appointments').upsert({
-                    id: request.newData.id,
-                    date: request.newData.date,
-                    patient_id: request.newData.patientId,
-                    status: request.newData.status,
-                    carteirinha: request.newData.carteirinha || '',
-                    numero_autorizacao: request.newData.numero_autorizacao || '',
-                    data_autorizacao: request.newData.data_autorizacao || null,
-                    data: JSON.parse(JSON.stringify(request.newData))
-                });
-            }
-        } else if (request.type === 'DELETE') {
-            // Exclui o agendamento
-            setAppointments(prev => prev.filter(x => x.id !== request.appointmentId));
-
-            if (supabase && connectionStatus !== 'offline') {
-                await supabase.from('appointments').delete().eq('id', request.appointmentId);
-            }
-        }
+        // Como a alteração JÁ FOI APLICADA na agenda (nova regra), a aprovação da clínica
+        // significa apenas "Estou ciente e aprovo o que o profissional fez", não precisamos mudar appointments
 
         // Atualiza status da solicitação
         const updatedRequest: ScheduleChangeRequest = {
@@ -731,13 +720,48 @@ const App: React.FC = () => {
         }
 
         const actionLabel = request.type === 'UPDATE' ? 'alteração' : 'exclusão';
-        logActivity('APROVACAO_ALTERACAO', `${currentUser?.name} aprovou ${actionLabel} de ${request.oldData.patientName} solicitada por ${request.requestedByName}`, { requestId, apptId: request.appointmentId });
-        showToast(`Solicitação aprovada! Agendamento ${request.type === 'DELETE' ? 'excluído' : 'atualizado'}.`, 'success');
+        logActivity('APROVACAO_ALTERACAO', `${currentUser?.name} estava ciente e aprovou a ${actionLabel} de ${request.oldData.patientName} efetuada por ${request.requestedByName}`, { requestId, apptId: request.appointmentId });
+        showToast('Edição revisada/aprovada com sucesso.', 'success');
     };
 
     const handleRejectChange = async (requestId: string) => {
         const request = scheduleChangeRequests.find(r => r.id === requestId);
         if (!request || request.status !== 'PENDING') return;
+
+        // Ao rejeitar, DESFAZEMOS a ação que o profissional tomou.
+        // Se era UPDATE, voltamos a versão antiga (oldData)
+        // Se era DELETE, reinserimos o agendamento (oldData)
+
+        // Aplica o "undone" na agenda
+        if (request.type === 'UPDATE') {
+            setAppointments(prev => prev.map(x => x.id === request.appointmentId ? request.oldData : x));
+            if (supabase && connectionStatus !== 'offline') {
+                await supabase.from('appointments').upsert({
+                    id: request.oldData.id,
+                    date: request.oldData.date,
+                    patient_id: request.oldData.patientId,
+                    status: request.oldData.status,
+                    carteirinha: request.oldData.carteirinha || '',
+                    numero_autorizacao: request.oldData.numero_autorizacao || '',
+                    data_autorizacao: request.oldData.data_autorizacao || null,
+                    data: JSON.parse(JSON.stringify(request.oldData))
+                });
+            }
+        } else if (request.type === 'DELETE') {
+            setAppointments(prev => [...prev, request.oldData]);
+            if (supabase && connectionStatus !== 'offline') {
+                await supabase.from('appointments').upsert({
+                    id: request.oldData.id,
+                    date: request.oldData.date,
+                    patient_id: request.oldData.patientId,
+                    status: request.oldData.status,
+                    carteirinha: request.oldData.carteirinha || '',
+                    numero_autorizacao: request.oldData.numero_autorizacao || '',
+                    data_autorizacao: request.oldData.data_autorizacao || null,
+                    data: JSON.parse(JSON.stringify(request.oldData))
+                });
+            }
+        }
 
         const updatedRequest: ScheduleChangeRequest = {
             ...request,
@@ -766,8 +790,8 @@ const App: React.FC = () => {
         }
 
         const actionLabel = request.type === 'UPDATE' ? 'alteração' : 'exclusão';
-        logActivity('REJEICAO_ALTERACAO', `${currentUser?.name} rejeitou ${actionLabel} de ${request.oldData.patientName} solicitada por ${request.requestedByName}`, { requestId, apptId: request.appointmentId });
-        showToast('Solicitação rejeitada. O agendamento permanece inalterado.', 'info');
+        logActivity('REJEICAO_ALTERACAO', `${currentUser?.name} rejeitou (desfez) a ${actionLabel} de ${request.oldData.patientName} efetuada por ${request.requestedByName}`, { requestId, apptId: request.appointmentId });
+        showToast('Ação desfeita. O agendamento voltou ao estado original.', 'info');
     };
 
     const handleLogout = () => {

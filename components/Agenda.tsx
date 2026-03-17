@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Appointment, Patient, UserProfile } from '../types';
-import { CalendarIcon, PlusIcon, TrashIcon, CheckIcon, EditIcon, ChevronLeftIcon, ChevronRightIcon } from './icons';
+import { CalendarIcon, PlusIcon, TrashIcon, CheckIcon, EditIcon, ChevronLeftIcon, ChevronRightIcon, XIcon } from './icons';
 import useLocalStorage from '../hooks/useLocalStorage';
 
 interface AgendaProps {
@@ -138,7 +138,16 @@ export const Agenda: React.FC<AgendaProps> = ({
     const [type, setType] = useState<'Convênio' | 'Particular'>('Convênio');
     const [obs, setObs] = useState('');
     const [recurrence, setRecurrence] = useState<'none' | 'weekly' | 'biweekly'>('none');
-    const [recurrenceCount, setRecurrenceCount] = useState<number>(4);
+    const [recurrenceEndDate, setRecurrenceEndDate] = useState<string>('');
+    const [cancelModal, setCancelModal] = useState<{ isOpen: boolean; appt: Appointment | null; reason: string }>({ isOpen: false, appt: null, reason: '' });
+
+    const handleStatusChange = (appt: Appointment, status: Appointment['status']) => {
+        if (status === 'Cancelado') {
+            setCancelModal({ isOpen: true, appt, reason: '' });
+        } else {
+            onUpdateAppointment({ ...appt, status });
+        }
+    };
 
     const currentDate = useMemo(() => new Date(selectedDate + 'T00:00:00'), [selectedDate]);
     const weekStart = useMemo(() => getWeekStart(currentDate), [currentDate]);
@@ -157,14 +166,21 @@ export const Agenda: React.FC<AgendaProps> = ({
         if (showForm && !formId) {
             setObs('');
             setRecurrence('none');
-            setRecurrenceCount(4);
+            setRecurrenceEndDate('');
             if (selectedDate && !selectedSlot) setFormDate(selectedDate);
         }
     }, [showForm, formId, selectedDate, selectedSlot]);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!selectedPatientId || !formProfissional || !time || !formDate) {
+
+        // RBAC: Se for profissional, o profissional da sessão é ele próprio.
+        const isProf = currentUser?.role === 'professional';
+        const effectiveProfissional = isProf && currentUser?.name
+            ? (profissionais.find(p => p.toLowerCase().includes(currentUser.name.toLowerCase()) || currentUser.name.toLowerCase().includes(p.toLowerCase().split(' - ')[0])) || formProfissional)
+            : formProfissional;
+
+        if (!selectedPatientId || !effectiveProfissional || !time || !formDate) {
             alert('Preencha os campos obrigatórios.');
             return;
         }
@@ -177,7 +193,7 @@ export const Agenda: React.FC<AgendaProps> = ({
             patientId: patient.id,
             patientName: patient.nome,
             carteirinha: patient.carteirinha,
-            profissional: formProfissional,
+            profissional: effectiveProfissional,
             date: dateStr,
             time,
             type,
@@ -195,8 +211,26 @@ export const Agenda: React.FC<AgendaProps> = ({
         const newBatch: Appointment[] = [];
         const [y, m, d] = formDate.split('-').map(Number);
         const currentDateCalculator = new Date(y, m - 1, d);
-        const totalToCreate = (recurrence !== 'none') ? recurrenceCount : 1;
+        
+        let totalToCreate = 1;
         const intervalDays = recurrence === 'weekly' ? 7 : 14;
+
+        if (recurrence !== 'none') {
+            if (recurrenceEndDate) {
+                const [ey, em, ed] = recurrenceEndDate.split('-').map(Number);
+                const endCalcDate = new Date(ey, em - 1, ed);
+                const diffTime = endCalcDate.getTime() - currentDateCalculator.getTime();
+                if (diffTime < 0) {
+                    alert('A data de término não pode ser anterior à data de início.');
+                    return;
+                }
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                totalToCreate = Math.floor(diffDays / intervalDays) + 1;
+                if (totalToCreate > 104) totalToCreate = 104; // Max ~2 anos
+            } else {
+                totalToCreate = recurrence === 'weekly' ? 24 : 12; // Default ~6 meses
+            }
+        }
 
         for (let i = 0; i < totalToCreate; i++) {
             const cy = currentDateCalculator.getFullYear();
@@ -204,7 +238,7 @@ export const Agenda: React.FC<AgendaProps> = ({
             const cd = String(currentDateCalculator.getDate()).padStart(2, '0');
             const isoDate = `${cy}-${cm}-${cd}`;
 
-            const suffix = i > 0 ? `Sessão ${i + 1}` : '';
+            const suffix = (recurrence !== 'none' && i > 0) ? `Sessão ${i + 1}` : '';
             newBatch.push(createAppointmentObj(isoDate, undefined, suffix, i));
 
             if (recurrence !== 'none') {
@@ -385,7 +419,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                         onSlotClick={(date, time) => setSelectedSlot({ date: formatDateISO(date), time })}
                         onEditAppointment={handleEditClick}
                         onDeleteAppointment={onDeleteAppointment}
-                        onStatusChange={(appt, status) => onUpdateAppointment({ ...appt, status })}
+                        onStatusChange={handleStatusChange}
                         isToday={isToday}
                     />
                 )}
@@ -410,10 +444,54 @@ export const Agenda: React.FC<AgendaProps> = ({
                         onSlotClick={(time) => setSelectedSlot({ date: formatDateISO(currentDate), time })}
                         onEditAppointment={handleEditClick}
                         onDeleteAppointment={onDeleteAppointment}
-                        onStatusChange={(appt, status) => onUpdateAppointment({ ...appt, status })}
+                        onStatusChange={handleStatusChange}
                     />
                 )}
             </div>
+
+            {/* Modal de Cancelamento */}
+            {cancelModal.isOpen && cancelModal.appt && (
+                <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[60] p-4">
+                    <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-sm p-6 shadow-2xl">
+                        <h3 className="text-lg font-bold text-white mb-2">Cancelar Consulta</h3>
+                        <p className="text-sm text-slate-400 mb-4">
+                            Paciente: <strong className="text-slate-200">{cancelModal.appt.patientName}</strong><br/>
+                            Data/Hora: <strong className="text-slate-200">{cancelModal.appt.date.split('-').reverse().join('/')} às {cancelModal.appt.time}</strong>
+                        </p>
+                        <div className="space-y-3">
+                            <label className="text-sm text-white font-medium">Motivo (Opcional)</label>
+                            <textarea
+                                placeholder="Ex: Paciente desmarcou por motivo de saúde..."
+                                value={cancelModal.reason}
+                                onChange={e => setCancelModal({ ...cancelModal, reason: e.target.value })}
+                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white resize-none h-20"
+                            />
+                        </div>
+                        <div className="flex gap-3 mt-6">
+                            <button
+                                onClick={() => setCancelModal({ isOpen: false, appt: null, reason: '' })}
+                                className="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-200 py-2 rounded-lg transition"
+                            >
+                                Fechar
+                            </button>
+                            <button
+                                onClick={() => {
+                                    if (cancelModal.appt) {
+                                        const oldObs = cancelModal.appt.obs || '';
+                                        const append = cancelModal.reason ? `Motivo do cancelamento: ${cancelModal.reason}` : '';
+                                        const newObs = oldObs ? (append ? `${oldObs}\n${append}` : oldObs) : append;
+                                        onUpdateAppointment({ ...cancelModal.appt, status: 'Cancelado', obs: newObs });
+                                    }
+                                    setCancelModal({ isOpen: false, appt: null, reason: '' });
+                                }}
+                                className="flex-1 bg-red-600 hover:bg-red-500 text-white font-bold py-2 rounded-lg transition"
+                            >
+                                Confirmar Cancelamento
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Modal de Agendamento */}
             {showForm && (
@@ -427,7 +505,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                                 <option value="">Selecione o paciente...</option>
                                 {patients
                                     .filter(p => {
-                                        if ((currentUser?.role === 'professional' || currentUser?.role === 'admin') && currentUser?.name) {
+                                        if (currentUser?.role === 'professional' && currentUser?.name) {
                                             const normalizedPro = currentUser.name.toLowerCase().trim();
                                             // Encontra a entrada exata do profissional na lista global
                                             const matchingProEntry = profissionais.find(pr =>
@@ -457,10 +535,10 @@ export const Agenda: React.FC<AgendaProps> = ({
 
                             <select
                                 required
-                                value={(currentUser?.role === 'professional' || currentUser?.role === 'admin') ? (profissionais.find(p => p.toLowerCase().includes(currentUser.name.toLowerCase()) || currentUser.name.toLowerCase().includes(p.toLowerCase().split(' - ')[0])) || formProfissional) : formProfissional}
+                                value={currentUser?.role === 'professional' && currentUser?.name ? (profissionais.find(p => p.toLowerCase().includes(currentUser.name.toLowerCase()) || currentUser.name.toLowerCase().includes(p.toLowerCase().split(' - ')[0])) || formProfissional) : formProfissional}
                                 onChange={e => setFormProfissional(e.target.value)}
-                                disabled={currentUser?.role === 'professional' || currentUser?.role === 'admin'}
-                                className={`w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white ${(currentUser?.role === 'professional' || currentUser?.role === 'admin') ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                disabled={currentUser?.role === 'professional'}
+                                className={`w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white ${currentUser?.role === 'professional' ? 'opacity-50 cursor-not-allowed' : ''}`}
                             >
                                 <option value="">Selecione o profissional...</option>
                                 {profissionais.map(p => <option key={p} value={p}>{p}</option>)}
@@ -483,17 +561,15 @@ export const Agenda: React.FC<AgendaProps> = ({
                                         ))}
                                     </div>
                                     {recurrence !== 'none' && (
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-xs text-slate-400">Repetir</span>
+                                        <div className="flex items-center gap-2 mt-2">
+                                            <span className="text-xs text-slate-400">Até</span>
                                             <input
-                                                type="number"
-                                                min="2"
-                                                max="52"
-                                                value={recurrenceCount}
-                                                onChange={e => setRecurrenceCount(Number(e.target.value))}
-                                                className="w-16 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white text-center"
+                                                type="date"
+                                                min={formDate}
+                                                value={recurrenceEndDate}
+                                                onChange={e => setRecurrenceEndDate(e.target.value)}
+                                                className="flex-1 bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-sm text-white"
                                             />
-                                            <span className="text-xs text-slate-400">vezes</span>
                                         </div>
                                     )}
                                 </div>
@@ -642,10 +718,11 @@ const MonthView: React.FC<MonthViewProps> = ({ monthDays, getAppointmentsForDay,
                                 <div className="space-y-1">
                                     {appointments.slice(0, 3).map(appt => {
                                         const color = getProfessionalColor(appt.profissional, profissionais);
+                                        const isCancelled = appt.status === 'Cancelado';
                                         return (
                                             <div
                                                 key={appt.id}
-                                                className={`text-[10px] px-1.5 py-0.5 rounded truncate ${color?.bg || ''} ${color?.text || ''}`}
+                                                className={`text-[10px] px-1.5 py-0.5 rounded truncate ${color?.bg || ''} ${color?.text || ''} ${isCancelled ? 'opacity-50 line-through grayscale' : ''}`}
                                             >
                                                 {appt.time || ''} {(appt.patientName || '').split(' ')[0]}
                                             </div>
@@ -728,9 +805,13 @@ const AppointmentChip: React.FC<AppointmentChipProps> = ({ appt, profissionais, 
     const color = getProfessionalColor(appt.profissional, profissionais);
     const [showMenu, setShowMenu] = useState(false);
 
+    const isCancelled = appt.status === 'Cancelado';
+    const isCompleted = appt.status === 'Realizado';
+    const bgOpacity = isCancelled ? 'opacity-50 line-through grayscale' : isCompleted ? 'border-l-4 border-l-green-500' : '';
+
     return (
         <div
-            className={`relative group text-xs p-1.5 rounded ${color.bg} border ${color.border} ${color.text} cursor-pointer`}
+            className={`relative group text-xs p-1.5 rounded ${color.bg} border ${color.border} ${color.text} cursor-pointer ${bgOpacity}`}
             onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
         >
             <div className="font-bold flex justify-between items-center gap-1 mb-0.5">
@@ -744,9 +825,16 @@ const AppointmentChip: React.FC<AppointmentChipProps> = ({ appt, profissionais, 
                     <button onClick={() => { onEdit(appt); setShowMenu(false); }} className="w-full px-3 py-2 text-left text-xs text-slate-300 hover:bg-slate-700 flex items-center gap-2">
                         <EditIcon className="w-3 h-3" /> Editar
                     </button>
-                    <button onClick={() => { onStatusChange(appt, 'Realizado'); setShowMenu(false); }} className="w-full px-3 py-2 text-left text-xs text-green-400 hover:bg-slate-700 flex items-center gap-2">
-                        <CheckIcon className="w-3 h-3" /> Realizado
-                    </button>
+                    {!isCompleted && !isCancelled && (
+                        <button onClick={() => { onStatusChange(appt, 'Realizado'); setShowMenu(false); }} className="w-full px-3 py-2 text-left text-xs text-green-400 hover:bg-slate-700 flex items-center gap-2">
+                            <CheckIcon className="w-3 h-3" /> Realizado
+                        </button>
+                    )}
+                    {!isCancelled && (
+                        <button onClick={() => { onStatusChange(appt, 'Cancelado'); setShowMenu(false); }} className="w-full px-3 py-2 text-left text-xs text-orange-400 hover:bg-slate-700 flex items-center gap-2">
+                            <XIcon className="w-3 h-3" /> Cancelar
+                        </button>
+                    )}
                     <button onClick={() => { if (confirm('Excluir?')) onDelete(appt.id, appt.patientName); setShowMenu(false); }} className="w-full px-3 py-2 text-left text-xs text-red-400 hover:bg-slate-700 flex items-center gap-2">
                         <TrashIcon className="w-3 h-3" /> Excluir
                     </button>
@@ -767,30 +855,42 @@ interface AppointmentCardProps {
 
 const AppointmentCard: React.FC<AppointmentCardProps> = ({ appt, profissionais, onEdit, onDelete, onStatusChange }) => {
     const color = getProfessionalColor(appt.profissional, profissionais);
+    const isCancelled = appt.status === 'Cancelado';
+    const isCompleted = appt.status === 'Realizado';
 
     return (
-        <div className={`flex items-center justify-between p-3 rounded-xl ${color.bg} border ${color.border}`}>
+        <div className={`flex items-center justify-between p-3 rounded-xl ${color.bg} border ${color.border} ${isCancelled ? 'opacity-50 grayscale' : ''}`}>
             <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                     <span className="text-xs font-mono bg-white/10 px-1.5 py-0.5 rounded text-white">{appt.time || ''}</span>
-                    <h4 className="font-semibold text-white truncate">{appt.patientName || 'Sem nome'}</h4>
+                    <h4 className={`font-semibold text-white truncate ${isCancelled ? 'line-through' : ''}`}>{appt.patientName || 'Sem nome'}</h4>
                     <span className="text-[10px] bg-slate-800/50 px-2 py-0.5 rounded text-slate-400">
                         {appt.carteirinha || 'S/ Cart.'}
                     </span>
-                    {appt.status === 'Realizado' && (
-                        <span className="text-[10px] bg-green-900/50 text-green-400 px-2 py-0.5 rounded">Realizado</span>
+                    {isCompleted && (
+                        <span className="text-[10px] bg-green-900/50 text-green-400 px-2 py-0.5 rounded font-medium">Realizado</span>
+                    )}
+                    {isCancelled && (
+                        <span className="text-[10px] bg-red-900/50 text-red-400 px-2 py-0.5 rounded font-medium">Cancelado</span>
                     )}
                 </div>
                 <p className={`text-sm ${color?.text || ''}`}>{appt.profissional || ''}</p>
             </div>
             <div className="flex gap-1">
-                <button onClick={() => onEdit(appt)} className="p-2 text-slate-400 hover:text-white transition">
+                <button onClick={() => onEdit(appt)} className="p-2 text-slate-400 hover:text-white transition" title="Editar">
                     <EditIcon className="w-4 h-4" />
                 </button>
-                <button onClick={() => onStatusChange(appt, 'Realizado')} className="p-2 text-slate-400 hover:text-green-400 transition">
-                    <CheckIcon className="w-4 h-4" />
-                </button>
-                <button onClick={() => { if (confirm('Excluir?')) onDelete(appt.id, appt.patientName); }} className="p-2 text-slate-400 hover:text-red-400 transition">
+                {!isCompleted && !isCancelled && (
+                    <button onClick={() => onStatusChange(appt, 'Realizado')} className="p-2 text-slate-400 hover:text-green-400 transition" title="Marcar Realizado">
+                        <CheckIcon className="w-4 h-4" />
+                    </button>
+                )}
+                {!isCancelled && (
+                    <button onClick={() => onStatusChange(appt, 'Cancelado')} className="p-2 text-slate-400 hover:text-orange-400 transition" title="Cancelar Consulta">
+                        <XIcon className="w-4 h-4" />
+                    </button>
+                )}
+                <button onClick={() => { if (confirm('Excluir?')) onDelete(appt.id, appt.patientName); }} className="p-2 text-slate-400 hover:text-red-400 transition" title="Excluir">
                     <TrashIcon className="w-4 h-4" />
                 </button>
             </div>
