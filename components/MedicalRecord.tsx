@@ -160,7 +160,7 @@ ${record.nextSteps || 'Não registrado'}
                         </tr>
                         <tr>
                             <td style="padding: 5px 0;"><strong>Profissional:</strong> ${record.professionalName}</td>
-                            <td style="padding: 5px 0; text-align: right;"><strong>CRP:</strong> ${currentUser.crp || '-'}</td>
+                            <td style="padding: 5px 0; text-align: right;"><strong>CRP:</strong> ${(currentUser.professionalRegister || currentUser.crp) || '-'}</td>
                         </tr>
                     </table>
                 </div>
