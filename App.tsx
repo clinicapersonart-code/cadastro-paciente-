@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Patient, BrandConfig, Appointment, PreCadastro, UserProfile, MedicalRecordChunk, ActivityLog, ScheduleChangeRequest } from './types';
+import { Patient, BrandConfig, Appointment, PreCadastro, UserProfile, MedicalRecordChunk, ActivityLog, ScheduleChangeRequest, ConvenioConfig } from './types';
 import { STORAGE_KEYS, DEFAULT_CONVENIOS, DEFAULT_PROFISSIONAIS, DEFAULT_ESPECIALIDADES } from './constants';
 import useLocalStorage from './hooks/useLocalStorage';
 import { downloadFile, exportToCSV } from './services/fileService';
@@ -14,12 +14,24 @@ import { LoginScreen } from './components/LoginScreen';
 import { MedicalRecord } from './components/MedicalRecord';
 import { PatientPortal } from './components/PatientPortal';
 import { UserManager } from './components/UserManager';
-import { DownloadIcon, CloudIcon, UserIcon, CalendarIcon, InboxIcon, CheckIcon, XIcon, BellIcon, LockIcon, FileTextIcon, StarIcon, UploadIcon, ShieldIcon, FilterIcon, EditIcon, PlusIcon } from './components/icons';
+import { DownloadIcon, CloudIcon, UserIcon, CalendarIcon, InboxIcon, CheckIcon, XIcon, BellIcon, LockIcon, FileTextIcon, StarIcon, UploadIcon, ShieldIcon, FilterIcon, EditIcon, PlusIcon, TrashIcon } from './components/icons';
 
 const App: React.FC = () => {
-    const [convenios, setConvenios] = useLocalStorage<string[]>(STORAGE_KEYS.CONVENIOS, DEFAULT_CONVENIOS);
+    const defaultConvenios: ConvenioConfig[] = DEFAULT_CONVENIOS.map((name, idx) => ({
+        id: `conv-${idx + 1}`,
+        name,
+        active: true,
+        // defaults: sem valor/duração obrigatórios
+        price: undefined,
+        durationMin: undefined
+    }));
+
+    const [convenios, setConvenios] = useLocalStorage<ConvenioConfig[] | any>(STORAGE_KEYS.CONVENIOS, defaultConvenios);
     const [profissionais, setProfissionais] = useLocalStorage<string[]>(STORAGE_KEYS.PROFISSIONAIS, DEFAULT_PROFISSIONAIS);
     const [especialidades, setEspecialidades] = useLocalStorage<string[]>(STORAGE_KEYS.ESPECIALIDADES, DEFAULT_ESPECIALIDADES);
+
+    const convenioList: ConvenioConfig[] = (Array.isArray(convenios) ? convenios : defaultConvenios) as ConvenioConfig[];
+    const convenioNames: string[] = convenioList.filter(c => c?.active !== false).map(c => c.name);
     const [activeTab, setActiveTab] = useLocalStorage<'pacientes' | 'agenda' | 'funserv' | 'inbox' | 'prontuario' | 'cadastro'>('personart.view.tab', 'pacientes');
     const [brand] = useLocalStorage<BrandConfig>(STORAGE_KEYS.BRAND, { color: '#e9c49e', dark: '#273e44', logo: null, name: 'Clínica Personart' });
 
@@ -50,6 +62,7 @@ const App: React.FC = () => {
     const [showLinksModal, setShowLinksModal] = useState(false);
     const [showPasswordModal, setShowPasswordModal] = useState(false);
     const [showProfileModal, setShowProfileModal] = useState(false);
+    const [showConvenioManager, setShowConvenioManager] = useState(false);
     const [showUserManager, setShowUserManager] = useState(false);
     const [passwordForm, setPasswordForm] = useState({ current: '', new: '', confirm: '' });
     const [passwordError, setPasswordError] = useState('');
@@ -115,6 +128,23 @@ const App: React.FC = () => {
 
     // --- INICIALIZAÇÃO E MIGRAÇÃO V2.0 ---
     useEffect(() => {
+        // Migração: convênios v1 (string[]) -> v2 (ConvenioConfig[])
+        try {
+            if (Array.isArray(convenios) && convenios.length > 0 && typeof convenios[0] === 'string') {
+                const v1 = convenios as unknown as string[];
+                const v2: ConvenioConfig[] = v1.map((name, idx) => ({
+                    id: `conv-mig-${idx + 1}`,
+                    name,
+                    active: true,
+                    price: undefined,
+                    durationMin: undefined
+                }));
+                setConvenios(v2);
+            }
+        } catch (e) {
+            console.error('Erro ao migrar convênios:', e);
+        }
+
         // 1. Deduplica usuários atuais (limpeza de estado legado no localStorage)
         if (users.length > 0) {
             const seen = new Set<string>();
@@ -338,7 +368,7 @@ const App: React.FC = () => {
                 brandName={brand.name}
                 brandColor={brand.color}
                 brandLogo={brand.logo}
-                convenios={convenios}
+                convenios={(convenios as ConvenioConfig[]).map(c => c.name)}
                 isVipMode={isVip}
                 isUpdateMode={isUpdate}
             />
@@ -1120,15 +1150,24 @@ const App: React.FC = () => {
                             </button>
                         )}
 
-                        {/* Gerenciar Usuários - apenas Clínica */}
+                        {/* Gerenciar Convênios / Usuários - apenas Clínica */}
                         {currentUser?.role === 'clinic' && (
-                            <button
-                                onClick={() => setShowUserManager(true)}
-                                className="bg-purple-600 hover:bg-purple-500 text-white p-2 rounded-lg ml-2 flex items-center gap-2"
-                                title="Gerenciar Usuários"
-                            >
-                                <UserIcon className="w-5 h-5" />
-                            </button>
+                            <>
+                                <button
+                                    onClick={() => setShowConvenioManager(true)}
+                                    className="bg-slate-700 hover:bg-slate-600 text-white p-2 rounded-lg ml-2 flex items-center gap-2"
+                                    title="Gerenciar Convênios"
+                                >
+                                    <StarIcon className="w-5 h-5" />
+                                </button>
+                                <button
+                                    onClick={() => setShowUserManager(true)}
+                                    className="bg-purple-600 hover:bg-purple-500 text-white p-2 rounded-lg flex items-center gap-2"
+                                    title="Gerenciar Usuários"
+                                >
+                                    <UserIcon className="w-5 h-5" />
+                                </button>
+                            </>
                         )}
 
                         {/* Links visíveis para todos (Clínica, Admin, Profissional) */}
@@ -1313,11 +1352,9 @@ const App: React.FC = () => {
                             editingPatient={editingPatient}
                             onSave={handleSavePatient}
                             onClear={() => setEditingPatient(null)}
-                            convenios={convenios} profissionais={profissionais} especialidades={especialidades}
-                            onAddConvenio={c => setConvenios(prev => [...prev, c])}
+                            convenios={convenioNames} profissionais={profissionais} especialidades={especialidades}
                             onAddProfissional={p => setProfissionais(prev => [...prev, p])}
                             onAddEspecialidade={e => setEspecialidades(prev => [...prev, e])}
-                            onRemoveConvenio={c => setConvenios(prev => prev.filter(x => x !== c))}
                             onRemoveProfissional={p => setProfissionais(prev => prev.filter(x => x !== p))}
                             onRemoveEspecialidade={e => setEspecialidades(prev => prev.filter(x => x !== e))}
                             hideProntuario={currentUser?.role === 'clinic'}
@@ -1343,7 +1380,7 @@ const App: React.FC = () => {
                                         className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-300 outline-none focus:ring-2 focus:ring-sky-500"
                                     >
                                         <option value="">Todos os Convênios</option>
-                                        {convenios.map(c => <option key={c} value={c}>{c}</option>)}
+                                        {convenioNames.map(c => <option key={c} value={c}>{c}</option>)}
                                     </select>
 
                                     <div className="flex gap-2">
@@ -1955,6 +1992,103 @@ const App: React.FC = () => {
                                 className="w-full bg-[#273e44] hover:bg-[#2f4d54] text-[#e9c49e] font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 border border-[#e9c49e]/10"
                             >
                                 <CheckIcon className="w-5 h-5" /> Salvar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal de Gerenciar Convênios */}
+            {showConvenioManager && currentUser?.role === 'clinic' && (
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+                    <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-2xl p-6 shadow-2xl relative animate-fade-in">
+                        <button onClick={() => setShowConvenioManager(false)} className="absolute top-4 right-4 text-slate-400 hover:text-white"><XIcon className="w-6 h-6" /></button>
+                        <h3 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
+                            <StarIcon className="w-5 h-5 text-amber-400" />
+                            Convênios
+                        </h3>
+                        <p className="text-xs text-slate-400 mb-6">Cadastre convênios com valor e duração padrão. (Particular continua editável no agendamento.)</p>
+
+                        <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+                            {convenioList.map((c) => (
+                                <div key={c.id} className="grid grid-cols-12 gap-2 items-center bg-slate-900/50 border border-slate-700 rounded-xl p-3">
+                                    <div className="col-span-5">
+                                        <label className="block text-[11px] text-slate-500 mb-1">Nome</label>
+                                        <input
+                                            value={c.name}
+                                            onChange={(e) => {
+                                                const name = e.target.value;
+                                                setConvenios((prev: ConvenioConfig[]) => prev.map(x => x.id === c.id ? { ...x, name } : x));
+                                            }}
+                                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                                        />
+                                    </div>
+                                    <div className="col-span-3">
+                                        <label className="block text-[11px] text-slate-500 mb-1">Valor (R$)</label>
+                                        <input
+                                            type="number"
+                                            min={0}
+                                            step={0.01}
+                                            value={typeof c.price === 'number' ? c.price : ''}
+                                            onChange={(e) => {
+                                                const v = e.target.value;
+                                                const price = v === '' ? undefined : Number(v);
+                                                setConvenios((prev: ConvenioConfig[]) => prev.map(x => x.id === c.id ? { ...x, price } : x));
+                                            }}
+                                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                                            placeholder="ex: 120"
+                                        />
+                                    </div>
+                                    <div className="col-span-3">
+                                        <label className="block text-[11px] text-slate-500 mb-1">Duração (min)</label>
+                                        <select
+                                            value={c.durationMin ?? ''}
+                                            onChange={(e) => {
+                                                const v = e.target.value;
+                                                const durationMin = v === '' ? undefined : Number(v);
+                                                setConvenios((prev: ConvenioConfig[]) => prev.map(x => x.id === c.id ? { ...x, durationMin } : x));
+                                            }}
+                                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                                        >
+                                            <option value="">—</option>
+                                            {[15, 30, 45, 60, 75, 90].map(m => <option key={m} value={m}>{m}</option>)}
+                                        </select>
+                                    </div>
+                                    <div className="col-span-1 flex justify-end">
+                                        <button
+                                            onClick={() => {
+                                                const ok = confirm(`Remover convênio "${c.name}"?`);
+                                                if (!ok) return;
+                                                setConvenios((prev: ConvenioConfig[]) => prev.filter(x => x.id !== c.id));
+                                            }}
+                                            className="p-2 text-slate-400 hover:text-red-400"
+                                            title="Remover"
+                                        >
+                                            <TrashIcon className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="flex gap-2 mt-5">
+                            <button
+                                onClick={() => {
+                                    const id = `conv-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+                                    setConvenios((prev: ConvenioConfig[]) => ([
+                                        ...prev,
+                                        { id, name: 'Novo Convênio', active: true, price: undefined, durationMin: 45 }
+                                    ]));
+                                }}
+                                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white text-sm font-bold rounded-lg"
+                            >
+                                + Novo convênio
+                            </button>
+                            <button
+                                onClick={() => setShowConvenioManager(false)}
+                                className="ml-auto px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm font-bold rounded-lg"
+                            >
+                                Fechar
                             </button>
                         </div>
                     </div>

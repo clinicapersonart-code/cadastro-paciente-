@@ -73,6 +73,14 @@ export interface BrandConfig {
   name: string;
 }
 
+export interface ConvenioConfig {
+  id: string;
+  name: string;
+  price?: number; // R$ por sessão (padrão)
+  durationMin?: number; // duração padrão (min)
+  active?: boolean;
+}
+
 export interface BackupData {
   pacientes: Patient[];
   agendamentos?: Appointment[];

@@ -286,21 +286,35 @@ export const PatientForm: React.FC<PatientFormProps> = ({
                                     <option value="">Selecione...</option>
                                     {convenios.map(c => <option key={c} value={c}>{c}</option>)}
                                 </select>
-                                <button
-                                    type="button"
-                                    title="Excluir convênio selecionado da lista de opções"
-                                    onClick={() => {
-                                        if (selectedConvenio) {
-                                            onRemoveConvenio(selectedConvenio);
-                                            setSelectedConvenio('');
-                                            setFormData(prev => ({ ...prev, convenio: '' }));
-                                        }
-                                    }}
-                                    className="bg-slate-700 hover:bg-red-900/50 hover:text-red-300 text-slate-200 px-2.5 rounded-lg text-sm transition"
-                                >
-                                    <TrashIcon className="w-4 h-4" />
-                                </button>
-                                <button type="button" title="Criar novo convênio" onClick={() => { const n = prompt('Novo convênio:'); if (n) onAddConvenio(n); }} className="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 rounded-lg text-sm transition"><PlusIcon className="w-4 h-4" /></button>
+                                {onRemoveConvenio && (
+                                    <button
+                                        type="button"
+                                        title="Excluir convênio selecionado da lista de opções"
+                                        onClick={() => {
+                                            if (selectedConvenio) {
+                                                onRemoveConvenio(selectedConvenio);
+                                                setSelectedConvenio('');
+                                                setFormData(prev => ({ ...prev, convenio: '' }));
+                                            }
+                                        }}
+                                        className="bg-slate-700 hover:bg-red-900/50 hover:text-red-300 text-slate-200 px-2.5 rounded-lg text-sm transition"
+                                    >
+                                        <TrashIcon className="w-4 h-4" />
+                                    </button>
+                                )}
+                                {onAddConvenio && (
+                                    <button
+                                        type="button"
+                                        title="Criar novo convênio"
+                                        onClick={() => {
+                                            const n = prompt('Novo convênio:');
+                                            if (n) onAddConvenio(n);
+                                        }}
+                                        className="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 rounded-lg text-sm transition"
+                                    >
+                                        <PlusIcon className="w-4 h-4" />
+                                    </button>
+                                )}
                             </div>
                         </div>
                         <div>
