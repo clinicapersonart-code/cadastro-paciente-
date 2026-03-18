@@ -2044,24 +2044,51 @@ const App: React.FC = () => {
                                         .trim()
                                         .toUpperCase();
 
-                                    setConvenios((prev: ConvenioConfig[]) => prev.map(c => {
-                                        const key1 = normalize(c.name);
-                                        const repasse = REPASSE_TABLE[c.name.toUpperCase().trim()] ?? REPASSE_TABLE[key1];
-                                        if (typeof repasse !== 'number') return { ...c, payoutPercent: c.payoutPercent ?? 75 };
-                                        const pct = (c.payoutPercent ?? 75);
-                                        const full = Math.round((repasse / (pct / 100)) * 100) / 100;
-                                        return {
-                                            ...c,
-                                            payoutPercent: pct,
-                                            payoutPrice: repasse,
-                                            price: full
-                                        };
-                                    }));
-                                    alert('Tabela de repasse (75%) aplicada onde houve match pelo nome.');
+                                    setConvenios((prev: ConvenioConfig[]) => {
+                                        const byName = new Map(prev.map(c => [normalize(c.name), c]));
+                                        const next: ConvenioConfig[] = [...prev];
+
+                                        // 1) Cria convênios faltantes
+                                        Object.keys(REPASSE_TABLE).forEach((rawName) => {
+                                            const n = normalize(rawName);
+                                            if (!byName.has(n)) {
+                                                const id = `conv-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+                                                const created: ConvenioConfig = {
+                                                    id,
+                                                    name: rawName,
+                                                    active: true,
+                                                    payoutPercent: 75,
+                                                    payoutPrice: undefined,
+                                                    price: undefined,
+                                                    durationMin: 45
+                                                };
+                                                byName.set(n, created);
+                                                next.push(created);
+                                            }
+                                        });
+
+                                        // 2) Preenche valores
+                                        return next.map(c => {
+                                            const key1 = normalize(c.name);
+                                            const repasse = REPASSE_TABLE[c.name.toUpperCase().trim()] ?? REPASSE_TABLE[key1];
+                                            if (typeof repasse !== 'number') return { ...c, payoutPercent: c.payoutPercent ?? 75 };
+                                            const pct = (c.payoutPercent ?? 75);
+                                            const full = Math.round((repasse / (pct / 100)) * 100) / 100;
+                                            return {
+                                                ...c,
+                                                payoutPercent: pct,
+                                                payoutPrice: repasse,
+                                                price: full,
+                                                durationMin: c.durationMin ?? 45
+                                            };
+                                        });
+                                    });
+
+                                    alert('Convênios da tabela adicionados/atualizados (75%).');
                                 }}
                                 className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold rounded-lg"
                             >
-                                Preencher pela tabela (75%)
+                                Adicionar/atualizar convênios da tabela (75%)
                             </button>
                         </div>
 
