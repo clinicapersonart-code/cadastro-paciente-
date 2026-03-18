@@ -1435,7 +1435,7 @@ const App: React.FC = () => {
                         </div>
                     </div>
                 )}
-                {activeTab === 'agenda' && <Agenda patients={patients} profissionais={profissionais} appointments={appointments} onAddAppointment={handleAddAppointment} onAddBatchAppointments={handleAddBatchAppointments} onUpdateAppointment={handleUpdateAppointment} onDeleteAppointment={handleDeleteAppointment} currentUser={currentUser} />}
+                {activeTab === 'agenda' && <Agenda patients={patients} profissionais={profissionais} convenios={convenioList} appointments={appointments} onAddAppointment={handleAddAppointment} onAddBatchAppointments={handleAddBatchAppointments} onUpdateAppointment={handleUpdateAppointment} onDeleteAppointment={handleDeleteAppointment} currentUser={currentUser} />}
                 {activeTab === 'funserv' && <FunservManager patients={patients} onSavePatient={handleSavePatient} />}
                 {activeTab === 'inbox' && (
                     <Inbox

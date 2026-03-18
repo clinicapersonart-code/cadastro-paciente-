@@ -64,6 +64,10 @@ export interface Appointment {
   convenioName?: string;
   status: 'Agendado' | 'Realizado' | 'Cancelado';
   obs?: string;
+
+  // Financeiro / duração
+  durationMin?: number; // duração da sessão
+  price?: number; // valor da sessão (R$)
 }
 
 export interface BrandConfig {

@@ -1,11 +1,12 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Appointment, Patient, UserProfile } from '../types';
+import { Appointment, Patient, UserProfile, ConvenioConfig } from '../types';
 import { CalendarIcon, PlusIcon, TrashIcon, CheckIcon, EditIcon, ChevronLeftIcon, ChevronRightIcon, XIcon } from './icons';
 import useLocalStorage from '../hooks/useLocalStorage';
 
 interface AgendaProps {
     patients: Patient[];
     profissionais: string[];
+    convenios: ConvenioConfig[];
     appointments: Appointment[];
     onAddAppointment: (appt: Appointment) => void;
     onAddBatchAppointments?: (appts: Appointment[]) => void;
@@ -99,6 +100,7 @@ const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
 export const Agenda: React.FC<AgendaProps> = ({
     patients,
     profissionais,
+    convenios,
     appointments,
     onAddAppointment,
     onAddBatchAppointments,
@@ -136,6 +138,8 @@ export const Agenda: React.FC<AgendaProps> = ({
     const [formDate, setFormDate] = useState('');
     const [time, setTime] = useState('08:00');
     const [type, setType] = useState<'Convênio' | 'Particular'>('Convênio');
+    const [durationMin, setDurationMin] = useState<number>(45);
+    const [price, setPrice] = useState<number | ''>('');
     const [obs, setObs] = useState('');
     const [recurrence, setRecurrence] = useState<'none' | 'weekly' | 'biweekly' | 'monthly'>('none');
     const [recurrenceEndDate, setRecurrenceEndDate] = useState<string>('');
@@ -166,11 +170,29 @@ export const Agenda: React.FC<AgendaProps> = ({
         }
     }, [selectedSlot]);
 
+    // Auto-preenche duração/valor quando for Convênio
+    useEffect(() => {
+        if (!showForm) return;
+        if (type !== 'Convênio') return;
+        const patient = patients.find(p => p.id === selectedPatientId);
+        const convName = patient?.convenio;
+        const cfg = getConvenioConfig(convName || undefined);
+        if (cfg?.durationMin) setDurationMin(cfg.durationMin);
+        if (typeof cfg?.price === 'number') setPrice(cfg.price);
+    }, [type, selectedPatientId, showForm, patients]);
+
+    const getConvenioConfig = (name?: string) => {
+        if (!name) return null;
+        return convenios.find(c => (c.name || '').toLowerCase().trim() === name.toLowerCase().trim()) || null;
+    };
+
     useEffect(() => {
         if (showForm && !formId) {
             setObs('');
             setRecurrence('none');
             setRecurrenceEndDate('');
+            setDurationMin(45);
+            setPrice('');
             if (selectedDate && !selectedSlot) setFormDate(selectedDate);
         }
     }, [showForm, formId, selectedDate, selectedSlot]);
@@ -202,6 +224,21 @@ export const Agenda: React.FC<AgendaProps> = ({
         const patient = patients.find(p => p.id === selectedPatientId);
         if (!patient) return;
 
+        // Regras: Convênio puxa valor/duração do convênio do paciente; Particular é editável
+        let effectiveDuration = durationMin;
+        let effectivePrice: number | undefined = typeof price === 'number' ? price : undefined;
+
+        if (type === 'Convênio') {
+            const convName = patient.convenio;
+            if (!convName) {
+                alert('Este paciente não tem convênio selecionado no cadastro. Selecione um convênio no paciente ou marque como Particular.');
+                return;
+            }
+            const cfg = getConvenioConfig(convName);
+            effectiveDuration = cfg?.durationMin || effectiveDuration || 45;
+            effectivePrice = typeof cfg?.price === 'number' ? cfg!.price : effectivePrice;
+        }
+
         const createAppointmentObj = (dateStr: string, idStr?: string, suffix?: string, index = 0): Appointment => ({
             id: idStr || `${Date.now()}-${index}-${Math.random().toString(36).substr(2, 9)}`,
             patientId: patient.id,
@@ -213,7 +250,9 @@ export const Agenda: React.FC<AgendaProps> = ({
             type,
             convenioName: type === 'Convênio' ? patient.convenio : undefined,
             status: 'Agendado',
-            obs: suffix ? (obs ? `${obs} (${suffix})` : suffix) : obs
+            obs: suffix ? (obs ? `${obs} (${suffix})` : suffix) : obs,
+            durationMin: effectiveDuration,
+            price: effectivePrice
         });
 
         if (formId) {
@@ -321,6 +360,9 @@ export const Agenda: React.FC<AgendaProps> = ({
         setSelectedSlot(null);
         setSelectedPatientId('');
         setFormProfissional('');
+        setType('Convênio');
+        setDurationMin(45);
+        setPrice('');
     };
 
     const handleEditClick = (appt: Appointment) => {
@@ -330,6 +372,8 @@ export const Agenda: React.FC<AgendaProps> = ({
         setFormDate(appt.date);
         setTime(appt.time);
         setType(appt.type);
+        setDurationMin(appt.durationMin || 45);
+        setPrice(typeof appt.price === 'number' ? appt.price : '');
         setObs(appt.obs || '');
         setRecurrence('none');
         setEditApplyScope('single');
@@ -608,6 +652,55 @@ export const Agenda: React.FC<AgendaProps> = ({
                                 <option value="">Selecione o profissional...</option>
                                 {profissionais.map(p => <option key={p} value={p}>{p}</option>)}
                             </select>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-[11px] text-slate-400 mb-1">Tipo</label>
+                                    <select
+                                        value={type}
+                                        onChange={e => setType(e.target.value as any)}
+                                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                                    >
+                                        <option value="Convênio">Convênio</option>
+                                        <option value="Particular">Particular</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-[11px] text-slate-400 mb-1">Duração (min)</label>
+                                    <select
+                                        value={durationMin}
+                                        onChange={e => setDurationMin(Number(e.target.value))}
+                                        disabled={type === 'Convênio'}
+                                        className={`w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white ${type === 'Convênio' ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                    >
+                                        {[15, 30, 45, 60, 75, 90].map(m => <option key={m} value={m}>{m}</option>)}
+                                    </select>
+                                    {type === 'Convênio' && (
+                                        <p className="text-[10px] text-slate-500 mt-1">(Convênio: duração vem do cadastro do convênio do paciente)</p>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-[11px] text-slate-400 mb-1">Valor (R$)</label>
+                                    <input
+                                        type="number"
+                                        min={0}
+                                        step={0.01}
+                                        value={price}
+                                        onChange={e => setPrice(e.target.value === '' ? '' : Number(e.target.value))}
+                                        disabled={type === 'Convênio'}
+                                        className={`w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white ${type === 'Convênio' ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                        placeholder={type === 'Convênio' ? 'Convênio' : 'ex: 150'}
+                                    />
+                                </div>
+                                <div className="flex items-end">
+                                    {type === 'Convênio' && (
+                                        <p className="text-[10px] text-slate-500">(Convênio: valor vem do cadastro do convênio do paciente)</p>
+                                    )}
+                                </div>
+                            </div>
 
                             {!formId ? (
                                 <div className="bg-slate-900/50 rounded-lg p-3 space-y-3">
