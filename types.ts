@@ -80,8 +80,15 @@ export interface BrandConfig {
 export interface ConvenioConfig {
   id: string;
   name: string;
-  price?: number; // R$ por sessão (padrão)
+
+  // Valores
+  price?: number; // Valor cheio (clínica) - R$ por sessão
+  payoutPrice?: number; // Repasse (profissional) - R$ por sessão
+  payoutPercent?: number; // Ex: 75 (%). Default = 75
+
+  // Duração
   durationMin?: number; // duração padrão (min)
+
   active?: boolean;
 }
 

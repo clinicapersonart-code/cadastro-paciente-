@@ -21,8 +21,10 @@ const App: React.FC = () => {
         id: `conv-${idx + 1}`,
         name,
         active: true,
+        payoutPercent: 75,
         // defaults: sem valor/duração obrigatórios
         price: undefined,
+        payoutPrice: undefined,
         durationMin: undefined
     }));
 
@@ -136,7 +138,9 @@ const App: React.FC = () => {
                     id: `conv-mig-${idx + 1}`,
                     name,
                     active: true,
+                    payoutPercent: 75,
                     price: undefined,
+                    payoutPrice: undefined,
                     durationMin: undefined
                 }));
                 setConvenios(v2);
@@ -2007,12 +2011,64 @@ const App: React.FC = () => {
                             <StarIcon className="w-5 h-5 text-amber-400" />
                             Convênios
                         </h3>
-                        <p className="text-xs text-slate-400 mb-6">Cadastre convênios com valor e duração padrão. (Particular continua editável no agendamento.)</p>
+                        <p className="text-xs text-slate-400 mb-3">Cadastre convênios com <strong>valor cheio</strong>, <strong>repasse</strong> e duração padrão. (Particular continua editável no agendamento.)</p>
+
+                        <div className="flex items-center justify-between gap-3 mb-4">
+                            <div className="text-[11px] text-slate-500">
+                                Regra: <strong>Cheio = Repasse / (%/100)</strong>. Padrão: 75%
+                            </div>
+                            <button
+                                onClick={() => {
+                                    const REPASSE_TABLE: Record<string, number> = {
+                                        'FUNSERV CONVENCIONAL': 30.00,
+                                        'FUNSERV ABA': 46.50,
+                                        'DR. SAÚDE': 40.50,
+                                        'DR. SAUDE': 40.50,
+                                        'GAMA*': 27.75,
+                                        'GAMA': 27.75,
+                                        'DANAMED CONVENCIONAL': 30.00,
+                                        'DANAMED ABA': 46.50,
+                                        'FUSEX': 67.50,
+                                        'SELECT SAÚDE': 33.75,
+                                        'SELECT SAUDE': 33.75,
+                                        'BLUE SAÚDE': 26.25,
+                                        'BLUE SAUDE': 26.25,
+                                        // Avaliação Neuropsicológica
+                                        'FUNSERV CONVENCIONAL (AVALIAÇÃO NEUROPSICOLÓGICA)': 1014.00,
+                                        'FUNSERV CONVENCIONAL (AVALIACAO NEUROPSICOLOGICA)': 1014.00
+                                    };
+
+                                    const normalize = (s: string) => (s || '')
+                                        .normalize('NFD').replace(/\p{Diacritic}/gu, '')
+                                        .replace(/\s+/g, ' ')
+                                        .trim()
+                                        .toUpperCase();
+
+                                    setConvenios((prev: ConvenioConfig[]) => prev.map(c => {
+                                        const key1 = normalize(c.name);
+                                        const repasse = REPASSE_TABLE[c.name.toUpperCase().trim()] ?? REPASSE_TABLE[key1];
+                                        if (typeof repasse !== 'number') return { ...c, payoutPercent: c.payoutPercent ?? 75 };
+                                        const pct = (c.payoutPercent ?? 75);
+                                        const full = Math.round((repasse / (pct / 100)) * 100) / 100;
+                                        return {
+                                            ...c,
+                                            payoutPercent: pct,
+                                            payoutPrice: repasse,
+                                            price: full
+                                        };
+                                    }));
+                                    alert('Tabela de repasse (75%) aplicada onde houve match pelo nome.');
+                                }}
+                                className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold rounded-lg"
+                            >
+                                Preencher pela tabela (75%)
+                            </button>
+                        </div>
 
                         <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
                             {convenioList.map((c) => (
                                 <div key={c.id} className="grid grid-cols-12 gap-2 items-center bg-slate-900/50 border border-slate-700 rounded-xl p-3">
-                                    <div className="col-span-5">
+                                    <div className="col-span-4">
                                         <label className="block text-[11px] text-slate-500 mb-1">Nome</label>
                                         <input
                                             value={c.name}
@@ -2023,8 +2079,46 @@ const App: React.FC = () => {
                                             className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
                                         />
                                     </div>
-                                    <div className="col-span-3">
-                                        <label className="block text-[11px] text-slate-500 mb-1">Valor (R$)</label>
+                                    <div className="col-span-2">
+                                        <label className="block text-[11px] text-slate-500 mb-1">% repasse</label>
+                                        <select
+                                            value={c.payoutPercent ?? 75}
+                                            onChange={(e) => {
+                                                const payoutPercent = Number(e.target.value);
+                                                setConvenios((prev: ConvenioConfig[]) => prev.map(x => {
+                                                    if (x.id !== c.id) return x;
+                                                    const rep = x.payoutPrice;
+                                                    const full = typeof rep === 'number' ? (Math.round((rep / (payoutPercent / 100)) * 100) / 100) : x.price;
+                                                    return { ...x, payoutPercent, price: full };
+                                                }));
+                                            }}
+                                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                                        >
+                                            {[50, 60, 65, 70, 75, 80, 85, 90].map(p => <option key={p} value={p}>{p}%</option>)}
+                                        </select>
+                                    </div>
+
+                                    <div className="col-span-2">
+                                        <label className="block text-[11px] text-slate-500 mb-1">Repasse (R$)</label>
+                                        <input
+                                            type="number"
+                                            min={0}
+                                            step={0.01}
+                                            value={typeof c.payoutPrice === 'number' ? c.payoutPrice : ''}
+                                            onChange={(e) => {
+                                                const v = e.target.value;
+                                                const payoutPrice = v === '' ? undefined : Number(v);
+                                                const pct = c.payoutPercent ?? 75;
+                                                const full = typeof payoutPrice === 'number' ? (Math.round((payoutPrice / (pct / 100)) * 100) / 100) : c.price;
+                                                setConvenios((prev: ConvenioConfig[]) => prev.map(x => x.id === c.id ? { ...x, payoutPrice, price: full } : x));
+                                            }}
+                                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                                            placeholder="ex: 30"
+                                        />
+                                    </div>
+
+                                    <div className="col-span-2">
+                                        <label className="block text-[11px] text-slate-500 mb-1">Cheio (R$)</label>
                                         <input
                                             type="number"
                                             min={0}
@@ -2036,10 +2130,11 @@ const App: React.FC = () => {
                                                 setConvenios((prev: ConvenioConfig[]) => prev.map(x => x.id === c.id ? { ...x, price } : x));
                                             }}
                                             className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
-                                            placeholder="ex: 120"
+                                            placeholder="ex: 40"
                                         />
                                     </div>
-                                    <div className="col-span-3">
+
+                                    <div className="col-span-2">
                                         <label className="block text-[11px] text-slate-500 mb-1">Duração (min)</label>
                                         <select
                                             value={c.durationMin ?? ''}
@@ -2077,7 +2172,7 @@ const App: React.FC = () => {
                                     const id = `conv-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
                                     setConvenios((prev: ConvenioConfig[]) => ([
                                         ...prev,
-                                        { id, name: 'Novo Convênio', active: true, price: undefined, durationMin: 45 }
+                                        { id, name: 'Novo Convênio', active: true, payoutPercent: 75, payoutPrice: undefined, price: undefined, durationMin: 45 }
                                     ]));
                                 }}
                                 className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white text-sm font-bold rounded-lg"
