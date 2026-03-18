@@ -15,7 +15,8 @@ export const STORAGE_KEYS = {
   PROFISSIONAIS: 'personart.profissionais.v1',
   ESPECIALIDADES: 'personart.especialidades.v1',
   BRAND: 'personart.brand.v1',
-  ACCESS_PASS: 'personart.access.pass'
+  ACCESS_PASS: 'personart.access.pass',
+  WAITLIST: 'personart.waitlist.v1'
 };
 
 // --- CONFIGURAÇÃO DO SUPABASE ---

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Patient, BrandConfig, Appointment, PreCadastro, UserProfile, MedicalRecordChunk, ActivityLog, ScheduleChangeRequest, ConvenioConfig } from './types';
+import { Patient, BrandConfig, Appointment, PreCadastro, UserProfile, MedicalRecordChunk, ActivityLog, ScheduleChangeRequest, ConvenioConfig, WaitlistEntry } from './types';
 import { STORAGE_KEYS, DEFAULT_CONVENIOS, DEFAULT_PROFISSIONAIS, DEFAULT_ESPECIALIDADES } from './constants';
 import useLocalStorage from './hooks/useLocalStorage';
 import { downloadFile, exportToCSV } from './services/fileService';
@@ -8,12 +8,14 @@ import { PatientForm } from './components/PatientForm';
 import { PatientTable } from './components/PatientTable';
 import { Agenda } from './components/Agenda';
 import { PublicRegistration } from './components/PublicRegistration';
+import { PublicWaitlist } from './components/PublicWaitlist';
 import { FunservManager } from './components/FunservManager';
 import { Inbox } from './components/Inbox';
 import { LoginScreen } from './components/LoginScreen';
 import { MedicalRecord } from './components/MedicalRecord';
 import { PatientPortal } from './components/PatientPortal';
 import { UserManager } from './components/UserManager';
+import { Waitlist } from './components/Waitlist';
 import { DownloadIcon, CloudIcon, UserIcon, CalendarIcon, InboxIcon, CheckIcon, XIcon, BellIcon, LockIcon, FileTextIcon, StarIcon, UploadIcon, ShieldIcon, FilterIcon, EditIcon, PlusIcon, TrashIcon } from './components/icons';
 
 const App: React.FC = () => {
@@ -34,7 +36,7 @@ const App: React.FC = () => {
 
     const convenioList: ConvenioConfig[] = (Array.isArray(convenios) ? convenios : defaultConvenios) as ConvenioConfig[];
     const convenioNames: string[] = convenioList.filter(c => c?.active !== false).map(c => c.name);
-    const [activeTab, setActiveTab] = useLocalStorage<'pacientes' | 'agenda' | 'funserv' | 'inbox' | 'prontuario' | 'cadastro'>('personart.view.tab', 'pacientes');
+    const [activeTab, setActiveTab] = useLocalStorage<'pacientes' | 'agenda' | 'funserv' | 'inbox' | 'prontuario' | 'cadastro' | 'fila'>('personart.view.tab', 'pacientes');
     const [brand] = useLocalStorage<BrandConfig>(STORAGE_KEYS.BRAND, { color: '#e9c49e', dark: '#273e44', logo: null, name: 'Clínica Personart' });
 
     // --- NOVO SISTEMA DE AUTH (V2.0) ---
@@ -49,6 +51,9 @@ const App: React.FC = () => {
     const [appointments, setAppointments] = useLocalStorage<Appointment[]>('personart.appointments.db', []);
 
     const [inbox, setInbox] = useState<PreCadastro[]>([]);
+
+    // Fila de espera
+    const [waitlist, setWaitlist] = useLocalStorage<WaitlistEntry[]>(STORAGE_KEYS.WAITLIST, []);
     const [isLoading, setIsLoading] = useState(true);
     const [dbError, setDbError] = useState('');
     const [connectionStatus, setConnectionStatus] = useState<'checking' | 'connected' | 'error' | 'offline'>('checking');
@@ -372,9 +377,20 @@ const App: React.FC = () => {
                 brandName={brand.name}
                 brandColor={brand.color}
                 brandLogo={brand.logo}
-                convenios={(convenios as ConvenioConfig[]).map(c => c.name)}
+                convenios={convenioNames}
                 isVipMode={isVip}
                 isUpdateMode={isUpdate}
+            />
+        );
+    }
+
+    if (pageParam === 'fila') {
+        return (
+            <PublicWaitlist
+                brandName={brand.name}
+                brandColor={brand.color}
+                brandLogo={brand.logo}
+                especialidades={especialidades}
             />
         );
     }
@@ -1129,6 +1145,17 @@ const App: React.FC = () => {
                                         )}
                                     </span>
                                 </button>
+
+                                <button
+                                    onClick={() => setActiveTab('fila')}
+                                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 ${activeTab === 'fila'
+                                        ? 'bg-[#273e44] text-[#e9c49e] shadow-lg shadow-[#273e44]/20 border border-[#e9c49e]/10'
+                                        : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                                        }`}
+                                    title="Fila de espera"
+                                >
+                                    Fila
+                                </button>
                             </>
                         )}
 
@@ -1440,6 +1467,25 @@ const App: React.FC = () => {
                     </div>
                 )}
                 {activeTab === 'agenda' && <Agenda patients={patients} profissionais={profissionais} convenios={convenioList} appointments={appointments} onAddAppointment={handleAddAppointment} onAddBatchAppointments={handleAddBatchAppointments} onUpdateAppointment={handleUpdateAppointment} onDeleteAppointment={handleDeleteAppointment} currentUser={currentUser} />}
+
+                {activeTab === 'fila' && (currentUser?.role === 'clinic' || currentUser?.role === 'admin') && (
+                    <Waitlist
+                        entries={waitlist}
+                        especialidades={especialidades}
+                        onUpsert={(entry) => {
+                            setWaitlist(prev => {
+                                const exists = prev.some(x => x.id === entry.id);
+                                return exists ? prev.map(x => x.id === entry.id ? entry : x) : [entry, ...prev];
+                            });
+                            // TODO: sync supabase (pode vir depois)
+                            showToast('Fila atualizada!', 'success');
+                        }}
+                        onRemove={(id) => {
+                            setWaitlist(prev => prev.filter(x => x.id !== id));
+                            showToast('Removido da fila.', 'info');
+                        }}
+                    />
+                )}
                 {activeTab === 'funserv' && <FunservManager patients={patients} onSavePatient={handleSavePatient} />}
                 {activeTab === 'inbox' && (
                     <Inbox
@@ -1858,6 +1904,20 @@ const App: React.FC = () => {
                                 </div>
                                 <button onClick={() => copyLink('?page=cadastro')} className="w-full bg-slate-800 hover:bg-slate-700 text-sky-400 text-xs font-mono py-2 rounded border border-slate-600 transition">
                                     Copiar Link de Cadastro
+                                </button>
+                            </div>
+
+                            {/* Fila de Espera - visível para todos */}
+                            <div className="bg-slate-900 p-4 rounded-xl border border-slate-700">
+                                <div className="flex items-center gap-3 mb-2">
+                                    <div className="bg-amber-900/30 p-2 rounded-lg"><StarIcon className="w-5 h-5 text-amber-400" /></div>
+                                    <div className="flex-1">
+                                        <h4 className="font-bold text-white text-sm">Fila de espera</h4>
+                                        <p className="text-xs text-slate-500">Cadastro rápido para aguardar vaga</p>
+                                    </div>
+                                </div>
+                                <button onClick={() => copyLink('?page=fila')} className="w-full bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-mono py-2 rounded border border-slate-600 transition">
+                                    Copiar Link da Fila
                                 </button>
                             </div>
 

@@ -122,6 +122,34 @@ export interface PreCadastro {
   }
 }
 
+export type WaitlistStatus =
+  | 'NOVO'
+  | 'CONTATADO'
+  | 'AGUARDANDO_VAGA'
+  | 'AGUARDANDO_RETORNO'
+  | 'AGENDADO'
+  | 'ENCERRADO';
+
+export interface WaitlistEntry {
+  id: string;
+  name: string;
+  whatsapp: string;
+  email?: string;
+  specialties: string[];
+  modality?: 'Presencial' | 'Online' | 'Tanto faz';
+  preferredTimes?: string; // texto livre: "Seg/Qua à noite" etc.
+  notes?: string;
+
+  status: WaitlistStatus;
+  createdAt: string;
+  updatedAt: string;
+
+  nextAction?: string;
+  nextActionAt?: string; // ISO date
+
+  lastContactAt?: string; // ISO
+}
+
 export interface EncryptedPackage {
   format: 'personart-aesgcm-v1';
   iv: string;
