@@ -15,10 +15,28 @@ interface AgendaProps {
     currentUser?: UserProfile;
 }
 
-const TIME_SLOTS = [
-    '07:00', '08:00', '09:00', '10:00', '11:00', '12:00',
-    '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00'
-];
+const DAY_START_HOUR = 7;
+const DAY_END_HOUR = 20;
+const SLOT_STEP_MIN = 15;
+const PX_PER_MIN = 1.2; // altura do bloco (ajuste fino visual)
+
+const TIME_SLOTS = Array.from({ length: (DAY_END_HOUR - DAY_START_HOUR + 1) }, (_, i) => {
+    const h = String(DAY_START_HOUR + i).padStart(2, '0');
+    return `${h}:00`;
+});
+
+const timeToMinutes = (t: string): number => {
+    const [h, m] = (t || '00:00').split(':').map(Number);
+    return (h * 60) + (m || 0);
+};
+
+const minutesToTime = (mins: number): string => {
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+};
+
+const snapToStep = (mins: number, step = SLOT_STEP_MIN) => Math.round(mins / step) * step;
 
 // Paleta de cores fixas para profissionais
 const PROFESSIONAL_COLORS = [
@@ -93,6 +111,8 @@ const getMonthDays = (year: number, month: number): (Date | null)[][] => {
 const formatDateISO = (date: Date): string => {
     return date.toISOString().split('T')[0];
 };
+
+const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 
 const WEEKDAY_NAMES = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -522,10 +542,9 @@ export const Agenda: React.FC<AgendaProps> = ({
                 {viewMode === 'week' && (
                     <WeekView
                         weekDays={weekDays}
-                        timeSlots={TIME_SLOTS}
-                        getAppointmentsForSlot={getAppointmentsForSlot}
+                        getAppointmentsForDay={getAppointmentsForDay}
                         profissionais={profissionais}
-                        onSlotClick={(date, time) => setSelectedSlot({ date: formatDateISO(date), time })}
+                        onGridClick={(date, time) => setSelectedSlot({ date: formatDateISO(date), time })}
                         onEditAppointment={handleEditClick}
                         onDeleteAppointment={onDeleteAppointment}
                         onStatusChange={handleStatusChange}
@@ -547,10 +566,9 @@ export const Agenda: React.FC<AgendaProps> = ({
                 {viewMode === 'day' && (
                     <DayView
                         date={currentDate}
-                        timeSlots={TIME_SLOTS}
-                        getAppointmentsForSlot={getAppointmentsForSlot}
+                        getAppointmentsForDay={getAppointmentsForDay}
                         profissionais={profissionais}
-                        onSlotClick={(time) => setSelectedSlot({ date: formatDateISO(currentDate), time })}
+                        onGridClick={(time) => setSelectedSlot({ date: formatDateISO(currentDate), time })}
                         onEditAppointment={handleEditClick}
                         onDeleteAppointment={onDeleteAppointment}
                         onStatusChange={handleStatusChange}
@@ -783,73 +801,107 @@ export const Agenda: React.FC<AgendaProps> = ({
     );
 };
 
-// Componente de Visualização Semanal
+// Componente de Visualização Semanal (Google-like: grid 15min + blocos proporcionais)
 interface WeekViewProps {
     weekDays: Date[];
-    timeSlots: string[];
-    getAppointmentsForSlot: (date: Date, time: string) => Appointment[];
+    getAppointmentsForDay: (date: Date) => Appointment[];
     profissionais: string[];
-    onSlotClick: (date: Date, time: string) => void;
+    onGridClick: (date: Date, time: string) => void;
     onEditAppointment: (appt: Appointment) => void;
-    onDeleteAppointment: (id: string) => void;
+    onDeleteAppointment: (id: string, name?: string) => void;
     onStatusChange: (appt: Appointment, status: Appointment['status']) => void;
     isToday: (date: Date) => boolean;
 }
 
 const WeekView: React.FC<WeekViewProps> = ({
-    weekDays, timeSlots, getAppointmentsForSlot, profissionais,
-    onSlotClick, onEditAppointment, onDeleteAppointment, onStatusChange, isToday
+    weekDays,
+    getAppointmentsForDay,
+    profissionais,
+    onGridClick,
+    onEditAppointment,
+    onDeleteAppointment,
+    onStatusChange,
+    isToday
 }) => {
+    const dayStartMin = DAY_START_HOUR * 60;
+    const dayEndMin = (DAY_END_HOUR + 1) * 60;
+    const totalMin = dayEndMin - dayStartMin;
+    const heightPx = totalMin * PX_PER_MIN;
+
+    const onClickDayColumn = (e: React.MouseEvent, date: Date) => {
+        const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+        const y = e.clientY - rect.top;
+        const minsFromTop = clamp(Math.floor(y / PX_PER_MIN), 0, totalMin - 1);
+        const snapped = snapToStep(dayStartMin + minsFromTop);
+        onGridClick(date, minutesToTime(snapped));
+    };
+
     return (
         <div className="overflow-x-auto">
-            <div className="min-w-[800px]">
-                {/* Header com dias da semana */}
+            <div className="min-w-[980px]">
+                {/* Header */}
                 <div className="grid grid-cols-8 border-b border-slate-700">
                     <div className="p-3 text-xs text-slate-500 font-medium"></div>
                     {weekDays.map((day, i) => (
-                        <div
-                            key={i}
-                            className={`p-3 text-center border-l border-slate-700 ${isToday(day) ? 'bg-sky-900/20' : ''}`}
-                        >
+                        <div key={i} className={`p-3 text-center border-l border-slate-700 ${isToday(day) ? 'bg-sky-900/20' : ''}`}>
                             <div className="text-xs text-slate-500 font-medium">{WEEKDAY_NAMES[day.getDay()]}</div>
-                            <div className={`text-lg font-bold ${isToday(day) ? 'text-sky-400' : 'text-slate-200'}`}>
-                                {day.getDate()}
-                            </div>
+                            <div className={`text-lg font-bold ${isToday(day) ? 'text-sky-400' : 'text-slate-200'}`}>{day.getDate()}</div>
                         </div>
                     ))}
                 </div>
 
-                {/* Grid de horários */}
-                <div className="max-h-[600px] overflow-y-auto">
-                    {timeSlots.map(timeSlot => (
-                        <div key={timeSlot} className="grid grid-cols-8 border-b border-slate-700/50">
-                            <div className="p-2 text-xs text-slate-500 font-mono text-right pr-3 bg-slate-800/30">
-                                {timeSlot}
-                            </div>
-                            {weekDays.map((day, i) => {
-                                const appointments = getAppointmentsForSlot(day, timeSlot);
+                <div className="grid grid-cols-8">
+                    {/* Horas */}
+                    <div className="relative bg-slate-800/30 border-r border-slate-700">
+                        <div style={{ height: heightPx }}>
+                            {TIME_SLOTS.map(t => {
+                                const mins = timeToMinutes(t) - dayStartMin;
+                                const top = mins * PX_PER_MIN;
                                 return (
-                                    <div
-                                        key={i}
-                                        onClick={() => appointments.length === 0 && onSlotClick(day, timeSlot)}
-                                        className={`min-h-[60px] p-1 border-l border-slate-700/50 ${isToday(day) ? 'bg-sky-900/10' : ''
-                                            } ${appointments.length === 0 ? 'hover:bg-slate-700/30 cursor-pointer' : ''}`}
-                                    >
-                                        {appointments.map(appt => (
-                                            <AppointmentChip
-                                                key={appt.id}
-                                                appt={appt}
-                                                profissionais={profissionais}
-                                                onEdit={onEditAppointment}
-                                                onDelete={onDeleteAppointment}
-                                                onStatusChange={onStatusChange}
-                                            />
-                                        ))}
+                                    <div key={t} className="absolute left-0 right-0" style={{ top }}>
+                                        <div className="-mt-2 pr-2 text-[11px] text-slate-500 font-mono text-right">{t}</div>
+                                        <div className="border-t border-slate-700/40" />
                                     </div>
                                 );
                             })}
                         </div>
-                    ))}
+                    </div>
+
+                    {/* Colunas por dia */}
+                    {weekDays.map((day, i) => {
+                        const appts = getAppointmentsForDay(day)
+                            .filter(a => a && a.time && a.date)
+                            .sort((a, b) => a.time.localeCompare(b.time));
+
+                        return (
+                            <div key={i} className={`relative border-l border-slate-700 ${isToday(day) ? 'bg-sky-900/10' : ''}`}>
+                                <div
+                                    className="absolute inset-0"
+                                    style={{ height: heightPx }}
+                                    onClick={(e) => onClickDayColumn(e, day)}
+                                >
+                                    {Array.from({ length: Math.floor(totalMin / SLOT_STEP_MIN) + 1 }).map((_, idx) => {
+                                        const top = idx * SLOT_STEP_MIN * PX_PER_MIN;
+                                        return <div key={idx} className="absolute left-0 right-0 border-t border-slate-700/20" style={{ top }} />;
+                                    })}
+                                </div>
+
+                                <div className="relative" style={{ height: heightPx }}>
+                                    {appts.map(appt => (
+                                        <EventBlock
+                                            key={appt.id}
+                                            appt={appt}
+                                            profissionais={profissionais}
+                                            dayStartMin={dayStartMin}
+                                            onEdit={onEditAppointment}
+                                            onDelete={onDeleteAppointment}
+                                            onStatusChange={onStatusChange}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
         </div>
@@ -928,51 +980,146 @@ const MonthView: React.FC<MonthViewProps> = ({ monthDays, getAppointmentsForDay,
     );
 };
 
-// Componente de Visualização Diária
+// Componente de Visualização Diária (Google-like)
 interface DayViewProps {
     date: Date;
-    timeSlots: string[];
-    getAppointmentsForSlot: (date: Date, time: string) => Appointment[];
+    getAppointmentsForDay: (date: Date) => Appointment[];
     profissionais: string[];
-    onSlotClick: (time: string) => void;
+    onGridClick: (time: string) => void;
     onEditAppointment: (appt: Appointment) => void;
-    onDeleteAppointment: (id: string) => void;
+    onDeleteAppointment: (id: string, name?: string) => void;
     onStatusChange: (appt: Appointment, status: Appointment['status']) => void;
 }
 
 const DayView: React.FC<DayViewProps> = ({
-    date, timeSlots, getAppointmentsForSlot, profissionais,
-    onSlotClick, onEditAppointment, onDeleteAppointment, onStatusChange
+    date,
+    getAppointmentsForDay,
+    profissionais,
+    onGridClick,
+    onEditAppointment,
+    onDeleteAppointment,
+    onStatusChange
 }) => {
+    const dayStartMin = DAY_START_HOUR * 60;
+    const dayEndMin = (DAY_END_HOUR + 1) * 60;
+    const totalMin = dayEndMin - dayStartMin;
+    const heightPx = totalMin * PX_PER_MIN;
+
+    const appts = getAppointmentsForDay(date)
+        .filter(a => a && a.time && a.date)
+        .sort((a, b) => a.time.localeCompare(b.time));
+
+    const onClickColumn = (e: React.MouseEvent) => {
+        const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+        const y = e.clientY - rect.top;
+        const minsFromTop = clamp(Math.floor(y / PX_PER_MIN), 0, totalMin - 1);
+        const snapped = snapToStep(dayStartMin + minsFromTop);
+        onGridClick(minutesToTime(snapped));
+    };
+
     return (
-        <div className="divide-y divide-slate-700/50">
-            {timeSlots.map(timeSlot => {
-                const appointments = getAppointmentsForSlot(date, timeSlot);
-                return (
-                    <div key={timeSlot} className="flex">
-                        <div className="w-20 p-3 text-sm text-slate-500 font-mono text-right bg-slate-800/30 flex-shrink-0">
-                            {timeSlot}
-                        </div>
-                        <div
-                            onClick={() => appointments.length === 0 && onSlotClick(timeSlot)}
-                            className={`flex-1 p-2 min-h-[70px] ${appointments.length === 0 ? 'hover:bg-slate-700/30 cursor-pointer' : ''}`}
-                        >
-                            <div className="grid gap-2">
-                                {appointments.map(appt => (
-                                    <AppointmentCard
-                                        key={appt.id}
-                                        appt={appt}
-                                        profissionais={profissionais}
-                                        onEdit={onEditAppointment}
-                                        onDelete={onDeleteAppointment}
-                                        onStatusChange={onStatusChange}
-                                    />
-                                ))}
+        <div className="grid grid-cols-[80px_1fr]">
+            {/* Coluna de horas */}
+            <div className="relative bg-slate-800/30 border-r border-slate-700">
+                <div style={{ height: heightPx }}>
+                    {TIME_SLOTS.map(t => {
+                        const mins = timeToMinutes(t) - dayStartMin;
+                        const top = mins * PX_PER_MIN;
+                        return (
+                            <div key={t} className="absolute left-0 right-0" style={{ top }}>
+                                <div className="-mt-2 pr-2 text-[11px] text-slate-500 font-mono text-right">{t}</div>
+                                <div className="border-t border-slate-700/40" />
                             </div>
-                        </div>
-                    </div>
-                );
-            })}
+                        );
+                    })}
+                </div>
+            </div>
+
+            {/* Coluna do dia */}
+            <div className="relative border-l border-slate-700">
+                <div className="absolute inset-0" style={{ height: heightPx }} onClick={onClickColumn}>
+                    {Array.from({ length: Math.floor(totalMin / SLOT_STEP_MIN) + 1 }).map((_, idx) => {
+                        const top = idx * SLOT_STEP_MIN * PX_PER_MIN;
+                        return <div key={idx} className="absolute left-0 right-0 border-t border-slate-700/20" style={{ top }} />;
+                    })}
+                </div>
+
+                <div className="relative" style={{ height: heightPx }}>
+                    {appts.map(appt => (
+                        <EventBlock
+                            key={appt.id}
+                            appt={appt}
+                            profissionais={profissionais}
+                            dayStartMin={dayStartMin}
+                            onEdit={onEditAppointment}
+                            onDelete={onDeleteAppointment}
+                            onStatusChange={onStatusChange}
+                        />
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// Bloco de evento (posição relativa por minutos)
+interface EventBlockProps {
+    appt: Appointment;
+    profissionais: string[];
+    dayStartMin: number;
+    onEdit: (appt: Appointment) => void;
+    onDelete: (id: string, name?: string) => void;
+    onStatusChange: (appt: Appointment, status: Appointment['status']) => void;
+}
+
+const EventBlock: React.FC<EventBlockProps> = ({ appt, profissionais, dayStartMin, onEdit, onDelete, onStatusChange }) => {
+    const color = getProfessionalColor(appt.profissional, profissionais);
+    const [showMenu, setShowMenu] = useState(false);
+
+    const startMin = timeToMinutes(appt.time || '00:00');
+    const dur = appt.durationMin || 45;
+    const top = (startMin - dayStartMin) * PX_PER_MIN;
+    const height = Math.max(18, dur * PX_PER_MIN);
+
+    const isCancelled = appt.status === 'Cancelado';
+    const isCompleted = appt.status === 'Realizado';
+
+    return (
+        <div
+            className={`absolute left-1 right-1 rounded-lg border ${color.border} ${color.bg} ${isCancelled ? 'opacity-50 grayscale' : ''}`}
+            style={{ top, height }}
+            onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
+            title={`${appt.time} • ${appt.patientName} • ${appt.profissional}`}
+        >
+            <div className={`px-2 py-1 text-[11px] leading-tight ${color.text}`}>
+                <div className="flex items-center justify-between gap-2">
+                    <div className="font-bold truncate">{(appt.patientName || '').split(' ')[0]}</div>
+                    <div className="text-[10px] opacity-80 whitespace-nowrap">{appt.time}</div>
+                </div>
+                <div className="text-[10px] opacity-70 truncate">{(appt.profissional || '').split(' - ')[0]} • {dur}m</div>
+                {isCompleted && <div className="text-[10px] text-green-300 font-bold">Realizado</div>}
+            </div>
+
+            {showMenu && (
+                <div className="absolute top-full left-0 mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-xl z-20 min-w-[140px]">
+                    <button onClick={() => { onEdit(appt); setShowMenu(false); }} className="w-full px-3 py-2 text-left text-xs text-slate-300 hover:bg-slate-700 flex items-center gap-2">
+                        <EditIcon className="w-3 h-3" /> Editar
+                    </button>
+                    {!isCompleted && !isCancelled && (
+                        <button onClick={() => { onStatusChange(appt, 'Realizado'); setShowMenu(false); }} className="w-full px-3 py-2 text-left text-xs text-green-400 hover:bg-slate-700 flex items-center gap-2">
+                            <CheckIcon className="w-3 h-3" /> Realizado
+                        </button>
+                    )}
+                    {!isCancelled && (
+                        <button onClick={() => { onStatusChange(appt, 'Cancelado'); setShowMenu(false); }} className="w-full px-3 py-2 text-left text-xs text-orange-400 hover:bg-slate-700 flex items-center gap-2">
+                            <XIcon className="w-3 h-3" /> Cancelar
+                        </button>
+                    )}
+                    <button onClick={() => { if (confirm('Excluir?')) onDelete(appt.id, appt.patientName); setShowMenu(false); }} className="w-full px-3 py-2 text-left text-xs text-red-400 hover:bg-slate-700 flex items-center gap-2">
+                        <TrashIcon className="w-3 h-3" /> Excluir
+                    </button>
+                </div>
+            )}
         </div>
     );
 };
