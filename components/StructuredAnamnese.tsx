@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Patient, UserProfile, MedicalRecordChunk } from '../types';
-import { ClipboardIcon, SaveIcon, XIcon, PlusIcon, ChevronDownIcon, ChevronUpIcon } from './icons';
+import { ClipboardIcon, SaveIcon, XIcon, PlusIcon, ChevronDownIcon, ChevronUpIcon, TrashIcon } from './icons';
 import { ANAMNESE_TEMPLATES, AnamneseTemplate } from '../constants/anamneseTemplates';
 
 interface StructuredAnamneseProps {
@@ -9,6 +9,7 @@ interface StructuredAnamneseProps {
     existingRecords: MedicalRecordChunk[];
     onSaveRecord: (patientId: string, record: MedicalRecordChunk) => void;
     onUpdateRecord: (patientId: string, record: MedicalRecordChunk) => void;
+    onDeleteRecord?: (patientId: string, recordId: string) => void;
 }
 
 export const StructuredAnamnese: React.FC<StructuredAnamneseProps> = ({
@@ -16,13 +17,22 @@ export const StructuredAnamnese: React.FC<StructuredAnamneseProps> = ({
     currentUser,
     existingRecords,
     onSaveRecord,
-    onUpdateRecord
+    onUpdateRecord,
+    onDeleteRecord
 }) => {
     const [selectedTemplate, setSelectedTemplate] = useState<AnamneseTemplate | null>(null);
     const [formData, setFormData] = useState<Record<string, string>>({});
     const [isSaving, setIsSaving] = useState(false);
     const [editingAnamneseId, setEditingAnamneseId] = useState<string | null>(null);
     const [showHistory, setShowHistory] = useState(false);
+    const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+    const canDelete = (record: MedicalRecordChunk) => {
+        if (!onDeleteRecord) return false;
+        // Regra: apenas responsável técnico (admin) ou o profissional que criou o registro
+        if (currentUser.role === 'admin') return true;
+        return record.professionalId === currentUser.id;
+    };
 
     // Filtrar apenas registros do tipo Anamnese que possuem structuredData
     const structuredAnamneses = existingRecords.filter(r =>
@@ -163,12 +173,23 @@ export const StructuredAnamnese: React.FC<StructuredAnamneseProps> = ({
                                                     {new Date(record.date + 'T12:00:00').toLocaleDateString('pt-BR')} • {record.professionalName}
                                                 </p>
                                             </div>
-                                            <button
-                                                onClick={() => handleEdit(record)}
-                                                className="px-3 py-1.5 bg-slate-700 hover:bg-amber-600 text-white text-xs font-bold rounded-lg transition"
-                                            >
-                                                Ver / Editar
-                                            </button>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={() => handleEdit(record)}
+                                                    className="px-3 py-1.5 bg-slate-700 hover:bg-amber-600 text-white text-xs font-bold rounded-lg transition"
+                                                >
+                                                    Ver / Editar
+                                                </button>
+                                                {canDelete(record) && (
+                                                    <button
+                                                        onClick={() => setConfirmDeleteId(record.id)}
+                                                        className="p-2 rounded-lg bg-slate-700/50 hover:bg-red-600/20 text-slate-400 hover:text-red-400 transition"
+                                                        title="Excluir"
+                                                    >
+                                                        <TrashIcon className="w-4 h-4" />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
@@ -233,6 +254,44 @@ export const StructuredAnamnese: React.FC<StructuredAnamneseProps> = ({
                                 </>
                             )}
                         </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal de Confirmação: Excluir Anamnese */}
+            {confirmDeleteId && (
+                <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={() => setConfirmDeleteId(null)}>
+                    <div className="bg-slate-800 rounded-2xl border border-red-500/30 p-6 w-full max-w-md shadow-2xl animate-fade-in" onClick={e => e.stopPropagation()}>
+                        <div className="text-center mb-6">
+                            <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <TrashIcon className="w-8 h-8 text-red-400" />
+                            </div>
+                            <h3 className="text-lg font-bold text-white mb-2">Excluir anamnese?</h3>
+                            <p className="text-slate-400 text-sm">Essa ação remove o registro do prontuário do paciente.</p>
+                        </div>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setConfirmDeleteId(null)}
+                                className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-white font-medium rounded-xl transition"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={() => {
+                                    if (onDeleteRecord) onDeleteRecord(patient.id, confirmDeleteId);
+                                    setConfirmDeleteId(null);
+                                    // Se estava editando esse registro, sair do modo edição
+                                    if (editingAnamneseId === confirmDeleteId) {
+                                        setSelectedTemplate(null);
+                                        setFormData({});
+                                        setEditingAnamneseId(null);
+                                    }
+                                }}
+                                className="flex-1 py-3 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl transition flex items-center justify-center gap-2"
+                            >
+                                <TrashIcon className="w-4 h-4" /> Excluir
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
