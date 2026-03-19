@@ -2075,7 +2075,7 @@ const App: React.FC = () => {
 
                         <div className="flex items-center justify-between gap-3 mb-4">
                             <div className="text-[11px] text-slate-500">
-                                Regra: <strong>Cheio = Repasse / (%/100)</strong>. Padrão: 75%
+                                Regra: <strong>Repasse = Cheio × (%/100)</strong>. Padrão: 75%
                             </div>
                             <button
                                 onClick={() => {
@@ -2174,9 +2174,11 @@ const App: React.FC = () => {
                                                 const payoutPercent = Number(e.target.value);
                                                 setConvenios((prev: ConvenioConfig[]) => prev.map(x => {
                                                     if (x.id !== c.id) return x;
-                                                    const rep = x.payoutPrice;
-                                                    const full = typeof rep === 'number' ? (Math.round((rep / (payoutPercent / 100)) * 100) / 100) : x.price;
-                                                    return { ...x, payoutPercent, price: full };
+                                                    const full = x.price;
+                                                    const rep = typeof full === 'number'
+                                                        ? (Math.round((full * (payoutPercent / 100)) * 100) / 100)
+                                                        : x.payoutPrice;
+                                                    return { ...x, payoutPercent, payoutPrice: rep };
                                                 }));
                                             }}
                                             className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
@@ -2195,9 +2197,8 @@ const App: React.FC = () => {
                                             onChange={(e) => {
                                                 const v = e.target.value;
                                                 const payoutPrice = v === '' ? undefined : Number(v);
-                                                const pct = c.payoutPercent ?? 75;
-                                                const full = typeof payoutPrice === 'number' ? (Math.round((payoutPrice / (pct / 100)) * 100) / 100) : c.price;
-                                                setConvenios((prev: ConvenioConfig[]) => prev.map(x => x.id === c.id ? { ...x, payoutPrice, price: full } : x));
+                                                // Repasse pode ser ajustado manualmente, mas NÃO recalcula o valor cheio.
+                                                setConvenios((prev: ConvenioConfig[]) => prev.map(x => x.id === c.id ? { ...x, payoutPrice } : x));
                                             }}
                                             className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
                                             placeholder="ex: 30"
@@ -2214,7 +2215,11 @@ const App: React.FC = () => {
                                             onChange={(e) => {
                                                 const v = e.target.value;
                                                 const price = v === '' ? undefined : Number(v);
-                                                setConvenios((prev: ConvenioConfig[]) => prev.map(x => x.id === c.id ? { ...x, price } : x));
+                                                const pct = c.payoutPercent ?? 75;
+                                                const rep = typeof price === 'number'
+                                                    ? (Math.round((price * (pct / 100)) * 100) / 100)
+                                                    : undefined;
+                                                setConvenios((prev: ConvenioConfig[]) => prev.map(x => x.id === c.id ? { ...x, price, payoutPrice: rep } : x));
                                             }}
                                             className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
                                             placeholder="ex: 40"
