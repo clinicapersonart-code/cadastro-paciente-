@@ -472,6 +472,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({
                             existingRecords={existingRecords}
                             onSaveRecord={onSaveRecord}
                             onUpdateRecord={onUpdateRecord}
+                            onDeleteRecord={onDeleteRecord}
                         />
                     </div>
                 )}
