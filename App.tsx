@@ -98,7 +98,16 @@ const App: React.FC = () => {
 
     // --- ROTEAMENTO PÚBLICO ---
     const params = new URLSearchParams(window.location.search);
-    const pageParam = params.get('page');
+    const pathname = (window.location.pathname || '').replace(/\/+$/, '');
+    const lastSeg = pathname.split('/').filter(Boolean).slice(-1)[0] || '';
+    const pageFromPath = ((): string | null => {
+        const seg = lastSeg.toLowerCase();
+        if (seg === 'cadastro') return 'cadastro';
+        if (seg === 'fila') return 'fila';
+        if (seg === 'vip') return 'vip';
+        return null;
+    })();
+    const pageParam = params.get('page') || pageFromPath;
 
     // --- HELPER: Sincronizar um usuário com Supabase ---
     const syncUserToCloud = async (user: UserProfile) => {
@@ -997,8 +1006,14 @@ const App: React.FC = () => {
         }).sort((a, b) => a.nome.localeCompare(b.nome));
     }, [patients, searchTerm, filters, currentUser, showInactive]);
 
-    const copyLink = (path: string) => {
-        const url = `${window.location.origin}${window.location.pathname}${path}`;
+    const copyLink = (pathOrQuery: string) => {
+        const basePath = (window.location.pathname || '/').replace(/\/+$/, '');
+        // If caller passes an absolute path ("/cadastro"), prefer it. Otherwise keep same pathname + query.
+        const fullPath = pathOrQuery.startsWith('/')
+            ? pathOrQuery
+            : `${basePath}${pathOrQuery}`;
+
+        const url = `${window.location.origin}${fullPath}`;
         navigator.clipboard.writeText(url);
         showToast('Link copiado para a área de transferência!', 'success');
     };
@@ -1884,15 +1899,23 @@ const App: React.FC = () => {
 
             {/* Modal de Links */}
             {showLinksModal && (
-                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-                    <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-md p-6 shadow-2xl relative animate-fade-in">
-                        <button onClick={() => setShowLinksModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-white"><XIcon className="w-6 h-6" /></button>
-                        <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                            <UploadIcon className="w-5 h-5 text-sky-400" /> Links de Cadastro
-                        </h3>
-                        <p className="text-sm text-slate-400 mb-6">Envie estes links para que os pacientes preencham seus dados antes da consulta.</p>
+                <div className="fixed inset-0 bg-black/80 flex items-start sm:items-center justify-center z-50 p-4 overflow-y-auto">
+                    <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl relative animate-fade-in max-h-[90vh] overflow-hidden">
+                        <div className="sticky top-0 z-20 bg-slate-800/95 backdrop-blur border-b border-slate-700 rounded-t-2xl px-6 py-4">
+                            <button
+                                onClick={() => setShowLinksModal(false)}
+                                className="absolute top-3 right-3 p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700/60"
+                                aria-label="Fechar"
+                            >
+                                <XIcon className="w-6 h-6" />
+                            </button>
+                            <h3 className="text-xl font-bold text-white flex items-center gap-2 pr-12">
+                                <UploadIcon className="w-5 h-5 text-sky-400" /> Links de Cadastro
+                            </h3>
+                            <p className="text-sm text-slate-400 mt-1">Envie estes links para que os pacientes preencham seus dados antes da consulta.</p>
+                        </div>
 
-                        <div className="space-y-4">
+                        <div className="px-6 py-5 space-y-4 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 92px)' }}>
                             {/* Novo Paciente - visível para todos */}
                             <div className="bg-slate-900 p-4 rounded-xl border border-slate-700">
                                 <div className="flex items-center gap-3 mb-2">
@@ -1902,7 +1925,7 @@ const App: React.FC = () => {
                                         <p className="text-xs text-slate-500">Cadastro completo inicial</p>
                                     </div>
                                 </div>
-                                <button onClick={() => copyLink('?page=cadastro')} className="w-full bg-slate-800 hover:bg-slate-700 text-sky-400 text-xs font-mono py-2 rounded border border-slate-600 transition">
+                                <button onClick={() => copyLink('/cadastro')} className="w-full bg-slate-800 hover:bg-slate-700 text-sky-400 text-xs font-mono py-2 rounded border border-slate-600 transition">
                                     Copiar Link de Cadastro
                                 </button>
                             </div>
@@ -1916,7 +1939,7 @@ const App: React.FC = () => {
                                         <p className="text-xs text-slate-500">Cadastro rápido para aguardar vaga</p>
                                     </div>
                                 </div>
-                                <button onClick={() => copyLink('?page=fila')} className="w-full bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-mono py-2 rounded border border-slate-600 transition">
+                                <button onClick={() => copyLink('/fila')} className="w-full bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-mono py-2 rounded border border-slate-600 transition">
                                     Copiar Link da Fila
                                 </button>
                             </div>
@@ -1971,10 +1994,12 @@ const App: React.FC = () => {
                                         const pro = (document.getElementById('prePro') as HTMLSelectElement)?.value;
                                         const dia = (document.getElementById('preDia') as HTMLSelectElement)?.value;
                                         const hora = (document.getElementById('preHora') as HTMLInputElement)?.value;
-                                        let params = '?page=cadastro';
-                                        if (pro) params += `&prePro=${encodeURIComponent(pro)}`;
-                                        if (dia) params += `&preDia=${encodeURIComponent(dia)}`;
-                                        if (hora) params += `&preHora=${encodeURIComponent(hora)}`;
+                                        let params = '/cadastro';
+                                        const qs: string[] = [];
+                                        if (pro) qs.push(`prePro=${encodeURIComponent(pro)}`);
+                                        if (dia) qs.push(`preDia=${encodeURIComponent(dia)}`);
+                                        if (hora) qs.push(`preHora=${encodeURIComponent(hora)}`);
+                                        if (qs.length) params += `?${qs.join('&')}`;
                                         copyLink(params);
                                     }}
                                     className="w-full bg-purple-600 hover:bg-purple-500 text-white text-xs font-medium py-2 rounded transition"
@@ -1993,7 +2018,7 @@ const App: React.FC = () => {
                                             <p className="text-xs text-slate-500">Atualização cadastral e Google Review</p>
                                         </div>
                                     </div>
-                                    <button onClick={() => copyLink('?page=vip')} className="w-full bg-slate-800 hover:bg-slate-700 text-amber-400 text-xs font-mono py-2 rounded border border-slate-600 transition">
+                                    <button onClick={() => copyLink('/vip')} className="w-full bg-slate-800 hover:bg-slate-700 text-amber-400 text-xs font-mono py-2 rounded border border-slate-600 transition">
                                         Copiar Link VIP
                                     </button>
                                 </div>
