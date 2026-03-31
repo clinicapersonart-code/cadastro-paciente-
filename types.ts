@@ -190,6 +190,11 @@ export interface MedicalRecordChunk {
   intervention?: string; // Intervenção, técnica
   nextSteps?: string; // Próximos passos
 
+  // Campos enriquecidos para evolução mensal
+  monthlyProgress?: string; // Avanços observados no mês
+  monthlyChallenges?: string; // Dificuldades/barreiras recorrentes
+  monthlyPlan?: string; // Plano e foco para o próximo mês
+
   isPrivate?: boolean; // Se true, visível apenas ao criador e admin
   attendance?: 'Compareceu' | 'Faltou' | 'Cancelado' | 'Justificado';
   frequency?: 'Semanal' | 'Mensal';

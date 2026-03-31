@@ -47,7 +47,10 @@ export const MedicalRecord: React.FC<MedicalRecordProps> = ({
         content: '',
         behavior: '',
         intervention: '',
-        nextSteps: ''
+        nextSteps: '',
+        monthlyProgress: '',
+        monthlyChallenges: '',
+        monthlyPlan: ''
     });
 
     // Selected date for the record (default: today)
@@ -128,6 +131,15 @@ ${record.intervention || 'Não registrado'}
 
 PRÓXIMOS PASSOS:
 ${record.nextSteps || 'Não registrado'}
+
+PROGRESSOS DO MÊS:
+${record.monthlyProgress || 'Não registrado'}
+
+DESAFIOS DO MÊS:
+${record.monthlyChallenges || 'Não registrado'}
+
+PLANO TERAPÊUTICO (PRÓXIMO MÊS):
+${record.monthlyPlan || 'Não registrado'}
 ═══════════════════════════════════════════════════════════════
 `;
     };
@@ -162,6 +174,10 @@ ${record.nextSteps || 'Não registrado'}
                             <td style="padding: 5px 0;"><strong>Profissional:</strong> ${record.professionalName}</td>
                             <td style="padding: 5px 0; text-align: right;"><strong>CRP:</strong> ${(currentUser.professionalRegister || currentUser.crp) || '-'}</td>
                         </tr>
+                        <tr>
+                            <td style="padding: 5px 0;"><strong>Frequência:</strong> ${record.frequency || 'Semanal'}</td>
+                            <td style="padding: 5px 0; text-align: right;"><strong>Período:</strong> ${record.frequency === 'Mensal' ? new Date(record.date + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }) : new Date(record.date + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                        </tr>
                     </table>
                 </div>
 
@@ -184,6 +200,23 @@ ${record.nextSteps || 'Não registrado'}
                     <h3 style="color: #273e44; border-bottom: 1px solid #ddd; padding-bottom: 5px; margin-bottom: 15px; font-size: 16px; text-transform: uppercase;">Próximos Passos</h3>
                     <p style="color: #444; font-style: italic;">${record.nextSteps || 'Não registrado'}</p>
                 </div>
+
+                ${record.frequency === 'Mensal' ? `
+                <div style="margin-bottom: 25px;">
+                    <h3 style="color: #273e44; border-bottom: 1px solid #ddd; padding-bottom: 5px; margin-bottom: 15px; font-size: 16px; text-transform: uppercase;">Progressos do Mês</h3>
+                    <p style="color: #444; white-space: pre-wrap;">${record.monthlyProgress || 'Não registrado'}</p>
+                </div>
+
+                <div style="margin-bottom: 25px;">
+                    <h3 style="color: #273e44; border-bottom: 1px solid #ddd; padding-bottom: 5px; margin-bottom: 15px; font-size: 16px; text-transform: uppercase;">Desafios do Mês</h3>
+                    <p style="color: #444; white-space: pre-wrap;">${record.monthlyChallenges || 'Não registrado'}</p>
+                </div>
+
+                <div style="margin-bottom: 25px;">
+                    <h3 style="color: #273e44; border-bottom: 1px solid #ddd; padding-bottom: 5px; margin-bottom: 15px; font-size: 16px; text-transform: uppercase;">Plano Terapêutico (Próximo Mês)</h3>
+                    <p style="color: #444; white-space: pre-wrap;">${record.monthlyPlan || 'Não registrado'}</p>
+                </div>
+                ` : ''}
 
                 <div style="margin-top: 50px; text-align: center; color: #999; font-size: 12px; border-top: 1px solid #eee; padding-top: 20px;">
                     Documento gerado eletronicamente em ${new Date().toLocaleString('pt-BR')} • Clínica Personart
@@ -307,7 +340,32 @@ ${record.nextSteps || 'Não registrado'}
     const [isFormatting, setIsFormatting] = useState(false);
 
     // Prompt para formatação CRP
-    const buildPrompt = (notes: string) => `Você é um assistente de psicólogo clínico. Formate as seguintes anotações de sessão em um prontuário profissional padrão CRP.
+    const buildPrompt = (notes: string) => {
+        if (frequency === 'Mensal') {
+            return `Você é um assistente de psicólogo clínico. Transforme as anotações de aproximadamente 4 sessões em uma EVOLUÇÃO MENSAL rica, técnica e objetiva, em linguagem profissional.
+
+ANOTAÇÕES DO MÊS:
+${notes}
+
+REGRAS:
+- Escreva em terceira pessoa.
+- Sintetize progressos e dificuldades recorrentes ao longo do mês.
+- Evite linguagem vaga; destaque padrões clínicos observáveis.
+- Traga foco de continuidade terapêutica para o próximo mês.
+
+Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicações):
+{
+    "content": "Síntese clínica mensal integrada (visão geral do mês, temas centrais, padrões e evolução)",
+    "behavior": "Estado emocional/comportamental predominante no mês",
+    "intervention": "Intervenções e técnicas aplicadas ao longo do mês",
+    "monthlyProgress": "Progressos e ganhos observados no mês",
+    "monthlyChallenges": "Dificuldades/barreiras recorrentes e fatores de manutenção",
+    "monthlyPlan": "Plano terapêutico objetivo para o próximo mês",
+    "nextSteps": "Próximos passos imediatos até a próxima sessão"
+}`;
+        }
+
+        return `Você é um assistente de psicólogo clínico. Formate as seguintes anotações de sessão em um prontuário profissional padrão CRP.
 
 ANOTAÇÕES DA SESSÃO:
 ${notes}
@@ -319,6 +377,7 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
     "intervention": "Técnicas e intervenções utilizadas",
     "nextSteps": "Encaminhamentos e próximos passos"
 }`;
+    };
 
     // Processar resposta da IA
     const processAIResponse = (aiResponse: string) => {
@@ -331,7 +390,10 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
                     content: parsed.content || quickNotes,
                     behavior: parsed.behavior || '',
                     intervention: parsed.intervention || '',
-                    nextSteps: parsed.nextSteps || ''
+                    nextSteps: parsed.nextSteps || '',
+                    monthlyProgress: parsed.monthlyProgress || '',
+                    monthlyChallenges: parsed.monthlyChallenges || '',
+                    monthlyPlan: parsed.monthlyPlan || ''
                 }));
                 return true;
             } catch {
@@ -433,7 +495,10 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
             content: record.content,
             behavior: record.behavior || '',
             intervention: record.intervention || '',
-            nextSteps: record.nextSteps || ''
+            nextSteps: record.nextSteps || '',
+            monthlyProgress: record.monthlyProgress || '',
+            monthlyChallenges: record.monthlyChallenges || '',
+            monthlyPlan: record.monthlyPlan || ''
         });
         setFrequency(record.frequency || 'Semanal');
         if (record.frequency === 'Mensal') {
@@ -452,7 +517,16 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
     const handleCancelEdit = () => {
         setEditingRecordId(null);
         setQuickNotes('');
-        setFormattedRecord({ type: 'Evolução', content: '', behavior: '', intervention: '', nextSteps: '' });
+        setFormattedRecord({
+            type: 'Evolução',
+            content: '',
+            behavior: '',
+            intervention: '',
+            nextSteps: '',
+            monthlyProgress: '',
+            monthlyChallenges: '',
+            monthlyPlan: ''
+        });
     };
 
     // Delete record
@@ -465,6 +539,11 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
     const handleSave = () => {
         if (!formattedRecord.content.trim()) {
             alert('O conteúdo do prontuário não pode estar vazio.');
+            return;
+        }
+
+        if (frequency === 'Mensal' && formattedRecord.content.trim().length < 220) {
+            alert('Para evolução mensal, registre um conteúdo mais completo (síntese das 4 sessões do mês).');
             return;
         }
 
@@ -483,6 +562,9 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
                     behavior: formattedRecord.behavior,
                     intervention: formattedRecord.intervention,
                     nextSteps: formattedRecord.nextSteps,
+                    monthlyProgress: frequency === 'Mensal' ? formattedRecord.monthlyProgress : '',
+                    monthlyChallenges: frequency === 'Mensal' ? formattedRecord.monthlyChallenges : '',
+                    monthlyPlan: frequency === 'Mensal' ? formattedRecord.monthlyPlan : '',
                     frequency
                 };
                 onUpdateRecord(patient.id, updatedRecord);
@@ -500,6 +582,9 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
                 behavior: formattedRecord.behavior,
                 intervention: formattedRecord.intervention,
                 nextSteps: formattedRecord.nextSteps,
+                monthlyProgress: frequency === 'Mensal' ? formattedRecord.monthlyProgress : '',
+                monthlyChallenges: frequency === 'Mensal' ? formattedRecord.monthlyChallenges : '',
+                monthlyPlan: frequency === 'Mensal' ? formattedRecord.monthlyPlan : '',
                 frequency
             };
             onSaveRecord(patient.id, newRecord);
@@ -512,7 +597,10 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
             content: '',
             behavior: '',
             intervention: '',
-            nextSteps: ''
+            nextSteps: '',
+            monthlyProgress: '',
+            monthlyChallenges: '',
+            monthlyPlan: ''
         });
     };
 
@@ -574,9 +662,9 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
                         <textarea
                             value={quickNotes}
                             onChange={(e) => setQuickNotes(e.target.value)}
-                            placeholder="Digite suas anotações da sessão aqui ou clique no botão 'Ditar voz' para capturar o áudio...
-
-A inteligência artificial vai formatar este rascunho em um prontuário clínico detalhado no padrão CRP."
+                            placeholder={frequency === 'Mensal'
+                                ? "Digite as anotações integradas das ~4 sessões do mês (marcos, padrões, ganhos e dificuldades)...\n\nA IA vai transformar este material em uma evolução mensal mais rica no padrão CRP."
+                                : "Digite suas anotações da sessão aqui ou clique no botão 'Ditar voz' para capturar o áudio...\n\nA inteligência artificial vai formatar este rascunho em um prontuário clínico detalhado no padrão CRP."}
                             className="w-full h-[460px] bg-slate-950/50 border border-slate-700/50 rounded-xl p-4 text-slate-200 placeholder-slate-500 resize-none focus:outline-none focus:ring-1 focus:ring-[#e9c49e]/50 font-light"
                         />
 
@@ -731,10 +819,44 @@ A inteligência artificial vai formatar este rascunho em um prontuário clínico
                                 type="text"
                                 value={formattedRecord.nextSteps}
                                 onChange={(e) => setFormattedRecord(prev => ({ ...prev, nextSteps: e.target.value }))}
-                                placeholder="Ex: Manutenção do plano terapêutico..."
+                                placeholder={frequency === 'Mensal' ? 'Ex: combinar foco de intervenção para o próximo mês...' : 'Ex: Manutenção do plano terapêutico...'}
                                 className="w-full bg-slate-950/50 border border-slate-700/50 rounded-lg px-4 py-2 text-slate-200 text-sm"
                             />
                         </div>
+
+                        {frequency === 'Mensal' && (
+                            <>
+                                <div>
+                                    <label className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-2 block">Progressos do Mês</label>
+                                    <textarea
+                                        value={formattedRecord.monthlyProgress}
+                                        onChange={(e) => setFormattedRecord(prev => ({ ...prev, monthlyProgress: e.target.value }))}
+                                        placeholder="Registre ganhos observados ao longo das 4 sessões (comportamento, adesão, autorregulação, funcionalidade, etc.)."
+                                        className="w-full h-24 bg-slate-950/50 border border-slate-700/50 rounded-xl p-4 text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-[#e9c49e]/30 resize-none leading-relaxed font-light"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-2 block">Desafios do Mês</label>
+                                    <textarea
+                                        value={formattedRecord.monthlyChallenges}
+                                        onChange={(e) => setFormattedRecord(prev => ({ ...prev, monthlyChallenges: e.target.value }))}
+                                        placeholder="Descreva padrões de dificuldade recorrentes, barreiras contextuais e fatores de manutenção."
+                                        className="w-full h-24 bg-slate-950/50 border border-slate-700/50 rounded-xl p-4 text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-[#e9c49e]/30 resize-none leading-relaxed font-light"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-2 block">Plano Terapêutico para o Próximo Mês</label>
+                                    <textarea
+                                        value={formattedRecord.monthlyPlan}
+                                        onChange={(e) => setFormattedRecord(prev => ({ ...prev, monthlyPlan: e.target.value }))}
+                                        placeholder="Defina objetivos mensais, estratégias e indicadores de acompanhamento para o próximo ciclo."
+                                        className="w-full h-24 bg-slate-950/50 border border-slate-700/50 rounded-xl p-4 text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-[#e9c49e]/30 resize-none leading-relaxed font-light"
+                                    />
+                                </div>
+                            </>
+                        )}
                     </div>
 
                     <div className="mt-8 pt-6 border-t border-slate-700 flex gap-4">
@@ -894,7 +1016,7 @@ A inteligência artificial vai formatar este rascunho em um prontuário clínico
                                                     className={`text-slate-300 text-sm leading-relaxed font-light ${expandedRecords.has(record.id) ? '' : 'line-clamp-3'}`}
                                                     dangerouslySetInnerHTML={{ __html: renderMarkdown(record.content) }}
                                                 />
-                                                {expandedRecords.has(record.id) && (record.behavior || record.intervention || record.nextSteps) && (
+                                                {expandedRecords.has(record.id) && (record.behavior || record.intervention || record.nextSteps || record.monthlyProgress || record.monthlyChallenges || record.monthlyPlan) && (
                                                     <div className="mt-4 space-y-3 pt-3 border-t border-slate-700/50">
                                                         {record.behavior && (
                                                             <div>
@@ -914,9 +1036,27 @@ A inteligência artificial vai formatar este rascunho em um prontuário clínico
                                                                 <p className="text-sm text-slate-400 font-light italic">{record.nextSteps}</p>
                                                             </div>
                                                         )}
+                                                        {record.monthlyProgress && (
+                                                            <div>
+                                                                <h4 className="text-xs font-bold text-[#e9c49e] uppercase mb-1">Progressos do Mês</h4>
+                                                                <p className="text-sm text-slate-400 font-light">{record.monthlyProgress}</p>
+                                                            </div>
+                                                        )}
+                                                        {record.monthlyChallenges && (
+                                                            <div>
+                                                                <h4 className="text-xs font-bold text-[#e9c49e] uppercase mb-1">Desafios do Mês</h4>
+                                                                <p className="text-sm text-slate-400 font-light">{record.monthlyChallenges}</p>
+                                                            </div>
+                                                        )}
+                                                        {record.monthlyPlan && (
+                                                            <div>
+                                                                <h4 className="text-xs font-bold text-[#e9c49e] uppercase mb-1">Plano do Próximo Mês</h4>
+                                                                <p className="text-sm text-slate-400 font-light">{record.monthlyPlan}</p>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 )}
-                                                {((record.content && record.content.length > 150) || record.behavior || record.intervention || record.nextSteps) && (
+                                                {((record.content && record.content.length > 150) || record.behavior || record.intervention || record.nextSteps || record.monthlyProgress || record.monthlyChallenges || record.monthlyPlan) && (
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); toggleExpandedRecord(record.id); }}
                                                         className="mt-3 text-xs font-bold text-[#e9c49e] hover:text-[#d4af8a] transition-colors bg-slate-800/80 px-3 py-1.5 rounded-md border border-slate-700/50"
