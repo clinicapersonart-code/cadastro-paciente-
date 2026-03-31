@@ -365,17 +365,23 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
 }`;
         }
 
-        return `Você é um assistente de psicólogo clínico. Formate as seguintes anotações de sessão em um prontuário profissional padrão CRP.
+        return `Você é um assistente de psicólogo clínico. Transforme as anotações em uma EVOLUÇÃO SEMANAL técnica, objetiva e aderente às boas práticas de prontuário psicológico (CFP/CRP).
 
 ANOTAÇÕES DA SESSÃO:
 ${notes}
 
+REGRAS:
+- Escreva em terceira pessoa e linguagem profissional.
+- Registre apenas informações clinicamente pertinentes.
+- Evite julgamentos morais e detalhes íntimos desnecessários.
+- Destaque objetivo/tema da sessão, observações clínicas, intervenções e conduta.
+
 Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicações):
 {
-    "content": "Resumo profissional da sessão em terceira pessoa",
-    "behavior": "Estado emocional e comportamental observado",
-    "intervention": "Técnicas e intervenções utilizadas",
-    "nextSteps": "Encaminhamentos e próximos passos"
+    "content": "Resumo técnico da sessão (tema central, evolução e contexto clínico relevante)",
+    "behavior": "Estado emocional/comportamental observado na sessão",
+    "intervention": "Técnicas/intervenções realizadas e racional clínico breve",
+    "nextSteps": "Conduta e encaminhamentos para a próxima sessão"
 }`;
     };
 
@@ -545,6 +551,17 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
         if (frequency === 'Mensal' && formattedRecord.content.trim().length < 220) {
             alert('Para evolução mensal, registre um conteúdo mais completo (síntese das 4 sessões do mês).');
             return;
+        }
+
+        if (frequency === 'Semanal') {
+            if (formattedRecord.content.trim().length < 120) {
+                alert('Para evolução semanal conforme diretrizes clínicas, descreva melhor o contexto e a evolução da sessão.');
+                return;
+            }
+            if (!formattedRecord.behavior.trim() || !formattedRecord.intervention.trim() || !formattedRecord.nextSteps.trim()) {
+                alert('Na evolução semanal, preencha: Comportamento/Humor, Intervenção/Técnica e Próximos Passos.');
+                return;
+            }
         }
 
         const recordDate = frequency === 'Mensal'
@@ -823,6 +840,12 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
                                 className="w-full bg-slate-950/50 border border-slate-700/50 rounded-lg px-4 py-2 text-slate-200 text-sm"
                             />
                         </div>
+
+                        {frequency === 'Semanal' && (
+                            <p className="text-xs text-slate-500 bg-slate-900/40 border border-slate-700/40 rounded-lg px-3 py-2">
+                                Diretriz semanal: registre de forma objetiva o estado clínico observado, as intervenções aplicadas e a conduta para continuidade.
+                            </p>
+                        )}
 
                         {frequency === 'Mensal' && (
                             <>
