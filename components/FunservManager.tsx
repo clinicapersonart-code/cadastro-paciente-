@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Patient, FunservConfig } from '../types';
-import { CheckIcon, StarIcon, TrashIcon, FileTextIcon, PlusIcon } from './icons';
+import { CheckIcon, StarIcon, TrashIcon, FileTextIcon } from './icons';
+import { FunservGlosaImport } from './FunservGlosaImport';
 
 interface FunservManagerProps {
     patients: Patient[];
@@ -323,6 +324,8 @@ export const FunservManager: React.FC<FunservManagerProps> = ({ patients, onSave
 
     return (
         <div className="space-y-6">
+            <FunservGlosaImport />
+
             <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6 shadow-xl backdrop-blur-sm">
                 <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
                     <div>
