@@ -1514,6 +1514,7 @@ const App: React.FC = () => {
                         patients={patients}
                         onSavePatient={handleSavePatient}
                         convenios={convenioList}
+                        setConvenios={setConvenios as React.Dispatch<React.SetStateAction<ConvenioConfig[]>>}
                         appointments={appointments}
                     />
                 )}
