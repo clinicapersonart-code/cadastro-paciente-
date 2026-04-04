@@ -12,6 +12,10 @@ export interface FaturamentoItem {
 interface PacienteResumo {
   nome: string;
   sessoes: number;
+  sessoesConvencional: number;
+  sessoesABA: number;
+  sessoesAvaliacaoNeuro: number;
+  sessoesOutras: number;
   totalFolha: number;
   totalGlosa: number;
   totalLiquido: number;
@@ -95,6 +99,14 @@ function formatCurrencyBR(value: number): string {
   return value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function classifySessaoByValorProcessado(valorProcessado: number): 'convencional' | 'aba' | 'avaliacao-neuro' | 'outra' {
+  const valor = Number(valorProcessado.toFixed(2));
+  if (Math.abs(valor - 40) < 0.01) return 'convencional';
+  if (Math.abs(valor - 62) < 0.01) return 'aba';
+  if (Math.abs(valor - 1392) < 0.01) return 'avaliacao-neuro';
+  return 'outra';
+}
+
 function isNoGlosaByRule(valorProcessado: number | null, valorDiferenca: number): boolean {
   if (valorProcessado === null) return false;
   return NO_GLOSA_PAIRS.has(`${Math.round(valorProcessado)}|${Math.round(valorDiferenca)}`);
@@ -171,12 +183,22 @@ export const FunservFaturamentoImport: React.FC = () => {
       const atual = mapa.get(item.nome) ?? {
         nome: item.nome,
         sessoes: 0,
+        sessoesConvencional: 0,
+        sessoesABA: 0,
+        sessoesAvaliacaoNeuro: 0,
+        sessoesOutras: 0,
         totalFolha: 0,
         totalGlosa: 0,
         totalLiquido: 0
       };
 
       atual.sessoes += 1;
+      const tipo = classifySessaoByValorProcessado(item.valorProcessado);
+      if (tipo === 'convencional') atual.sessoesConvencional += 1;
+      else if (tipo === 'aba') atual.sessoesABA += 1;
+      else if (tipo === 'avaliacao-neuro') atual.sessoesAvaliacaoNeuro += 1;
+      else atual.sessoesOutras += 1;
+
       atual.totalFolha += item.valorProcessado;
       if (item.temGlosaRegra) atual.totalGlosa += item.valorDiferenca;
       atual.totalLiquido = atual.totalFolha + atual.totalGlosa;
@@ -215,7 +237,7 @@ export const FunservFaturamentoImport: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <div>
           <h3 className="text-lg font-bold text-white">Faturamento Funserv (.xlsx)</h3>
-          <p className="text-xs text-slate-400">Separado por paciente: total da folha, glosas e total final.</p>
+          <p className="text-xs text-slate-400">Separado por paciente: sessões por tipo (Conv 40, ABA 62, Neuro 1.392), total da folha, glosas e total final.</p>
         </div>
 
         <label className="inline-flex items-center gap-2 bg-teal-600 hover:bg-teal-500 text-white px-3 py-2 rounded-lg text-sm font-semibold cursor-pointer">
@@ -243,7 +265,7 @@ export const FunservFaturamentoImport: React.FC = () => {
               <thead className="bg-slate-900 text-slate-300">
                 <tr>
                   <th className="text-left p-2">Paciente</th>
-                  <th className="text-right p-2">Sessões</th>
+                  <th className="text-right p-2">Sessões (40/62/1392)</th>
                   <th className="text-right p-2">Total folha</th>
                   <th className="text-right p-2">Total glosa</th>
                   <th className="text-right p-2">Total final</th>
@@ -253,7 +275,13 @@ export const FunservFaturamentoImport: React.FC = () => {
                 {porPaciente.map((row) => (
                   <tr key={row.nome} className="border-t border-slate-800 text-slate-100">
                     <td className="p-2">{row.nome}</td>
-                    <td className="p-2 text-right">{row.sessoes}</td>
+                    <td className="p-2 text-right">
+                      <div className="font-semibold">{row.sessoes}</div>
+                      <div className="text-[10px] text-slate-400">
+                        Conv 40: {row.sessoesConvencional} • ABA 62: {row.sessoesABA} • Neuro 1392: {row.sessoesAvaliacaoNeuro}
+                        {row.sessoesOutras > 0 ? ` • Outras: ${row.sessoesOutras}` : ''}
+                      </div>
+                    </td>
                     <td className="p-2 text-right text-emerald-300">{formatCurrencyBR(row.totalFolha)}</td>
                     <td className="p-2 text-right text-rose-400">{formatCurrencyBR(row.totalGlosa)}</td>
                     <td className="p-2 text-right text-cyan-300 font-semibold">{formatCurrencyBR(row.totalLiquido)}</td>
