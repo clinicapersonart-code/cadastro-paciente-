@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Appointment, ConvenioConfig, Patient } from '../types';
+import useLocalStorage from '../hooks/useLocalStorage';
 import { ChartBarIcon } from './icons';
 
 interface ProfessionalPayoutsProps {
@@ -25,6 +26,10 @@ const formatCurrencyBR = (value: number) =>
 
 export const ProfessionalPayouts: React.FC<ProfessionalPayoutsProps> = ({ patients, convenios, appointments }) => {
   const [selectedProfessional, setSelectedProfessional] = useState('');
+  const [paymentDatesByProfessional, setPaymentDatesByProfessional] = useLocalStorage<Record<string, string>>(
+    'personart.payout.payment_dates',
+    {}
+  );
 
   const convenioMap = useMemo(() => {
     const map = new Map<string, ConvenioConfig>();
@@ -123,6 +128,7 @@ export const ProfessionalPayouts: React.FC<ProfessionalPayoutsProps> = ({ patien
                 <th className="text-right p-2">Repasse/sessão</th>
                 <th className="text-right p-2">Sessões realizadas</th>
                 <th className="text-right p-2">Total a receber</th>
+                <th className="text-left p-2">Data pagamento</th>
               </tr>
             </thead>
             <tbody>
@@ -134,6 +140,7 @@ export const ProfessionalPayouts: React.FC<ProfessionalPayoutsProps> = ({ patien
                   <td className="p-2 text-right text-emerald-300">{formatCurrencyBR(r.payoutPerSession)}</td>
                   <td className="p-2 text-right">{r.realizedSessions}</td>
                   <td className="p-2 text-right text-cyan-300 font-semibold">{formatCurrencyBR(r.totalPayout)}</td>
+                  <td className="p-2 text-slate-300">{paymentDatesByProfessional[r.profissional] || '-'}</td>
                 </tr>
               ))}
             </tbody>
@@ -150,10 +157,22 @@ export const ProfessionalPayouts: React.FC<ProfessionalPayoutsProps> = ({ patien
         <h3 className="text-white font-bold mb-3">Resumo por profissional</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {summary.map((s) => (
-            <div key={s.name} className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2">
+            <div key={s.name} className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 space-y-2">
               <div className="text-slate-200 font-semibold">{s.name}</div>
               <div className="text-xs text-slate-400">Sessões realizadas: {s.sessions}</div>
               <div className="text-emerald-300 font-bold">R$ {formatCurrencyBR(s.total)}</div>
+              <div>
+                <label className="block text-[11px] text-slate-400 mb-1">Data de pagamento</label>
+                <input
+                  type="date"
+                  value={paymentDatesByProfessional[s.name] || ''}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setPaymentDatesByProfessional((prev) => ({ ...prev, [s.name]: value }));
+                  }}
+                  className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
             </div>
           ))}
         </div>
