@@ -16,6 +16,7 @@ import { MedicalRecord } from './components/MedicalRecord';
 import { PatientPortal } from './components/PatientPortal';
 import { UserManager } from './components/UserManager';
 import { Waitlist } from './components/Waitlist';
+import { ProfessionalPayouts } from './components/ProfessionalPayouts';
 import { DownloadIcon, CloudIcon, UserIcon, CalendarIcon, InboxIcon, CheckIcon, XIcon, BellIcon, LockIcon, FileTextIcon, StarIcon, UploadIcon, ShieldIcon, FilterIcon, EditIcon, PlusIcon, TrashIcon } from './components/icons';
 
 const App: React.FC = () => {
@@ -36,7 +37,7 @@ const App: React.FC = () => {
 
     const convenioList: ConvenioConfig[] = (Array.isArray(convenios) ? convenios : defaultConvenios) as ConvenioConfig[];
     const convenioNames: string[] = convenioList.filter(c => c?.active !== false).map(c => c.name);
-    const [activeTab, setActiveTab] = useLocalStorage<'pacientes' | 'agenda' | 'funserv' | 'inbox' | 'prontuario' | 'cadastro' | 'fila'>('personart.view.tab', 'pacientes');
+    const [activeTab, setActiveTab] = useLocalStorage<'pacientes' | 'agenda' | 'funserv' | 'repasse' | 'inbox' | 'prontuario' | 'cadastro' | 'fila'>('personart.view.tab', 'pacientes');
     const [brand] = useLocalStorage<BrandConfig>(STORAGE_KEYS.BRAND, { color: '#e9c49e', dark: '#273e44', logo: null, name: 'Clínica Personart' });
 
     // --- NOVO SISTEMA DE AUTH (V2.0) ---
@@ -1147,6 +1148,15 @@ const App: React.FC = () => {
                                     Funserv
                                 </button>
                                 <button
+                                    onClick={() => setActiveTab('repasse')}
+                                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 ${activeTab === 'repasse'
+                                        ? 'bg-[#273e44] text-[#e9c49e] shadow-lg shadow-[#273e44]/20 border border-[#e9c49e]/10'
+                                        : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                                        }`}
+                                >
+                                    Repasse
+                                </button>
+                                <button
                                     onClick={() => setActiveTab('inbox')}
                                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 flex items-center gap-2 ${activeTab === 'inbox'
                                         ? 'bg-[#273e44] text-[#e9c49e] shadow-lg shadow-[#273e44]/20 border border-[#e9c49e]/10'
@@ -1502,6 +1512,7 @@ const App: React.FC = () => {
                     />
                 )}
                 {activeTab === 'funserv' && <FunservManager patients={patients} onSavePatient={handleSavePatient} />}
+                {activeTab === 'repasse' && <ProfessionalPayouts patients={patients} convenios={convenioList} appointments={appointments} />}
                 {activeTab === 'inbox' && (
                     <Inbox
                         inbox={inbox}
