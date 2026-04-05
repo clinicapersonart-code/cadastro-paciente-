@@ -4,6 +4,7 @@ import { FunservManager } from './FunservManager';
 import { ProfessionalPayouts } from './ProfessionalPayouts';
 import { FaturamentoPagamentos } from './FaturamentoPagamentos';
 import { FaturamentoContasClinica } from './FaturamentoContasClinica';
+import { FunservCompetencias } from './FunservCompetencias';
 
 interface FaturamentoHubProps {
   patients: Patient[];
@@ -110,13 +111,16 @@ export const FaturamentoHub: React.FC<FaturamentoHubProps> = ({
           </div>
 
           {isFunserv ? (
-            <FunservManager patients={patients} onSavePatient={onSavePatient} />
+            <div className="space-y-4">
+              <FunservCompetencias />
+              <FunservManager patients={patients} onSavePatient={onSavePatient} />
+            </div>
           ) : (
             <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6 shadow-xl backdrop-blur-sm">
               <h4 className="text-white font-bold mb-2">{selectedConvenio || 'Convênio'}</h4>
               <p className="text-slate-400 text-sm">
                 Para este convênio, os valores ficam na subaba Pagamentos.
-                {' '}O painel operacional completo (glosas + gestão) está ativo no convênio Funserv.
+                {' '}O painel operacional completo (glosas + gestão por competência) está ativo no convênio Funserv.
               </p>
             </div>
           )}

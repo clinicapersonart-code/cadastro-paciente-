@@ -1,0 +1,345 @@
+import React, { useMemo, useState } from 'react';
+import * as XLSX from 'xlsx';
+import useLocalStorage from '../hooks/useLocalStorage';
+
+interface FaturamentoItem {
+  autorizacao: string;
+  data: string;
+  matricula: string;
+  nome: string;
+  lote: string;
+}
+
+interface RecebimentoItem {
+  nome: string;
+  data: string;
+  valorProcessado: number;
+  valorDiferenca: number;
+}
+
+interface CompetenciaData {
+  competencia: string; // YYYY-MM
+  faturamento?: {
+    fileName: string;
+    importedAt: string;
+    periodoDetectado?: string;
+    totalContas: number;
+    porPaciente: Array<{ nome: string; sessoes: number }>;
+    itens: FaturamentoItem[];
+  };
+  recebimento?: {
+    fileName: string;
+    importedAt: string;
+    dataPagamento?: string;
+    totalLinhas: number;
+    totalProcessado: number;
+    totalGlosa: number;
+    totalFinal: number;
+    itens: RecebimentoItem[];
+  };
+}
+
+const normalize = (v: unknown) => String(v ?? '').trim();
+
+const parseBRNumber = (raw: unknown): number | null => {
+  if (raw === null || raw === undefined || raw === '') return null;
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+  const txt = String(raw).trim().replace(/\s/g, '').replace(/R\$/gi, '').replace(/\./g, '').replace(',', '.');
+  if (!txt) return null;
+  const n = Number(txt);
+  return Number.isFinite(n) ? n : null;
+};
+
+const toCompetenciaFromDateBR = (dateBR: string): string => {
+  const m = dateBR.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return '';
+  return `${m[3]}-${m[2]}`;
+};
+
+const monthNow = () => {
+  const d = new Date();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  return `${d.getFullYear()}-${m}`;
+};
+
+const money = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const detectPeriodo = (rows: unknown[][]): string => {
+  for (const row of rows.slice(0, 40)) {
+    const txt = row.map((c) => normalize(c)).join(' | ');
+    if (/per[ií]odo/i.test(txt)) {
+      const date = txt.match(/(\d{2}\/\d{2}\/\d{4})/);
+      if (date?.[1]) return date[1];
+    }
+  }
+  return '';
+};
+
+const detectHeaderRowFaturamento = (rows: unknown[][]): number => {
+  for (let i = 0; i < Math.min(rows.length, 80); i += 1) {
+    const txt = rows[i].map((c) => normalize(c).toLowerCase()).join(' | ');
+    if (txt.includes('autoriz') && txt.includes('nome') && txt.includes('data')) return i;
+  }
+  return 20; // fallback comum
+};
+
+const parseFaturamentoRows = (rows: unknown[][]): FaturamentoItem[] => {
+  const headerRow = detectHeaderRowFaturamento(rows);
+  const out: FaturamentoItem[] = [];
+  const dedupe = new Set<string>();
+
+  for (let i = headerRow + 1; i < rows.length; i += 1) {
+    const row = rows[i] || [];
+    const autorizacao = normalize(row[0]);
+    const data = normalize(row[5]);
+    const matricula = normalize(row[10]);
+    const nome = normalize(row[12]);
+    const lote = normalize(row[20]);
+
+    if (!autorizacao || !nome) continue;
+    if (!/\d/.test(autorizacao)) continue;
+
+    const key = `${autorizacao}|${data}|${matricula}|${nome}|${lote}`;
+    if (dedupe.has(key)) continue;
+    dedupe.add(key);
+
+    out.push({ autorizacao, data, matricula, nome, lote });
+  }
+
+  return out;
+};
+
+const pickCol = (header: unknown[] | null, candidates: string[], fallback: number): number => {
+  if (!header) return fallback;
+  const lowered = header.map((v) => normalize(v).toLowerCase());
+  const idx = lowered.findIndex((cell) => candidates.some((c) => cell.includes(c)));
+  return idx >= 0 ? idx : fallback;
+};
+
+const parseRecebimentoRows = (rows: unknown[][]): RecebimentoItem[] => {
+  if (!rows.length) return [];
+  const header = rows[0] || null;
+  const colNome = pickCol(header, ['beneficiário', 'beneficiario', 'nome'], 13);
+  const colProc = pickCol(header, ['valor processado', 'processado'], 38);
+  const colDiff = pickCol(header, ['valor diferença', 'valor diferenca', 'diferença', 'diferenca'], 43);
+  const colData = pickCol(header, ['data'], 52);
+
+  const out: RecebimentoItem[] = [];
+  const dedupe = new Set<string>();
+
+  for (let i = 1; i < rows.length; i += 1) {
+    const row = rows[i] || [];
+    const nome = normalize(row[colNome]);
+    const data = normalize(row[colData]);
+    const valorProcessado = parseBRNumber(row[colProc]) ?? 0;
+    const valorDiferenca = parseBRNumber(row[colDiff]) ?? 0;
+
+    if (!nome) continue;
+    if (nome.toUpperCase().startsWith('[OUTROS]')) continue;
+    if (valorProcessado === 0 && valorDiferenca === 0) continue;
+
+    const key = `${nome}|${data}|${valorProcessado}|${valorDiferenca}`;
+    if (dedupe.has(key)) continue;
+    dedupe.add(key);
+
+    out.push({ nome, data, valorProcessado, valorDiferenca });
+  }
+
+  return out;
+};
+
+const detectPagamentoDate = (rows: unknown[][]): string => {
+  for (const row of rows.slice(0, 40)) {
+    const txt = row.map((c) => normalize(c)).join(' | ');
+    if (/pagamento|pagto|processamento/i.test(txt)) {
+      const m = txt.match(/(\d{2}\/\d{2}\/\d{4})/);
+      if (m?.[1]) return m[1];
+    }
+  }
+  return '';
+};
+
+export const FunservCompetencias: React.FC = () => {
+  const [competencias, setCompetencias] = useLocalStorage<Record<string, CompetenciaData>>(
+    'personart.funserv.competencias.v1',
+    {}
+  );
+  const [selectedCompetencia, setSelectedCompetencia] = useState(monthNow());
+  const [message, setMessage] = useState('');
+
+  const ordered = useMemo(
+    () => Object.values(competencias).sort((a, b) => b.competencia.localeCompare(a.competencia)),
+    [competencias]
+  );
+
+  const saveCompetencia = (competencia: string, updater: (prev?: CompetenciaData) => CompetenciaData) => {
+    setCompetencias((prev) => ({ ...prev, [competencia]: updater(prev[competencia]) }));
+  };
+
+  const onUploadFaturamento = async (file: File) => {
+    setMessage('');
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array', raw: true });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) as unknown[][];
+
+      const periodo = detectPeriodo(rows);
+      const compDetected = periodo ? toCompetenciaFromDateBR(periodo) : '';
+      const competencia = selectedCompetencia || compDetected || monthNow();
+
+      const itens = parseFaturamentoRows(rows);
+      const map = new Map<string, number>();
+      itens.forEach((it) => map.set(it.nome, (map.get(it.nome) || 0) + 1));
+      const porPaciente = Array.from(map.entries())
+        .map(([nome, sessoes]) => ({ nome, sessoes }))
+        .sort((a, b) => a.nome.localeCompare(b.nome));
+
+      saveCompetencia(competencia, (prev) => ({
+        competencia,
+        faturamento: {
+          fileName: file.name,
+          importedAt: new Date().toISOString(),
+          periodoDetectado: periodo || undefined,
+          totalContas: itens.length,
+          porPaciente,
+          itens
+        },
+        recebimento: prev?.recebimento
+      }));
+
+      setMessage(`Faturamento importado em ${competencia}: ${itens.length} sessões.`);
+      setSelectedCompetencia(competencia);
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : 'Falha ao importar faturamento.');
+    }
+  };
+
+  const onUploadRecebimento = async (file: File) => {
+    setMessage('');
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array', raw: true });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) as unknown[][];
+
+      const itens = parseRecebimentoRows(rows);
+      const dataPagto = detectPagamentoDate(rows);
+
+      const totalProcessado = itens.reduce((acc, i) => acc + i.valorProcessado, 0);
+      const totalGlosa = itens.reduce((acc, i) => acc + (i.valorDiferenca < 0 ? i.valorDiferenca : 0), 0);
+      const totalFinal = totalProcessado + totalGlosa;
+
+      const competencia = selectedCompetencia || monthNow();
+      saveCompetencia(competencia, (prev) => ({
+        competencia,
+        faturamento: prev?.faturamento,
+        recebimento: {
+          fileName: file.name,
+          importedAt: new Date().toISOString(),
+          dataPagamento: dataPagto || undefined,
+          totalLinhas: itens.length,
+          totalProcessado,
+          totalGlosa,
+          totalFinal,
+          itens
+        }
+      }));
+
+      setMessage(`Recebimento importado em ${competencia}: ${itens.length} linhas.`);
+      setSelectedCompetencia(competencia);
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : 'Falha ao importar recebimento.');
+    }
+  };
+
+  const statusOf = (c: CompetenciaData) => {
+    if (c.faturamento && c.recebimento) return 'Consolidado';
+    if (c.faturamento && !c.recebimento) return 'Faturado (projeção)';
+    if (!c.faturamento && c.recebimento) return 'Recebimento sem faturamento';
+    return 'Sem dados';
+  };
+
+  return (
+    <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-4 md:p-6 shadow-xl backdrop-blur-sm space-y-4">
+      <div className="flex flex-col md:flex-row md:items-end gap-3 md:justify-between">
+        <div>
+          <h3 className="text-lg font-bold text-white">Funserv por Competência</h3>
+          <p className="text-xs text-slate-400">Importe guia de faturamento e depois guia de recebimento para consolidar.</p>
+        </div>
+        <div className="flex items-end gap-2">
+          <div>
+            <label className="block text-[11px] text-slate-400 mb-1">Competência (atendimento)</label>
+            <input
+              type="month"
+              value={selectedCompetencia}
+              onChange={(e) => setSelectedCompetencia(e.target.value)}
+              className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <label className="inline-flex items-center gap-2 bg-sky-700 hover:bg-sky-600 text-white px-3 py-2 rounded-lg text-sm font-semibold cursor-pointer">
+          <span>Importar guia de faturamento (.xlsx)</span>
+          <input
+            type="file"
+            accept=".xlsx"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void onUploadFaturamento(file);
+            }}
+          />
+        </label>
+
+        <label className="inline-flex items-center gap-2 bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-2 rounded-lg text-sm font-semibold cursor-pointer">
+          <span>Importar guia de recebimento (.xlsx)</span>
+          <input
+            type="file"
+            accept=".xlsx"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void onUploadRecebimento(file);
+            }}
+          />
+        </label>
+      </div>
+
+      {message && <p className="text-sm text-slate-300">{message}</p>}
+
+      <div className="overflow-x-auto rounded-xl border border-slate-700">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-900 text-slate-300">
+            <tr>
+              <th className="text-left p-2">Competência</th>
+              <th className="text-left p-2">Status</th>
+              <th className="text-right p-2">Sessões faturadas</th>
+              <th className="text-right p-2">Recebimento (processado)</th>
+              <th className="text-right p-2">Glosa</th>
+              <th className="text-right p-2">Total final</th>
+              <th className="text-left p-2">Data pagamento</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ordered.map((c) => (
+              <tr key={c.competencia} className="border-t border-slate-800 text-slate-100">
+                <td className="p-2">{c.competencia}</td>
+                <td className="p-2">{statusOf(c)}</td>
+                <td className="p-2 text-right">{c.faturamento?.totalContas ?? 0}</td>
+                <td className="p-2 text-right text-emerald-300">{money(c.recebimento?.totalProcessado ?? 0)}</td>
+                <td className="p-2 text-right text-rose-400">{money(c.recebimento?.totalGlosa ?? 0)}</td>
+                <td className="p-2 text-right text-cyan-300 font-semibold">{money(c.recebimento?.totalFinal ?? 0)}</td>
+                <td className="p-2">{c.recebimento?.dataPagamento || '-'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {ordered.length === 0 && <p className="text-sm text-slate-400">Nenhuma competência importada ainda.</p>}
+    </div>
+  );
+};
