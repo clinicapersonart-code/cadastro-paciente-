@@ -181,6 +181,8 @@ export const FunservCompetencias: React.FC = () => {
   );
   const [selectedCompetencia, setSelectedCompetencia] = useState(monthNow());
   const [message, setMessage] = useState('');
+  const [showFaturamentoPreview, setShowFaturamentoPreview] = useState(false);
+  const [showRecebimentoPreview, setShowRecebimentoPreview] = useState(false);
 
   const ordered = useMemo(
     () => Object.values(competencias).sort((a, b) => b.competencia.localeCompare(a.competencia)),
@@ -357,11 +359,19 @@ export const FunservCompetencias: React.FC = () => {
             </button>
           </div>
           <div className="text-xs text-slate-300">
-            Arquivo: {selectedData?.faturamento?.fileName || '-'}
-            <br />
-            Sessões faturadas: {selectedData?.faturamento?.totalContas ?? 0}
-            <br />
-            Previsão de pagamento: {formatCompetenciaLabel(expectedRecebimentoMonth)} ({expectedRecebimentoMonth})
+            <div className="flex items-center gap-2 flex-wrap">
+              <span>Arquivo: {selectedData?.faturamento?.fileName || '-'}</span>
+              {!!selectedData?.faturamento && (
+                <button
+                  onClick={() => setShowFaturamentoPreview((v) => !v)}
+                  className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-[11px]"
+                >
+                  {showFaturamentoPreview ? 'Ocultar preview' : 'Ver preview'}
+                </button>
+              )}
+            </div>
+            <div className="mt-1">Sessões faturadas: {selectedData?.faturamento?.totalContas ?? 0}</div>
+            <div>Previsão de pagamento: {formatCompetenciaLabel(expectedRecebimentoMonth)} ({expectedRecebimentoMonth})</div>
           </div>
         </div>
 
@@ -389,11 +399,19 @@ export const FunservCompetencias: React.FC = () => {
             </button>
           </div>
           <div className="text-xs text-slate-300">
-            Arquivo: {selectedData?.recebimento?.fileName || '-'}
-            <br />
-            Linhas no recebimento: {selectedData?.recebimento?.totalLinhas ?? 0}
-            <br />
-            Data pagamento: {selectedData?.recebimento?.dataPagamento || '-'}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span>Arquivo: {selectedData?.recebimento?.fileName || '-'}</span>
+              {!!selectedData?.recebimento && (
+                <button
+                  onClick={() => setShowRecebimentoPreview((v) => !v)}
+                  className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-[11px]"
+                >
+                  {showRecebimentoPreview ? 'Ocultar preview' : 'Ver preview'}
+                </button>
+              )}
+            </div>
+            <div className="mt-1">Linhas no recebimento: {selectedData?.recebimento?.totalLinhas ?? 0}</div>
+            <div>Data pagamento: {selectedData?.recebimento?.dataPagamento || '-'}</div>
           </div>
         </div>
       </div>
@@ -432,7 +450,7 @@ export const FunservCompetencias: React.FC = () => {
         </table>
       </div>
 
-      {selectedData?.faturamento && (
+      {selectedData?.faturamento && showFaturamentoPreview && (
         <div className="bg-slate-900/30 border border-slate-700 rounded-xl p-3 space-y-2">
           <h4 className="text-white font-semibold">Preview • guia de faturamento ({selectedCompetencia})</h4>
           <div className="overflow-x-auto rounded-lg border border-slate-700">
@@ -445,7 +463,7 @@ export const FunservCompetencias: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {selectedData.faturamento.itens.slice(0, 12).map((it, idx) => (
+                {selectedData.faturamento.itens.map((it, idx) => (
                   <tr key={`${it.autorizacao}-${idx}`} className="border-t border-slate-800 text-slate-200">
                     <td className="p-2">{it.data}</td>
                     <td className="p-2">{it.nome}</td>
@@ -455,11 +473,11 @@ export const FunservCompetencias: React.FC = () => {
               </tbody>
             </table>
           </div>
-          <p className="text-[11px] text-slate-400">Mostrando 12 de {selectedData.faturamento.itens.length} linhas.</p>
+          <p className="text-[11px] text-slate-400">Mostrando todas as {selectedData.faturamento.itens.length} linhas.</p>
         </div>
       )}
 
-      {selectedData?.recebimento && (
+      {selectedData?.recebimento && showRecebimentoPreview && (
         <div className="bg-slate-900/30 border border-slate-700 rounded-xl p-3 space-y-2">
           <h4 className="text-white font-semibold">Preview • guia de recebimento ({selectedCompetencia})</h4>
           <div className="overflow-x-auto rounded-lg border border-slate-700">
@@ -473,7 +491,7 @@ export const FunservCompetencias: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {selectedData.recebimento.itens.slice(0, 12).map((it, idx) => (
+                {selectedData.recebimento.itens.map((it, idx) => (
                   <tr key={`${it.nome}-${idx}`} className="border-t border-slate-800 text-slate-200">
                     <td className="p-2">{it.data}</td>
                     <td className="p-2">{it.nome}</td>
@@ -484,7 +502,7 @@ export const FunservCompetencias: React.FC = () => {
               </tbody>
             </table>
           </div>
-          <p className="text-[11px] text-slate-400">Mostrando 12 de {selectedData.recebimento.itens.length} linhas.</p>
+          <p className="text-[11px] text-slate-400">Mostrando todas as {selectedData.recebimento.itens.length} linhas.</p>
         </div>
       )}
 

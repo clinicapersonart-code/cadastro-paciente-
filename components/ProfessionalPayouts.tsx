@@ -28,6 +28,13 @@ const monthNow = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 };
 
+const addMonths = (competencia: string, months: number): string => {
+  const [y, m] = competencia.split('-').map(Number);
+  if (!y || !m) return '';
+  const d = new Date(y, m - 1 + months, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+};
+
 const toCompetencia = (dateStr: string): string => {
   const txt = String(dateStr || '').trim();
   if (!txt) return '';
@@ -43,7 +50,7 @@ const toCompetencia = (dateStr: string): string => {
 
 export const ProfessionalPayouts: React.FC<ProfessionalPayoutsProps> = ({ patients, convenios, appointments }) => {
   const [selectedProfessional, setSelectedProfessional] = useState('');
-  const [selectedCompetencia, setSelectedCompetencia] = useState(monthNow());
+  const [selectedMesRecebimento, setSelectedMesRecebimento] = useState(monthNow());
 
   const convenioMap = useMemo(() => {
     const map = new Map<string, ConvenioConfig>();
@@ -70,7 +77,9 @@ export const ProfessionalPayouts: React.FC<ProfessionalPayoutsProps> = ({ patien
           if (a.status !== 'Realizado') return false;
           if (a.patientId !== patient.id) return false;
           if (normalize(a.profissional) !== normalize(profissional)) return false;
-          return toCompetencia(a.date) === selectedCompetencia;
+          const competenciaAtendimento = toCompetencia(a.date);
+          const mesRecebimentoPrevisto = addMonths(competenciaAtendimento, 2);
+          return mesRecebimentoPrevisto === selectedMesRecebimento;
         }).length;
 
         return {
@@ -86,7 +95,7 @@ export const ProfessionalPayouts: React.FC<ProfessionalPayoutsProps> = ({ patien
       .filter((r) => r.realizedSessions > 0)
       .filter((r) => !selectedProfessional || normalize(r.profissional) === normalize(selectedProfessional))
       .sort((a, b) => a.profissional.localeCompare(b.profissional) || a.patientName.localeCompare(b.patientName));
-  }, [patients, convenios, appointments, convenioMap, selectedProfessional, selectedCompetencia]);
+  }, [patients, convenios, appointments, convenioMap, selectedProfessional, selectedMesRecebimento]);
 
   const professionals = useMemo(() => {
     const set = new Set(rows.map((r) => r.profissional));
@@ -106,26 +115,24 @@ export const ProfessionalPayouts: React.FC<ProfessionalPayoutsProps> = ({ patien
       .sort((a, b) => b.total - a.total);
   }, [rows]);
 
-  const totalGeral = useMemo(() => rows.reduce((acc, r) => acc + r.totalPayout, 0), [rows]);
-
   return (
     <div className="space-y-6">
       <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6 shadow-xl backdrop-blur-sm">
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-4">
           <div>
             <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-              <ChartBarIcon className="w-6 h-6 text-emerald-400" /> Repasses por Competência
+              <ChartBarIcon className="w-6 h-6 text-emerald-400" /> Repasses por Mês de Recebimento
             </h2>
-            <p className="text-slate-400 text-sm">Projeção do repasse por mês de atendimento (sem guia de recebimento aqui).</p>
+            <p className="text-slate-400 text-sm">Cálculo por mês previsto de recebimento (competência + 2 meses).</p>
           </div>
 
           <div className="flex items-end gap-2">
             <div>
-              <label className="block text-[11px] text-slate-400 mb-1">Competência</label>
+              <label className="block text-[11px] text-slate-400 mb-1">Mês de recebimento</label>
               <input
                 type="month"
-                value={selectedCompetencia}
-                onChange={(e) => setSelectedCompetencia(e.target.value)}
+                value={selectedMesRecebimento}
+                onChange={(e) => setSelectedMesRecebimento(e.target.value)}
                 className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white"
               />
             </div>
@@ -143,11 +150,6 @@ export const ProfessionalPayouts: React.FC<ProfessionalPayoutsProps> = ({ patien
           </div>
         </div>
 
-        <div className="mt-4 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 flex justify-end">
-          <span className="text-slate-400 text-xs mr-2">Total projeção ({selectedCompetencia}):</span>
-          <span className="text-cyan-300 font-bold">{formatCurrencyBR(totalGeral)}</span>
-        </div>
-
         <div className="overflow-x-auto rounded-xl border border-slate-700 mt-4">
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-300">
@@ -156,7 +158,7 @@ export const ProfessionalPayouts: React.FC<ProfessionalPayoutsProps> = ({ patien
                 <th className="text-left p-2">Profissional</th>
                 <th className="text-left p-2">Convênio</th>
                 <th className="text-right p-2">Repasse/sessão</th>
-                <th className="text-right p-2">Sessões ({selectedCompetencia})</th>
+                <th className="text-right p-2">Sessões</th>
                 <th className="text-right p-2">Total projeção</th>
               </tr>
             </thead>
@@ -177,7 +179,7 @@ export const ProfessionalPayouts: React.FC<ProfessionalPayoutsProps> = ({ patien
       </div>
 
       <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6 shadow-xl backdrop-blur-sm">
-        <h3 className="text-white font-bold mb-3">Resumo por profissional ({selectedCompetencia})</h3>
+        <h3 className="text-white font-bold mb-3">Resumo por profissional ({selectedMesRecebimento})</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {summary.map((s) => (
             <div key={s.name} className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 space-y-1">
