@@ -58,8 +58,23 @@ const toCompetenciaFromDateBR = (dateBR: string): string => {
 
 const monthNow = () => {
   const d = new Date();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  return `${d.getFullYear()}-${m}`;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+};
+
+const addMonths = (competencia: string, months: number): string => {
+  const [y, m] = competencia.split('-').map(Number);
+  if (!y || !m) return competencia;
+  const d = new Date(y, m - 1 + months, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+};
+
+const compareCompetencia = (a: string, b: string): number => a.localeCompare(b);
+
+const formatCompetenciaLabel = (comp: string): string => {
+  const [y, m] = comp.split('-');
+  if (!y || !m) return comp;
+  const date = new Date(Number(y), Number(m) - 1, 1);
+  return date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 };
 
 const money = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -80,7 +95,7 @@ const detectHeaderRowFaturamento = (rows: unknown[][]): number => {
     const txt = rows[i].map((c) => normalize(c).toLowerCase()).join(' | ');
     if (txt.includes('autoriz') && txt.includes('nome') && txt.includes('data')) return i;
   }
-  return 20; // fallback comum
+  return 20;
 };
 
 const parseFaturamentoRows = (rows: unknown[][]): FaturamentoItem[] => {
@@ -172,6 +187,13 @@ export const FunservCompetencias: React.FC = () => {
     [competencias]
   );
 
+  const selectedData = competencias[selectedCompetencia];
+  const expectedRecebimentoMonth = addMonths(selectedCompetencia, 2);
+  const shouldWarnMissingRecebimento =
+    !!selectedData?.faturamento &&
+    !selectedData?.recebimento &&
+    compareCompetencia(monthNow(), expectedRecebimentoMonth) >= 0;
+
   const saveCompetencia = (competencia: string, updater: (prev?: CompetenciaData) => CompetenciaData) => {
     setCompetencias((prev) => ({ ...prev, [competencia]: updater(prev[competencia]) }));
   };
@@ -186,7 +208,7 @@ export const FunservCompetencias: React.FC = () => {
 
       const periodo = detectPeriodo(rows);
       const compDetected = periodo ? toCompetenciaFromDateBR(periodo) : '';
-      const competencia = selectedCompetencia || compDetected || monthNow();
+      const competencia = compDetected || selectedCompetencia || monthNow();
 
       const itens = parseFaturamentoRows(rows);
       const map = new Map<string, number>();
@@ -208,8 +230,8 @@ export const FunservCompetencias: React.FC = () => {
         recebimento: prev?.recebimento
       }));
 
-      setMessage(`Faturamento importado em ${competencia}: ${itens.length} sessões.`);
       setSelectedCompetencia(competencia);
+      setMessage(`Faturamento importado em ${competencia}: ${itens.length} sessões. Previsão de recebimento: ${addMonths(competencia, 2)}.`);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : 'Falha ao importar faturamento.');
     }
@@ -247,15 +269,41 @@ export const FunservCompetencias: React.FC = () => {
       }));
 
       setMessage(`Recebimento importado em ${competencia}: ${itens.length} linhas.`);
-      setSelectedCompetencia(competencia);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : 'Falha ao importar recebimento.');
     }
   };
 
+  const removeFaturamento = () => {
+    if (!selectedData?.faturamento) return;
+    if (!confirm(`Remover guia de faturamento da competência ${selectedCompetencia}?`)) return;
+
+    saveCompetencia(selectedCompetencia, (prev) => ({
+      competencia: selectedCompetencia,
+      faturamento: undefined,
+      recebimento: prev?.recebimento
+    }));
+    setMessage(`Guia de faturamento removida de ${selectedCompetencia}.`);
+  };
+
+  const removeRecebimento = () => {
+    if (!selectedData?.recebimento) return;
+    if (!confirm(`Remover guia de recebimento da competência ${selectedCompetencia}?`)) return;
+
+    saveCompetencia(selectedCompetencia, (prev) => ({
+      competencia: selectedCompetencia,
+      faturamento: prev?.faturamento,
+      recebimento: undefined
+    }));
+    setMessage(`Guia de recebimento removida de ${selectedCompetencia}.`);
+  };
+
   const statusOf = (c: CompetenciaData) => {
+    const previsto = addMonths(c.competencia, 2);
     if (c.faturamento && c.recebimento) return 'Consolidado';
-    if (c.faturamento && !c.recebimento) return 'Faturado (projeção)';
+    if (c.faturamento && !c.recebimento) {
+      return compareCompetencia(monthNow(), previsto) >= 0 ? 'Faturado (faltando recebimento)' : 'Faturado (aguardando recebimento)';
+    }
     if (!c.faturamento && c.recebimento) return 'Recebimento sem faturamento';
     return 'Sem dados';
   };
@@ -265,47 +313,89 @@ export const FunservCompetencias: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-end gap-3 md:justify-between">
         <div>
           <h3 className="text-lg font-bold text-white">Funserv por Competência</h3>
-          <p className="text-xs text-slate-400">Importe guia de faturamento e depois guia de recebimento para consolidar.</p>
+          <p className="text-xs text-slate-400">Guias separadas: faturamento (sessões) e recebimento (consolidação).</p>
         </div>
-        <div className="flex items-end gap-2">
-          <div>
-            <label className="block text-[11px] text-slate-400 mb-1">Competência (atendimento)</label>
-            <input
-              type="month"
-              value={selectedCompetencia}
-              onChange={(e) => setSelectedCompetencia(e.target.value)}
-              className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
-            />
-          </div>
+        <div>
+          <label className="block text-[11px] text-slate-400 mb-1">Competência (atendimento)</label>
+          <input
+            type="month"
+            value={selectedCompetencia}
+            onChange={(e) => setSelectedCompetencia(e.target.value)}
+            className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+          />
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <label className="inline-flex items-center gap-2 bg-sky-700 hover:bg-sky-600 text-white px-3 py-2 rounded-lg text-sm font-semibold cursor-pointer">
-          <span>Importar guia de faturamento (.xlsx)</span>
-          <input
-            type="file"
-            accept=".xlsx"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void onUploadFaturamento(file);
-            }}
-          />
-        </label>
+      {shouldWarnMissingRecebimento && (
+        <div className="bg-amber-900/30 border border-amber-700 rounded-lg px-3 py-2 text-amber-200 text-sm">
+          Atenção: para a competência {selectedCompetencia}, o recebimento já deveria ter vindo em {expectedRecebimentoMonth} e ainda não foi inserido.
+        </div>
+      )}
 
-        <label className="inline-flex items-center gap-2 bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-2 rounded-lg text-sm font-semibold cursor-pointer">
-          <span>Importar guia de recebimento (.xlsx)</span>
-          <input
-            type="file"
-            accept=".xlsx"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void onUploadRecebimento(file);
-            }}
-          />
-        </label>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <div className="bg-slate-900/40 border border-slate-700 rounded-xl p-3 space-y-2">
+          <h4 className="text-white font-semibold">1) Guia de Faturamento (sessões)</h4>
+          <div className="flex flex-wrap gap-2">
+            <label className="inline-flex items-center gap-2 bg-sky-700 hover:bg-sky-600 text-white px-3 py-2 rounded-lg text-sm font-semibold cursor-pointer">
+              <span>Importar faturamento (.xlsx)</span>
+              <input
+                type="file"
+                accept=".xlsx"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void onUploadFaturamento(file);
+                }}
+              />
+            </label>
+            <button
+              onClick={removeFaturamento}
+              disabled={!selectedData?.faturamento}
+              className="px-3 py-2 rounded-lg text-sm font-semibold bg-rose-700 hover:bg-rose-600 disabled:opacity-50 text-white"
+            >
+              Remover guia faturamento
+            </button>
+          </div>
+          <div className="text-xs text-slate-300">
+            Arquivo: {selectedData?.faturamento?.fileName || '-'}
+            <br />
+            Sessões faturadas: {selectedData?.faturamento?.totalContas ?? 0}
+            <br />
+            Previsão de pagamento: {formatCompetenciaLabel(expectedRecebimentoMonth)} ({expectedRecebimentoMonth})
+          </div>
+        </div>
+
+        <div className="bg-slate-900/40 border border-slate-700 rounded-xl p-3 space-y-2">
+          <h4 className="text-white font-semibold">2) Guia de Recebimento (consolidação)</h4>
+          <div className="flex flex-wrap gap-2">
+            <label className="inline-flex items-center gap-2 bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-2 rounded-lg text-sm font-semibold cursor-pointer">
+              <span>Importar recebimento (.xlsx)</span>
+              <input
+                type="file"
+                accept=".xlsx"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void onUploadRecebimento(file);
+                }}
+              />
+            </label>
+            <button
+              onClick={removeRecebimento}
+              disabled={!selectedData?.recebimento}
+              className="px-3 py-2 rounded-lg text-sm font-semibold bg-rose-700 hover:bg-rose-600 disabled:opacity-50 text-white"
+            >
+              Remover guia recebimento
+            </button>
+          </div>
+          <div className="text-xs text-slate-300">
+            Arquivo: {selectedData?.recebimento?.fileName || '-'}
+            <br />
+            Linhas no recebimento: {selectedData?.recebimento?.totalLinhas ?? 0}
+            <br />
+            Data pagamento: {selectedData?.recebimento?.dataPagamento || '-'}
+          </div>
+        </div>
       </div>
 
       {message && <p className="text-sm text-slate-300">{message}</p>}
@@ -317,27 +407,86 @@ export const FunservCompetencias: React.FC = () => {
               <th className="text-left p-2">Competência</th>
               <th className="text-left p-2">Status</th>
               <th className="text-right p-2">Sessões faturadas</th>
+              <th className="text-left p-2">Mês previsto de recebimento</th>
               <th className="text-right p-2">Recebimento (processado)</th>
               <th className="text-right p-2">Glosa</th>
               <th className="text-right p-2">Total final</th>
-              <th className="text-left p-2">Data pagamento</th>
             </tr>
           </thead>
           <tbody>
-            {ordered.map((c) => (
-              <tr key={c.competencia} className="border-t border-slate-800 text-slate-100">
-                <td className="p-2">{c.competencia}</td>
-                <td className="p-2">{statusOf(c)}</td>
-                <td className="p-2 text-right">{c.faturamento?.totalContas ?? 0}</td>
-                <td className="p-2 text-right text-emerald-300">{money(c.recebimento?.totalProcessado ?? 0)}</td>
-                <td className="p-2 text-right text-rose-400">{money(c.recebimento?.totalGlosa ?? 0)}</td>
-                <td className="p-2 text-right text-cyan-300 font-semibold">{money(c.recebimento?.totalFinal ?? 0)}</td>
-                <td className="p-2">{c.recebimento?.dataPagamento || '-'}</td>
-              </tr>
-            ))}
+            {ordered.map((c) => {
+              const previsao = addMonths(c.competencia, 2);
+              return (
+                <tr key={c.competencia} className="border-t border-slate-800 text-slate-100">
+                  <td className="p-2">{c.competencia}</td>
+                  <td className="p-2">{statusOf(c)}</td>
+                  <td className="p-2 text-right">{c.faturamento?.totalContas ?? 0}</td>
+                  <td className="p-2">{previsao}</td>
+                  <td className="p-2 text-right text-emerald-300">{money(c.recebimento?.totalProcessado ?? 0)}</td>
+                  <td className="p-2 text-right text-rose-400">{money(c.recebimento?.totalGlosa ?? 0)}</td>
+                  <td className="p-2 text-right text-cyan-300 font-semibold">{money(c.recebimento?.totalFinal ?? 0)}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
+
+      {selectedData?.faturamento && (
+        <div className="bg-slate-900/30 border border-slate-700 rounded-xl p-3 space-y-2">
+          <h4 className="text-white font-semibold">Preview • guia de faturamento ({selectedCompetencia})</h4>
+          <div className="overflow-x-auto rounded-lg border border-slate-700">
+            <table className="w-full text-xs">
+              <thead className="bg-slate-900 text-slate-300">
+                <tr>
+                  <th className="text-left p-2">Data</th>
+                  <th className="text-left p-2">Paciente</th>
+                  <th className="text-left p-2">Autorização</th>
+                </tr>
+              </thead>
+              <tbody>
+                {selectedData.faturamento.itens.slice(0, 12).map((it, idx) => (
+                  <tr key={`${it.autorizacao}-${idx}`} className="border-t border-slate-800 text-slate-200">
+                    <td className="p-2">{it.data}</td>
+                    <td className="p-2">{it.nome}</td>
+                    <td className="p-2">{it.autorizacao}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[11px] text-slate-400">Mostrando 12 de {selectedData.faturamento.itens.length} linhas.</p>
+        </div>
+      )}
+
+      {selectedData?.recebimento && (
+        <div className="bg-slate-900/30 border border-slate-700 rounded-xl p-3 space-y-2">
+          <h4 className="text-white font-semibold">Preview • guia de recebimento ({selectedCompetencia})</h4>
+          <div className="overflow-x-auto rounded-lg border border-slate-700">
+            <table className="w-full text-xs">
+              <thead className="bg-slate-900 text-slate-300">
+                <tr>
+                  <th className="text-left p-2">Data</th>
+                  <th className="text-left p-2">Paciente</th>
+                  <th className="text-right p-2">Processado</th>
+                  <th className="text-right p-2">Diferença</th>
+                </tr>
+              </thead>
+              <tbody>
+                {selectedData.recebimento.itens.slice(0, 12).map((it, idx) => (
+                  <tr key={`${it.nome}-${idx}`} className="border-t border-slate-800 text-slate-200">
+                    <td className="p-2">{it.data}</td>
+                    <td className="p-2">{it.nome}</td>
+                    <td className="p-2 text-right">{money(it.valorProcessado)}</td>
+                    <td className="p-2 text-right">{money(it.valorDiferenca)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[11px] text-slate-400">Mostrando 12 de {selectedData.recebimento.itens.length} linhas.</p>
+        </div>
+      )}
 
       {ordered.length === 0 && <p className="text-sm text-slate-400">Nenhuma competência importada ainda.</p>}
     </div>
