@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Appointment, ConvenioConfig, Patient } from '../types';
-import { FunservManager } from './FunservManager';
 import { ProfessionalPayouts } from './ProfessionalPayouts';
 import { FaturamentoPagamentos } from './FaturamentoPagamentos';
 import { FaturamentoContasClinica } from './FaturamentoContasClinica';
@@ -19,7 +18,7 @@ const normalize = (s?: string) => (s || '').trim().toLowerCase();
 
 export const FaturamentoHub: React.FC<FaturamentoHubProps> = ({
   patients,
-  onSavePatient,
+  onSavePatient: _onSavePatient,
   convenios,
   setConvenios,
   appointments
@@ -146,10 +145,7 @@ export const FaturamentoHub: React.FC<FaturamentoHubProps> = ({
               </div>
 
               {isFunserv ? (
-                <div className="space-y-4">
-                  <FunservCompetencias />
-                  <FunservManager patients={patients} onSavePatient={onSavePatient} />
-                </div>
+                <FunservCompetencias />
               ) : (
                 <ConvenioManualLancamentos convenioName={selectedConvenio || 'Convênio'} />
               )}
