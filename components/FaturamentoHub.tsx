@@ -5,6 +5,7 @@ import { ProfessionalPayouts } from './ProfessionalPayouts';
 import { FaturamentoPagamentos } from './FaturamentoPagamentos';
 import { FaturamentoContasClinica } from './FaturamentoContasClinica';
 import { FunservCompetencias } from './FunservCompetencias';
+import { ConvenioManualLancamentos } from './ConvenioManualLancamentos';
 
 interface FaturamentoHubProps {
   patients: Patient[];
@@ -24,6 +25,27 @@ export const FaturamentoHub: React.FC<FaturamentoHubProps> = ({
   appointments
 }) => {
   const [subTab, setSubTab] = useState<'pagamentos' | 'convenios' | 'repasse' | 'contas'>('pagamentos');
+
+  useEffect(() => {
+    setConvenios((prev) => {
+      const required = ['Danamed', 'Gama'];
+      const has = new Set(prev.map((c) => normalize(c.name)));
+      const missing = required.filter((name) => !has.has(normalize(name)));
+      if (missing.length === 0) return prev;
+
+      const additions: ConvenioConfig[] = missing.map((name) => ({
+        id: `conv-${name.toLowerCase()}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        name,
+        active: true,
+        payoutPercent: 75,
+        payoutPrice: undefined,
+        price: undefined,
+        durationMin: 45
+      }));
+
+      return [...prev, ...additions];
+    });
+  }, [setConvenios]);
 
   const convenioNames = useMemo(
     () => Array.from(new Set(convenios.map((c) => c.name).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
@@ -116,13 +138,7 @@ export const FaturamentoHub: React.FC<FaturamentoHubProps> = ({
               <FunservManager patients={patients} onSavePatient={onSavePatient} />
             </div>
           ) : (
-            <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6 shadow-xl backdrop-blur-sm">
-              <h4 className="text-white font-bold mb-2">{selectedConvenio || 'Convênio'}</h4>
-              <p className="text-slate-400 text-sm">
-                Para este convênio, os valores ficam na subaba Pagamentos.
-                {' '}O painel operacional completo (glosas + gestão por competência) está ativo no convênio Funserv.
-              </p>
-            </div>
+            <ConvenioManualLancamentos convenioName={selectedConvenio || 'Convênio'} />
           )}
         </div>
       )}
