@@ -24,7 +24,8 @@ export const FaturamentoHub: React.FC<FaturamentoHubProps> = ({
   setConvenios,
   appointments
 }) => {
-  const [subTab, setSubTab] = useState<'pagamentos' | 'convenios' | 'repasse' | 'contas'>('pagamentos');
+  const [mainTab, setMainTab] = useState<'pagamentos' | 'contas'>('pagamentos');
+  const [pagamentosTab, setPagamentosTab] = useState<'valores' | 'convenios' | 'repasses'>('convenios');
 
   useEffect(() => {
     setConvenios((prev) => {
@@ -70,8 +71,8 @@ export const FaturamentoHub: React.FC<FaturamentoHubProps> = ({
     <div className="space-y-4">
       <div className="bg-slate-900/60 border border-slate-700 rounded-xl p-2 inline-flex gap-2 flex-wrap">
         <button
-          onClick={() => setSubTab('pagamentos')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition ${subTab === 'pagamentos'
+          onClick={() => setMainTab('pagamentos')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition ${mainTab === 'pagamentos'
             ? 'bg-[#273e44] text-[#e9c49e] border border-[#e9c49e]/10'
             : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
             }`}
@@ -80,28 +81,8 @@ export const FaturamentoHub: React.FC<FaturamentoHubProps> = ({
         </button>
 
         <button
-          onClick={() => setSubTab('convenios')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition ${subTab === 'convenios'
-            ? 'bg-[#273e44] text-[#e9c49e] border border-[#e9c49e]/10'
-            : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
-            }`}
-        >
-          Convênios
-        </button>
-
-        <button
-          onClick={() => setSubTab('repasse')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition ${subTab === 'repasse'
-            ? 'bg-[#273e44] text-[#e9c49e] border border-[#e9c49e]/10'
-            : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
-            }`}
-        >
-          Repasses
-        </button>
-
-        <button
-          onClick={() => setSubTab('contas')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition ${subTab === 'contas'
+          onClick={() => setMainTab('contas')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition ${mainTab === 'contas'
             ? 'bg-[#273e44] text-[#e9c49e] border border-[#e9c49e]/10'
             : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
             }`}
@@ -110,41 +91,80 @@ export const FaturamentoHub: React.FC<FaturamentoHubProps> = ({
         </button>
       </div>
 
-      {subTab === 'pagamentos' && <FaturamentoPagamentos convenios={convenios} setConvenios={setConvenios} />}
-
-      {subTab === 'convenios' && (
+      {mainTab === 'pagamentos' && (
         <div className="space-y-4">
-          <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-4 md:p-6 shadow-xl backdrop-blur-sm">
-            <h3 className="text-lg font-bold text-white mb-3">Convênios cadastrados</h3>
-            <div className="flex flex-wrap gap-2">
-              {convenioNames.map((name) => (
-                <button
-                  key={name}
-                  onClick={() => setSelectedConvenio(name)}
-                  className={`px-3 py-2 rounded-lg text-sm transition ${selectedConvenio === name
-                    ? 'bg-[#273e44] text-[#e9c49e] border border-[#e9c49e]/20'
-                    : 'bg-slate-900 text-slate-300 border border-slate-700 hover:bg-slate-800'
-                    }`}
-                >
-                  {name}
-                </button>
-              ))}
-            </div>
+          <div className="bg-slate-900/60 border border-slate-700 rounded-xl p-2 inline-flex gap-2 flex-wrap">
+            <button
+              onClick={() => setPagamentosTab('valores')}
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition ${pagamentosTab === 'valores'
+                ? 'bg-[#273e44] text-[#e9c49e] border border-[#e9c49e]/10'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                }`}
+            >
+              Tabela de valores
+            </button>
+            <button
+              onClick={() => setPagamentosTab('convenios')}
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition ${pagamentosTab === 'convenios'
+                ? 'bg-[#273e44] text-[#e9c49e] border border-[#e9c49e]/10'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                }`}
+            >
+              Convênios
+            </button>
+            <button
+              onClick={() => setPagamentosTab('repasses')}
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition ${pagamentosTab === 'repasses'
+                ? 'bg-[#273e44] text-[#e9c49e] border border-[#e9c49e]/10'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                }`}
+            >
+              Repasses
+            </button>
           </div>
 
-          {isFunserv ? (
+          {pagamentosTab === 'valores' && <FaturamentoPagamentos convenios={convenios} setConvenios={setConvenios} />}
+
+          {pagamentosTab === 'convenios' && (
             <div className="space-y-4">
-              <FunservCompetencias />
-              <FunservManager patients={patients} onSavePatient={onSavePatient} />
+              <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-4 md:p-6 shadow-xl backdrop-blur-sm">
+                <h3 className="text-lg font-bold text-white mb-3">Convênios cadastrados</h3>
+                <div className="flex flex-wrap gap-2">
+                  {convenioNames.map((name) => (
+                    <button
+                      key={name}
+                      onClick={() => setSelectedConvenio(name)}
+                      className={`px-3 py-2 rounded-lg text-sm transition ${selectedConvenio === name
+                        ? 'bg-[#273e44] text-[#e9c49e] border border-[#e9c49e]/20'
+                        : 'bg-slate-900 text-slate-300 border border-slate-700 hover:bg-slate-800'
+                        }`}
+                    >
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {isFunserv ? (
+                <div className="space-y-4">
+                  <FunservCompetencias />
+                  <FunservManager patients={patients} onSavePatient={onSavePatient} />
+                </div>
+              ) : (
+                <ConvenioManualLancamentos convenioName={selectedConvenio || 'Convênio'} />
+              )}
             </div>
-          ) : (
-            <ConvenioManualLancamentos convenioName={selectedConvenio || 'Convênio'} />
+          )}
+
+          {pagamentosTab === 'repasses' && (
+            <ProfessionalPayouts patients={patients} convenios={convenios} appointments={appointments} />
           )}
         </div>
       )}
 
-      {subTab === 'repasse' && <ProfessionalPayouts patients={patients} convenios={convenios} appointments={appointments} />}
-      {subTab === 'contas' && <FaturamentoContasClinica appointments={appointments} convenios={convenios} patients={patients} />}
+      {mainTab === 'contas' && (
+        <FaturamentoContasClinica appointments={appointments} convenios={convenios} patients={patients} />
+      )}
     </div>
   );
 };
