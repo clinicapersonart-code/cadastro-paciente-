@@ -236,6 +236,7 @@ export const FunservCompetencias: React.FC = () => {
   );
 
   const selectedData = competencias[selectedCompetencia];
+  const visibleCompetencias = selectedData ? [selectedData] : [];
   const expectedRecebimentoMonth = addMonths(selectedCompetencia, 2);
   const shouldWarnMissingRecebimento =
     !!selectedData?.faturamento &&
@@ -432,10 +433,10 @@ export const FunservCompetencias: React.FC = () => {
           <h4 className="text-white font-semibold">1) Guia de Faturamento (sessões)</h4>
           <div className="flex flex-wrap gap-2">
             <label className="inline-flex items-center gap-2 bg-sky-700 hover:bg-sky-600 text-white px-3 py-2 rounded-lg text-sm font-semibold cursor-pointer">
-              <span>Importar faturamento (.xlsx)</span>
+              <span>Importar faturamento (.xls/.xlsx)</span>
               <input
                 type="file"
-                accept=".xlsx"
+                accept=".xls,.xlsx"
                 className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
@@ -465,6 +466,7 @@ export const FunservCompetencias: React.FC = () => {
             </div>
             <div className="mt-1">Sessões faturadas: {selectedData?.faturamento?.totalContas ?? 0}</div>
             <div>Previsão de pagamento: {formatCompetenciaLabel(expectedRecebimentoMonth)} ({expectedRecebimentoMonth})</div>
+            <div className="text-[11px] text-slate-400 mt-1">Ao trocar o mês, esse bloco mostra o arquivo e os dados que foram importados naquela competência.</div>
           </div>
         </div>
 
@@ -472,10 +474,10 @@ export const FunservCompetencias: React.FC = () => {
           <h4 className="text-white font-semibold">2) Guia de Recebimento (consolidação)</h4>
           <div className="flex flex-wrap gap-2">
             <label className="inline-flex items-center gap-2 bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-2 rounded-lg text-sm font-semibold cursor-pointer">
-              <span>Importar recebimento (.xlsx)</span>
+              <span>Importar recebimento (.xls/.xlsx)</span>
               <input
                 type="file"
-                accept=".xlsx"
+                accept=".xls,.xlsx"
                 className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
@@ -525,7 +527,7 @@ export const FunservCompetencias: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            {ordered.map((c) => {
+            {visibleCompetencias.map((c) => {
               const previsao = addMonths(c.competencia, 2);
               return (
                 <tr key={c.competencia} className="border-t border-slate-800 text-slate-100">
@@ -647,6 +649,9 @@ export const FunservCompetencias: React.FC = () => {
       )}
 
       {ordered.length === 0 && <p className="text-sm text-slate-400">Nenhuma competência importada ainda.</p>}
+      {ordered.length > 0 && !selectedData && (
+        <p className="text-sm text-slate-400">Não há dados importados para a competência selecionada.</p>
+      )}
     </div>
   );
 };
