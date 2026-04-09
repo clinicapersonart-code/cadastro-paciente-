@@ -220,6 +220,31 @@ const detectPagamentoDate = (rows: unknown[][]): string => {
   return '';
 };
 
+const toXlsxFileName = (fileName: string): string => fileName.replace(/\.xls$/i, '.xlsx');
+
+const readWorkbookFromUpload = async (file: File) => {
+  const buf = await file.arrayBuffer();
+  const originalWorkbook = XLSX.read(buf, { type: 'array', raw: true });
+  const isXls = /\.xls$/i.test(file.name) && !/\.xlsx$/i.test(file.name);
+
+  if (!isXls) {
+    return {
+      workbook: originalWorkbook,
+      normalizedFileName: file.name,
+      convertedFromXls: false
+    };
+  }
+
+  const convertedBuffer = XLSX.write(originalWorkbook, { bookType: 'xlsx', type: 'array' });
+  const normalizedWorkbook = XLSX.read(convertedBuffer, { type: 'array', raw: true });
+
+  return {
+    workbook: normalizedWorkbook,
+    normalizedFileName: toXlsxFileName(file.name),
+    convertedFromXls: true
+  };
+};
+
 export const FunservCompetencias: React.FC = () => {
   const [competencias, setCompetencias] = useLocalStorage<Record<string, CompetenciaData>>(
     'personart.funserv.competencias.v1',
@@ -287,9 +312,8 @@ export const FunservCompetencias: React.FC = () => {
   const onUploadFaturamento = async (file: File) => {
     setMessage('');
     try {
-      const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: 'array', raw: true });
-      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const { workbook, normalizedFileName, convertedFromXls } = await readWorkbookFromUpload(file);
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) as unknown[][];
 
       const periodo = detectPeriodo(rows);
@@ -306,7 +330,7 @@ export const FunservCompetencias: React.FC = () => {
       saveCompetencia(competencia, (prev) => ({
         competencia,
         faturamento: {
-          fileName: file.name,
+          fileName: normalizedFileName,
           importedAt: new Date().toISOString(),
           periodoDetectado: periodo || undefined,
           totalContas: itens.length,
@@ -317,7 +341,9 @@ export const FunservCompetencias: React.FC = () => {
       }));
 
       setSelectedCompetencia(competencia);
-      setMessage(`Faturamento importado em ${competencia}: ${itens.length} sessões. Previsão de recebimento: ${addMonths(competencia, 2)}.`);
+      setMessage(
+        `Faturamento importado em ${competencia}: ${itens.length} sessões. Previsão de recebimento: ${addMonths(competencia, 2)}.${convertedFromXls ? ` Arquivo .xls normalizado internamente para ${normalizedFileName}.` : ''}`
+      );
     } catch (e) {
       setMessage(e instanceof Error ? e.message : 'Falha ao importar faturamento.');
     }
@@ -326,9 +352,8 @@ export const FunservCompetencias: React.FC = () => {
   const onUploadRecebimento = async (file: File) => {
     setMessage('');
     try {
-      const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: 'array', raw: true });
-      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const { workbook, normalizedFileName, convertedFromXls } = await readWorkbookFromUpload(file);
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) as unknown[][];
 
       const itens = parseRecebimentoRows(rows);
@@ -343,7 +368,7 @@ export const FunservCompetencias: React.FC = () => {
         competencia,
         faturamento: prev?.faturamento,
         recebimento: {
-          fileName: file.name,
+          fileName: normalizedFileName,
           importedAt: new Date().toISOString(),
           dataPagamento: dataPagto || undefined,
           totalLinhas: itens.length,
@@ -354,7 +379,9 @@ export const FunservCompetencias: React.FC = () => {
         }
       }));
 
-      setMessage(`Recebimento importado em ${competencia}: ${itens.length} linhas.`);
+      setMessage(
+        `Recebimento importado em ${competencia}: ${itens.length} linhas.${convertedFromXls ? ` Arquivo .xls normalizado internamente para ${normalizedFileName}.` : ''}`
+      );
     } catch (e) {
       setMessage(e instanceof Error ? e.message : 'Falha ao importar recebimento.');
     }
