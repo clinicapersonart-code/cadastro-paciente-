@@ -270,6 +270,19 @@ export const FunservCompetencias: React.FC = () => {
     setCompetencias((prev) => ({ ...prev, [competencia]: updater(prev[competencia]) }));
   };
 
+  const removeCompetencia = () => {
+    if (!selectedData) return;
+    if (!confirm(`Excluir toda a competência ${selectedCompetencia}? Isso removerá faturamento e recebimento dessa competência.`)) return;
+
+    setCompetencias((prev) => {
+      const next = { ...prev };
+      delete next[selectedCompetencia];
+      return next;
+    });
+
+    setMessage(`Competência ${selectedCompetencia} excluída com sucesso.`);
+  };
+
   const onUploadFaturamento = async (file: File) => {
     setMessage('');
     try {
@@ -389,12 +402,22 @@ export const FunservCompetencias: React.FC = () => {
         </div>
         <div>
           <label className="block text-[11px] text-slate-400 mb-1">Competência (atendimento)</label>
-          <input
-            type="month"
-            value={selectedCompetencia}
-            onChange={(e) => setSelectedCompetencia(e.target.value)}
-            className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
-          />
+          <div className="flex items-center gap-2">
+            <input
+              type="month"
+              value={selectedCompetencia}
+              onChange={(e) => setSelectedCompetencia(e.target.value)}
+              className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+            />
+            <button
+              onClick={removeCompetencia}
+              disabled={!selectedData}
+              className="px-3 py-2 rounded-lg text-sm font-semibold bg-rose-900 hover:bg-rose-800 disabled:opacity-50 disabled:cursor-not-allowed text-white"
+              title="Excluir a competência inteira selecionada"
+            >
+              Excluir competência
+            </button>
+          </div>
         </div>
       </div>
 
