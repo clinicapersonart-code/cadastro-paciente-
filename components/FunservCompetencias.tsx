@@ -39,6 +39,14 @@ interface CompetenciaData {
   };
 }
 
+interface ResumoRecebimentoPaciente {
+  nome: string;
+  sessoes: number;
+  totalProcessado: number;
+  totalGlosa: number;
+  totalFinal: number;
+}
+
 const normalize = (v: unknown) => String(v ?? '').trim();
 
 const parseBRNumber = (raw: unknown): number | null => {
@@ -79,6 +87,44 @@ const formatCompetenciaLabel = (comp: string): string => {
 
 const money = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+const formatDateBR = (day: number, month: number, year: number): string => {
+  return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
+};
+
+const formatSheetDate = (raw: unknown): string => {
+  if (raw === null || raw === undefined || raw === '') return '';
+
+  if (raw instanceof Date && !Number.isNaN(raw.getTime())) {
+    return formatDateBR(raw.getDate(), raw.getMonth() + 1, raw.getFullYear());
+  }
+
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    const parsed = XLSX.SSF.parse_date_code(raw);
+    if (parsed?.y && parsed?.m && parsed?.d) {
+      return formatDateBR(parsed.d, parsed.m, parsed.y);
+    }
+  }
+
+  const text = String(raw).trim();
+  if (!text) return '';
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(text)) return text;
+
+  const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return formatDateBR(Number(iso[3]), Number(iso[2]), Number(iso[1]));
+
+  if (/^\d+(?:\.\d+)?$/.test(text)) {
+    const numeric = Number(text);
+    if (Number.isFinite(numeric)) {
+      const parsed = XLSX.SSF.parse_date_code(numeric);
+      if (parsed?.y && parsed?.m && parsed?.d) {
+        return formatDateBR(parsed.d, parsed.m, parsed.y);
+      }
+    }
+  }
+
+  return text;
+};
+
 const detectPeriodo = (rows: unknown[][]): string => {
   for (const row of rows.slice(0, 40)) {
     const txt = row.map((c) => normalize(c)).join(' | ');
@@ -106,7 +152,7 @@ const parseFaturamentoRows = (rows: unknown[][]): FaturamentoItem[] => {
   for (let i = headerRow + 1; i < rows.length; i += 1) {
     const row = rows[i] || [];
     const autorizacao = normalize(row[0]);
-    const data = normalize(row[5]);
+    const data = formatSheetDate(row[5]);
     const matricula = normalize(row[10]);
     const nome = normalize(row[12]);
     const lote = normalize(row[20]);
@@ -145,7 +191,7 @@ const parseRecebimentoRows = (rows: unknown[][]): RecebimentoItem[] => {
   for (let i = 1; i < rows.length; i += 1) {
     const row = rows[i] || [];
     const nome = normalize(row[colNome]);
-    const data = normalize(row[colData]);
+    const data = formatSheetDate(row[colData]);
     const valorProcessado = parseBRNumber(row[colProc]) ?? 0;
     const valorDiferenca = parseBRNumber(row[colDiff]) ?? 0;
 
@@ -195,6 +241,30 @@ export const FunservCompetencias: React.FC = () => {
     !!selectedData?.faturamento &&
     !selectedData?.recebimento &&
     compareCompetencia(monthNow(), expectedRecebimentoMonth) >= 0;
+
+  const resumoRecebimentoPorPaciente = useMemo<ResumoRecebimentoPaciente[]>(() => {
+    const itens = selectedData?.recebimento?.itens ?? [];
+    const map = new Map<string, ResumoRecebimentoPaciente>();
+
+    itens.forEach((item) => {
+      const atual = map.get(item.nome) ?? {
+        nome: item.nome,
+        sessoes: 0,
+        totalProcessado: 0,
+        totalGlosa: 0,
+        totalFinal: 0
+      };
+
+      atual.sessoes += 1;
+      atual.totalProcessado += item.valorProcessado;
+      atual.totalGlosa += item.valorDiferenca < 0 ? item.valorDiferenca : 0;
+      atual.totalFinal += item.valorProcessado + (item.valorDiferenca < 0 ? item.valorDiferenca : 0);
+
+      map.set(item.nome, atual);
+    });
+
+    return Array.from(map.values()).sort((a, b) => a.nome.localeCompare(b.nome));
+  }, [selectedData?.recebimento?.itens]);
 
   const saveCompetencia = (competencia: string, updater: (prev?: CompetenciaData) => CompetenciaData) => {
     setCompetencias((prev) => ({ ...prev, [competencia]: updater(prev[competencia]) }));
@@ -450,6 +520,47 @@ export const FunservCompetencias: React.FC = () => {
         </table>
       </div>
 
+      {selectedData?.recebimento && resumoRecebimentoPorPaciente.length > 0 && (
+        <div className="bg-slate-900/30 border border-slate-700 rounded-xl p-3 space-y-2">
+          <h4 className="text-white font-semibold">Resumo por paciente ({selectedCompetencia})</h4>
+          <div className="overflow-x-auto rounded-lg border border-slate-700">
+            <table className="w-full text-xs">
+              <thead className="bg-slate-900 text-slate-300">
+                <tr>
+                  <th className="text-left p-2">Paciente</th>
+                  <th className="text-right p-2">Sessões</th>
+                  <th className="text-right p-2">Bruto</th>
+                  <th className="text-right p-2">Glosa</th>
+                  <th className="text-right p-2">Líquido</th>
+                </tr>
+              </thead>
+              <tbody>
+                {resumoRecebimentoPorPaciente.map((item) => {
+                  const teveGlosa = item.totalGlosa < 0;
+                  return (
+                    <tr
+                      key={item.nome}
+                      className={`border-t border-slate-800 ${teveGlosa ? 'bg-rose-950/30 text-rose-200' : 'text-slate-200'}`}
+                    >
+                      <td className={`p-2 ${teveGlosa ? 'font-semibold text-rose-300' : ''}`}>{item.nome}</td>
+                      <td className="p-2 text-right">{item.sessoes}</td>
+                      <td className="p-2 text-right">{money(item.totalProcessado)}</td>
+                      <td className={`p-2 text-right ${teveGlosa ? 'text-rose-300 font-semibold' : 'text-slate-400'}`}>
+                        {teveGlosa ? money(Math.abs(item.totalGlosa)) : '0,00'}
+                      </td>
+                      <td className={`p-2 text-right font-semibold ${teveGlosa ? 'text-rose-300' : 'text-cyan-300'}`}>
+                        {money(item.totalFinal)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[11px] text-slate-400">Bruto = soma do processado. Glosa = desconto aplicado. Líquido = bruto - glosa.</p>
+        </div>
+      )}
+
       {selectedData?.faturamento && showFaturamentoPreview && (
         <div className="bg-slate-900/30 border border-slate-700 rounded-xl p-3 space-y-2">
           <h4 className="text-white font-semibold">Preview • guia de faturamento ({selectedCompetencia})</h4>
@@ -491,14 +602,20 @@ export const FunservCompetencias: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {selectedData.recebimento.itens.map((it, idx) => (
-                  <tr key={`${it.nome}-${idx}`} className="border-t border-slate-800 text-slate-200">
-                    <td className="p-2">{it.data}</td>
-                    <td className="p-2">{it.nome}</td>
-                    <td className="p-2 text-right">{money(it.valorProcessado)}</td>
-                    <td className="p-2 text-right">{money(it.valorDiferenca)}</td>
-                  </tr>
-                ))}
+                {selectedData.recebimento.itens.map((it, idx) => {
+                  const teveGlosa = it.valorDiferenca < 0;
+                  return (
+                    <tr
+                      key={`${it.nome}-${idx}`}
+                      className={`border-t border-slate-800 ${teveGlosa ? 'bg-rose-950/30 text-rose-200' : 'text-slate-200'}`}
+                    >
+                      <td className="p-2">{it.data}</td>
+                      <td className={`p-2 ${teveGlosa ? 'font-semibold text-rose-300' : ''}`}>{it.nome}</td>
+                      <td className={`p-2 text-right ${teveGlosa ? 'text-rose-300 font-semibold' : ''}`}>{money(it.valorProcessado)}</td>
+                      <td className={`p-2 text-right ${teveGlosa ? 'text-rose-300 font-semibold' : ''}`}>{money(it.valorDiferenca)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
