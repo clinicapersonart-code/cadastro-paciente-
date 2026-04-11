@@ -1016,10 +1016,11 @@ const App: React.FC = () => {
 
     const copyLink = (pathOrQuery: string) => {
         const basePath = (window.location.pathname || '/').replace(/\/+$/, '');
-        // If caller passes an absolute path ("/cadastro"), prefer it. Otherwise keep same pathname + query.
-        const fullPath = pathOrQuery.startsWith('/')
-            ? pathOrQuery
-            : `${basePath}${pathOrQuery}`;
+        const fullPath = pathOrQuery.startsWith('?')
+            ? `${basePath}${pathOrQuery}`
+            : pathOrQuery.startsWith('/')
+                ? pathOrQuery
+                : `${basePath}${pathOrQuery}`;
 
         const url = `${window.location.origin}${fullPath}`;
         navigator.clipboard.writeText(url);
@@ -1941,7 +1942,7 @@ const App: React.FC = () => {
                                         <p className="text-xs text-slate-500">Cadastro completo inicial</p>
                                     </div>
                                 </div>
-                                <button onClick={() => copyLink('/cadastro')} className="w-full bg-slate-800 hover:bg-slate-700 text-sky-400 text-xs font-mono py-2 rounded border border-slate-600 transition">
+                                <button onClick={() => copyLink('?page=cadastro')} className="w-full bg-slate-800 hover:bg-slate-700 text-sky-400 text-xs font-mono py-2 rounded border border-slate-600 transition">
                                     Copiar Link de Cadastro
                                 </button>
                             </div>
@@ -1955,7 +1956,7 @@ const App: React.FC = () => {
                                         <p className="text-xs text-slate-500">Cadastro rápido para aguardar vaga</p>
                                     </div>
                                 </div>
-                                <button onClick={() => copyLink('/fila')} className="w-full bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-mono py-2 rounded border border-slate-600 transition">
+                                <button onClick={() => copyLink('?page=fila')} className="w-full bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-mono py-2 rounded border border-slate-600 transition">
                                     Copiar Link da Fila
                                 </button>
                             </div>
@@ -2010,12 +2011,12 @@ const App: React.FC = () => {
                                         const pro = (document.getElementById('prePro') as HTMLSelectElement)?.value;
                                         const dia = (document.getElementById('preDia') as HTMLSelectElement)?.value;
                                         const hora = (document.getElementById('preHora') as HTMLInputElement)?.value;
-                                        let params = '/cadastro';
+                                        let params = '?page=cadastro';
                                         const qs: string[] = [];
                                         if (pro) qs.push(`prePro=${encodeURIComponent(pro)}`);
                                         if (dia) qs.push(`preDia=${encodeURIComponent(dia)}`);
                                         if (hora) qs.push(`preHora=${encodeURIComponent(hora)}`);
-                                        if (qs.length) params += `?${qs.join('&')}`;
+                                        if (qs.length) params += `&${qs.join('&')}`;
                                         copyLink(params);
                                     }}
                                     className="w-full bg-purple-600 hover:bg-purple-500 text-white text-xs font-medium py-2 rounded transition"
@@ -2034,7 +2035,7 @@ const App: React.FC = () => {
                                             <p className="text-xs text-slate-500">Atualização cadastral e Google Review</p>
                                         </div>
                                     </div>
-                                    <button onClick={() => copyLink('/vip')} className="w-full bg-slate-800 hover:bg-slate-700 text-amber-400 text-xs font-mono py-2 rounded border border-slate-600 transition">
+                                    <button onClick={() => copyLink('?page=vip')} className="w-full bg-slate-800 hover:bg-slate-700 text-amber-400 text-xs font-mono py-2 rounded border border-slate-600 transition">
                                         Copiar Link VIP
                                     </button>
                                 </div>
