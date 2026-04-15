@@ -197,6 +197,7 @@ export interface MedicalRecordChunk {
 
   isPrivate?: boolean; // Se true, visível apenas ao criador e admin
   attendance?: 'Compareceu' | 'Faltou' | 'Cancelado' | 'Justificado';
+  sessionStatus?: 'Compareceu' | 'Faltou' | 'Cancelado' | 'Justificado';
   frequency?: 'Semanal' | 'Mensal';
 
   // Dados estruturados (para Anamnese com templates)

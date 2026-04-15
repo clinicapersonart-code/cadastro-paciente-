@@ -50,7 +50,8 @@ export const MedicalRecord: React.FC<MedicalRecordProps> = ({
         nextSteps: '',
         monthlyProgress: '',
         monthlyChallenges: '',
-        monthlyPlan: ''
+        monthlyPlan: '',
+        sessionStatus: 'Compareceu' as 'Compareceu' | 'Faltou' | 'Cancelado' | 'Justificado'
     });
 
     // Selected date for the record (default: today)
@@ -66,6 +67,11 @@ export const MedicalRecord: React.FC<MedicalRecordProps> = ({
     const [frequency, setFrequency] = useState<'Semanal' | 'Mensal'>('Semanal');
     const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth()); // 0-11
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+
+    const isWeeklyAbsenceLike = frequency === 'Semanal' && formattedRecord.sessionStatus !== 'Compareceu';
+    const weeklyStatusLabel = formattedRecord.sessionStatus === 'Compareceu'
+        ? 'Sessão realizada'
+        : formattedRecord.sessionStatus;
 
     // History expanded
     const [showHistory, setShowHistory] = useState(false);
@@ -119,6 +125,7 @@ PRONTUÁRIO PSICOLÓGICO - ${record.type.toUpperCase()}
 Paciente: ${patient.nome}
 Data: ${new Date(record.date + 'T12:00:00').toLocaleDateString('pt-BR')}
 Profissional: ${record.professionalName}
+Status da Sessão: ${record.sessionStatus || 'Compareceu'}
 
 REGISTRO DA SESSÃO:
 ${record.content}
@@ -177,6 +184,10 @@ ${record.monthlyPlan || 'Não registrado'}
                         <tr>
                             <td style="padding: 5px 0;"><strong>Frequência:</strong> ${record.frequency || 'Semanal'}</td>
                             <td style="padding: 5px 0; text-align: right;"><strong>Período:</strong> ${record.frequency === 'Mensal' ? new Date(record.date + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }) : new Date(record.date + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 5px 0;"><strong>Status da sessão:</strong> ${record.sessionStatus || 'Compareceu'}</td>
+                            <td></td>
                         </tr>
                     </table>
                 </div>
@@ -341,6 +352,28 @@ ${record.monthlyPlan || 'Não registrado'}
 
     // Prompt para formatação CRP
     const buildPrompt = (notes: string) => {
+        if (isWeeklyAbsenceLike) {
+            return `Você é um assistente de psicólogo clínico. Transforme as anotações em um REGISTRO CURTO DE PRONTUÁRIO para ausência/cancelamento, sem inventar atendimento clínico que não ocorreu.
+
+STATUS DA SESSÃO: ${formattedRecord.sessionStatus}
+ANOTAÇÕES:
+${notes}
+
+REGRAS:
+- Escreva em terceira pessoa e linguagem profissional.
+- Registre objetivamente ausência, justificativa informada e conduta administrativa/terapêutica se houver.
+- Não invente comportamento observado, intervenção realizada ou evolução clínica de sessão não ocorrida.
+- Seja breve, claro e suficiente para documentação.
+
+Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicações):
+{
+    "content": "Registro objetivo da ausência/cancelamento/justificativa e contexto informado",
+    "behavior": "",
+    "intervention": "",
+    "nextSteps": "Conduta objetiva, se houver"
+}`;
+        }
+
         if (frequency === 'Mensal') {
             return `Você é um assistente de psicólogo clínico. Transforme as anotações de aproximadamente 4 sessões em uma EVOLUÇÃO MENSAL rica, técnica e objetiva, em linguagem profissional.
 
@@ -504,7 +537,8 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
             nextSteps: record.nextSteps || '',
             monthlyProgress: record.monthlyProgress || '',
             monthlyChallenges: record.monthlyChallenges || '',
-            monthlyPlan: record.monthlyPlan || ''
+            monthlyPlan: record.monthlyPlan || '',
+            sessionStatus: record.sessionStatus || 'Compareceu'
         });
         setFrequency(record.frequency || 'Semanal');
         if (record.frequency === 'Mensal') {
@@ -531,7 +565,8 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
             nextSteps: '',
             monthlyProgress: '',
             monthlyChallenges: '',
-            monthlyPlan: ''
+            monthlyPlan: '',
+            sessionStatus: 'Compareceu'
         });
     };
 
@@ -554,13 +589,20 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
         }
 
         if (frequency === 'Semanal') {
-            if (formattedRecord.content.trim().length < 120) {
-                alert('Para evolução semanal conforme diretrizes clínicas, descreva melhor o contexto e a evolução da sessão.');
-                return;
-            }
-            if (!formattedRecord.behavior.trim() || !formattedRecord.intervention.trim() || !formattedRecord.nextSteps.trim()) {
-                alert('Na evolução semanal, preencha: Comportamento/Humor, Intervenção/Técnica e Próximos Passos.');
-                return;
+            if (isWeeklyAbsenceLike) {
+                if (formattedRecord.content.trim().length < 30) {
+                    alert(`Para registrar ${formattedRecord.sessionStatus.toLowerCase()}, descreva ao menos o motivo/observação principal.`);
+                    return;
+                }
+            } else {
+                if (formattedRecord.content.trim().length < 120) {
+                    alert('Para evolução semanal conforme diretrizes clínicas, descreva melhor o contexto e a evolução da sessão.');
+                    return;
+                }
+                if (!formattedRecord.behavior.trim() || !formattedRecord.intervention.trim() || !formattedRecord.nextSteps.trim()) {
+                    alert('Na evolução semanal, preencha: Comportamento/Humor, Intervenção/Técnica e Próximos Passos.');
+                    return;
+                }
             }
         }
 
@@ -582,6 +624,7 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
                     monthlyProgress: frequency === 'Mensal' ? formattedRecord.monthlyProgress : '',
                     monthlyChallenges: frequency === 'Mensal' ? formattedRecord.monthlyChallenges : '',
                     monthlyPlan: frequency === 'Mensal' ? formattedRecord.monthlyPlan : '',
+                    sessionStatus: frequency === 'Semanal' ? formattedRecord.sessionStatus : 'Compareceu',
                     frequency
                 };
                 onUpdateRecord(patient.id, updatedRecord);
@@ -602,6 +645,7 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
                 monthlyProgress: frequency === 'Mensal' ? formattedRecord.monthlyProgress : '',
                 monthlyChallenges: frequency === 'Mensal' ? formattedRecord.monthlyChallenges : '',
                 monthlyPlan: frequency === 'Mensal' ? formattedRecord.monthlyPlan : '',
+                sessionStatus: frequency === 'Semanal' ? formattedRecord.sessionStatus : 'Compareceu',
                 frequency
             };
             onSaveRecord(patient.id, newRecord);
@@ -617,7 +661,8 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
             nextSteps: '',
             monthlyProgress: '',
             monthlyChallenges: '',
-            monthlyPlan: ''
+            monthlyPlan: '',
+            sessionStatus: 'Compareceu'
         });
     };
 
@@ -725,7 +770,7 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
                             <h3 className="font-bold text-[#e9c49e] uppercase tracking-wider text-sm">Registro de Atendimento Estruturado</h3>
                         </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
                         {/* Frequency Selection */}
                         <div>
                             <label className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-2 block">Frequência</label>
@@ -735,7 +780,10 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
                                     className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all ${frequency === 'Semanal' ? 'bg-[#e9c49e]/20 text-[#e9c49e] border border-[#e9c49e]/50' : 'bg-slate-950/50 text-slate-400 border border-slate-700/50'}`}
                                 >📅 Semanal</button>
                                 <button
-                                    onClick={() => setFrequency('Mensal')}
+                                    onClick={() => {
+                                        setFrequency('Mensal');
+                                        setFormattedRecord(prev => ({ ...prev, sessionStatus: 'Compareceu' }));
+                                    }}
                                     className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all ${frequency === 'Mensal' ? 'bg-[#e9c49e]/20 text-[#e9c49e] border border-[#e9c49e]/50' : 'bg-slate-950/50 text-slate-400 border border-slate-700/50'}`}
                                 >🗓️ Mensal</button>
                             </div>
@@ -793,57 +841,96 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
                                 <option value="Encerramento">Encerramento</option>
                             </select>
                         </div>
+
+                        {/* Session Status */}
+                        <div>
+                            <label className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-2 block">Status do Atendimento</label>
+                            {frequency === 'Semanal' ? (
+                                <select
+                                    value={formattedRecord.sessionStatus}
+                                    onChange={(e) => {
+                                        const nextStatus = e.target.value as 'Compareceu' | 'Faltou' | 'Cancelado' | 'Justificado';
+                                        setFormattedRecord(prev => ({
+                                            ...prev,
+                                            sessionStatus: nextStatus,
+                                            behavior: nextStatus === 'Compareceu' ? prev.behavior : '',
+                                            intervention: nextStatus === 'Compareceu' ? prev.intervention : ''
+                                        }));
+                                    }}
+                                    className="w-full bg-slate-950/50 border border-slate-700/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-1 focus:ring-[#e9c49e]/50 text-sm"
+                                >
+                                    <option value="Compareceu">Compareceu</option>
+                                    <option value="Faltou">Falta</option>
+                                    <option value="Cancelado">Cancelado</option>
+                                    <option value="Justificado">Justificado</option>
+                                </select>
+                            ) : (
+                                <div className="w-full bg-slate-950/30 border border-slate-700/50 rounded-lg px-3 py-2 text-slate-400 text-sm">
+                                    Evolução mensal consolidada
+                                </div>
+                            )}
+                        </div>
                     </div>
 
                     {/* Content Fields */}
                     <div className="space-y-6">
                         <div>
-                            <label className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-2 block">Registro da Sessão / Evolução</label>
+                            <label className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-2 block">
+                                {isWeeklyAbsenceLike ? `Registro de ${weeklyStatusLabel}` : 'Registro da Sessão / Evolução'}
+                            </label>
                             <textarea
                                 value={formattedRecord.content}
                                 onChange={(e) => setFormattedRecord(prev => ({ ...prev, content: e.target.value }))}
-                                placeholder="Descreva os principais tópicos abordados, observações clínicas e o desenvolvimento do paciente..."
+                                placeholder={isWeeklyAbsenceLike
+                                    ? 'Ex: Paciente faltou e informou por WhatsApp que estava com febre. Sessão remarcada para a próxima semana.'
+                                    : 'Descreva os principais tópicos abordados, observações clínicas e o desenvolvimento do paciente...'}
                                 className="w-full h-48 bg-slate-950/50 border border-slate-700/50 rounded-xl p-4 text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-[#e9c49e]/30 resize-none leading-relaxed font-light"
                             />
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div>
-                                <label className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-2 block">Comportamento / Humor</label>
-                                <input
-                                    type="text"
-                                    value={formattedRecord.behavior}
-                                    onChange={(e) => setFormattedRecord(prev => ({ ...prev, behavior: e.target.value }))}
-                                    placeholder="Ex: Colaborativo, ansioso, orientado..."
-                                    className="w-full bg-slate-950/50 border border-slate-700/50 rounded-lg px-4 py-2 text-slate-200 text-sm"
-                                />
-                            </div>
-                            <div>
-                                <label className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-2 block">Intervenção / Técnica</label>
-                                <input
-                                    type="text"
-                                    value={formattedRecord.intervention}
-                                    onChange={(e) => setFormattedRecord(prev => ({ ...prev, intervention: e.target.value }))}
-                                    placeholder="Ex: Escuta ativa, psicoeducação..."
-                                    className="w-full bg-slate-950/50 border border-slate-700/50 rounded-lg px-4 py-2 text-slate-200 text-sm"
-                                />
-                            </div>
-                        </div>
+                        {!isWeeklyAbsenceLike && (
+                            <>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <label className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-2 block">Comportamento / Humor</label>
+                                        <input
+                                            type="text"
+                                            value={formattedRecord.behavior}
+                                            onChange={(e) => setFormattedRecord(prev => ({ ...prev, behavior: e.target.value }))}
+                                            placeholder="Ex: Colaborativo, ansioso, orientado..."
+                                            className="w-full bg-slate-950/50 border border-slate-700/50 rounded-lg px-4 py-2 text-slate-200 text-sm"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-2 block">Intervenção / Técnica</label>
+                                        <input
+                                            type="text"
+                                            value={formattedRecord.intervention}
+                                            onChange={(e) => setFormattedRecord(prev => ({ ...prev, intervention: e.target.value }))}
+                                            placeholder="Ex: Escuta ativa, psicoeducação..."
+                                            className="w-full bg-slate-950/50 border border-slate-700/50 rounded-lg px-4 py-2 text-slate-200 text-sm"
+                                        />
+                                    </div>
+                                </div>
 
-                        <div>
-                            <label className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-2 block">Próximos Passos / Encaminhamentos</label>
-                            <input
-                                type="text"
-                                value={formattedRecord.nextSteps}
-                                onChange={(e) => setFormattedRecord(prev => ({ ...prev, nextSteps: e.target.value }))}
-                                placeholder={frequency === 'Mensal' ? 'Ex: combinar foco de intervenção para o próximo mês...' : 'Ex: Manutenção do plano terapêutico...'}
-                                className="w-full bg-slate-950/50 border border-slate-700/50 rounded-lg px-4 py-2 text-slate-200 text-sm"
-                            />
-                        </div>
+                                <div>
+                                    <label className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-2 block">Próximos Passos / Encaminhamentos</label>
+                                    <input
+                                        type="text"
+                                        value={formattedRecord.nextSteps}
+                                        onChange={(e) => setFormattedRecord(prev => ({ ...prev, nextSteps: e.target.value }))}
+                                        placeholder={frequency === 'Mensal' ? 'Ex: combinar foco de intervenção para o próximo mês...' : 'Ex: Manutenção do plano terapêutico...'}
+                                        className="w-full bg-slate-950/50 border border-slate-700/50 rounded-lg px-4 py-2 text-slate-200 text-sm"
+                                    />
+                                </div>
+                            </>
+                        )}
 
                         {frequency === 'Semanal' && (
                             <p className="text-xs text-slate-500 bg-slate-900/40 border border-slate-700/40 rounded-lg px-3 py-2">
-                                Diretriz semanal: registre de forma objetiva o estado clínico observado, as intervenções aplicadas e a conduta para continuidade.
+                                {isWeeklyAbsenceLike
+                                    ? `Modo ${weeklyStatusLabel.toLowerCase()}: basta registrar o motivo/observação principal. A validação clínica detalhada da sessão não será exigida.`
+                                    : 'Diretriz semanal: registre de forma objetiva o estado clínico observado, as intervenções aplicadas e a conduta para continuidade.'}
                             </p>
                         )}
 
@@ -1010,6 +1097,11 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
                                                     <span className="text-xs text-slate-500 font-medium font-mono">
                                                         {new Date(record.date + 'T12:00:00').toLocaleDateString('pt-BR')} • {record.professionalName}
                                                     </span>
+                                                    {record.frequency === 'Semanal' && record.sessionStatus && record.sessionStatus !== 'Compareceu' && (
+                                                        <span className="text-[10px] font-bold bg-amber-500/10 text-amber-300 border border-amber-500/20 px-2 py-1 rounded-md uppercase tracking-wider">
+                                                            {record.sessionStatus}
+                                                        </span>
+                                                    )}
                                                     {record.type === 'Encerramento' ? (
                                                         <span className="text-[9px] font-bold bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-1 rounded-md uppercase tracking-wider">
                                                             🔒 Finalizado
