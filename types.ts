@@ -65,6 +65,10 @@ export interface Appointment {
   status: 'Agendado' | 'Realizado' | 'Cancelado';
   obs?: string;
 
+  // Integração Google Agenda (MVP)
+  googleEventId?: string;
+  googleCalendarHtmlLink?: string;
+
   // Financeiro / duração
   durationMin?: number; // duração da sessão
   price?: number; // valor da sessão (R$)
