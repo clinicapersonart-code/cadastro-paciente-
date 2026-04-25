@@ -4,6 +4,7 @@ import { STORAGE_KEYS, DEFAULT_CONVENIOS, DEFAULT_PROFISSIONAIS, DEFAULT_ESPECIA
 import useLocalStorage from './hooks/useLocalStorage';
 import { downloadFile, exportToCSV } from './services/fileService';
 import { supabase, isSupabaseConfigured } from './services/supabase';
+import { syncAppointmentToGoogle } from './services/googleCalendarSync';
 import { PatientForm } from './components/PatientForm';
 import { PatientTable } from './components/PatientTable';
 import { Agenda } from './components/Agenda';
@@ -451,6 +452,44 @@ const App: React.FC = () => {
         }
     };
 
+    const upsertAppointmentToCloud = async (appt: Appointment) => {
+        if (!supabase || connectionStatus === 'offline') return { error: null as any };
+        return await supabase.from('appointments').upsert({
+            id: appt.id,
+            date: appt.date,
+            patient_id: appt.patientId,
+            status: appt.status,
+            carteirinha: appt.carteirinha || '',
+            numero_autorizacao: appt.numero_autorizacao || '',
+            data_autorizacao: appt.data_autorizacao || null,
+            data: JSON.parse(JSON.stringify(appt))
+        });
+    };
+
+    const syncAppointmentWithGoogle = async (appt: Appointment, action: 'upsert' | 'delete') => {
+        try {
+            const result = await syncAppointmentToGoogle({
+                action,
+                appointment: appt,
+                googleEventId: appt.googleEventId
+            });
+
+            if (action === 'upsert' && result.eventId) {
+                const syncedAppt: Appointment = {
+                    ...appt,
+                    googleEventId: result.eventId,
+                    googleCalendarHtmlLink: result.htmlLink || appt.googleCalendarHtmlLink
+                };
+
+                setAppointments(prev => prev.map(x => x.id === appt.id ? syncedAppt : x));
+                await upsertAppointmentToCloud(syncedAppt);
+            }
+        } catch (error: any) {
+            console.error('Erro sync Google Agenda:', error);
+            showToast(`Falha na sincronização com Google Agenda: ${error?.message || 'erro desconhecido'}`, 'info');
+        }
+    };
+
     const handleSavePatient = async (patient: Patient, initialAppointment?: any) => {
         const newPatientId = patient.id || `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
         const isNew = !patients.find(p => p.id === patient.id);
@@ -522,6 +561,7 @@ const App: React.FC = () => {
     const handleDeletePatient = async (id: string) => {
         const patient = patients.find(p => p.id === id);
         const patientName = patient?.nome || 'Paciente';
+        const patientAppointments = appointments.filter(a => a.patientId === id);
 
         // 1. Remove do estado local
         setPatients(prev => prev.filter(p => p.id !== id));
@@ -558,6 +598,7 @@ const App: React.FC = () => {
                     supabase.from('patient_documents').delete().eq('patient_id', id),
                     supabase.from('document_folders').delete().eq('patient_id', id),
                 ]);
+                await Promise.all(patientAppointments.map(appt => syncAppointmentWithGoogle(appt, 'delete')));
                 showToast(`Paciente "${patientName}" excluído permanentemente.`, 'info');
             } catch (e) {
                 console.error('Erro ao excluir da nuvem:', e);
@@ -584,20 +625,12 @@ const App: React.FC = () => {
 
         // Salva nuvem
         if (supabase && connectionStatus !== 'offline') {
-            const { error } = await supabase.from('appointments').upsert({
-                id: enrichedAppt.id,
-                date: enrichedAppt.date,
-                patient_id: enrichedAppt.patientId,
-                status: enrichedAppt.status,
-                carteirinha: enrichedAppt.carteirinha || '',
-                numero_autorizacao: enrichedAppt.numero_autorizacao || '',
-                data_autorizacao: enrichedAppt.data_autorizacao,
-                data: JSON.parse(JSON.stringify(enrichedAppt))
-            });
+            const { error } = await upsertAppointmentToCloud(enrichedAppt);
             if (error) {
                 console.error("Erro agendamento nuvem:", error);
             } else {
                 logActivity('AGENDAMENTO', `${currentUser?.name} agendou ${enrichedAppt.patientName} para ${enrichedAppt.date} às ${enrichedAppt.time}`, { apptId: enrichedAppt.id });
+                await syncAppointmentWithGoogle(enrichedAppt, 'upsert');
             }
         } else {
             logActivity('AGENDAMENTO', `${currentUser?.name} agendou ${enrichedAppt.patientName} (Local)`, { apptId: enrichedAppt.id });
@@ -630,7 +663,11 @@ const App: React.FC = () => {
             }));
 
             const { error } = await supabase.from('appointments').upsert(records);
-            if (error) console.error("Erro batch nuvem:", error);
+            if (error) {
+                console.error("Erro batch nuvem:", error);
+            } else {
+                await Promise.all(enrichedBatch.map(appt => syncAppointmentWithGoogle(appt, 'upsert')));
+            }
         }
     };
 
@@ -640,18 +677,12 @@ const App: React.FC = () => {
 
         // Aplica na nuvem
         if (supabase && connectionStatus !== 'offline') {
-            const { error } = await supabase.from('appointments').upsert({
-                id: appt.id,
-                date: appt.date,
-                patient_id: appt.patientId,
-                status: appt.status,
-                carteirinha: appt.carteirinha || '',
-                numero_autorizacao: appt.numero_autorizacao || '',
-                data_autorizacao: appt.data_autorizacao || null,
-                data: JSON.parse(JSON.stringify(appt))
-            });
-            if (!error) {
+            const { error } = await upsertAppointmentToCloud(appt);
+            if (error) {
+                console.error("Erro atualização agenda nuvem:", error);
+            } else {
                 logActivity('ALTERACAO_AGENDA', `${currentUser?.name} alterou agendamento de ${appt.patientName}`, { apptId: appt.id });
+                await syncAppointmentWithGoogle(appt, 'upsert');
             }
         }
 
@@ -717,6 +748,7 @@ const App: React.FC = () => {
             const { error } = await supabase.from('appointments').delete().eq('id', id);
             if (!error) {
                 logActivity('EXCLUSAO_AGENDA', `${currentUser?.name} excluiu agendamento de ${name || 'paciente'}`, { apptId: id });
+                if (oldAppt) await syncAppointmentWithGoogle(oldAppt, 'delete');
             }
         }
 
@@ -809,30 +841,14 @@ const App: React.FC = () => {
         if (request.type === 'UPDATE') {
             setAppointments(prev => prev.map(x => x.id === request.appointmentId ? request.oldData : x));
             if (supabase && connectionStatus !== 'offline') {
-                await supabase.from('appointments').upsert({
-                    id: request.oldData.id,
-                    date: request.oldData.date,
-                    patient_id: request.oldData.patientId,
-                    status: request.oldData.status,
-                    carteirinha: request.oldData.carteirinha || '',
-                    numero_autorizacao: request.oldData.numero_autorizacao || '',
-                    data_autorizacao: request.oldData.data_autorizacao || null,
-                    data: JSON.parse(JSON.stringify(request.oldData))
-                });
+                await upsertAppointmentToCloud(request.oldData);
+                await syncAppointmentWithGoogle(request.oldData, 'upsert');
             }
         } else if (request.type === 'DELETE') {
             setAppointments(prev => [...prev, request.oldData]);
             if (supabase && connectionStatus !== 'offline') {
-                await supabase.from('appointments').upsert({
-                    id: request.oldData.id,
-                    date: request.oldData.date,
-                    patient_id: request.oldData.patientId,
-                    status: request.oldData.status,
-                    carteirinha: request.oldData.carteirinha || '',
-                    numero_autorizacao: request.oldData.numero_autorizacao || '',
-                    data_autorizacao: request.oldData.data_autorizacao || null,
-                    data: JSON.parse(JSON.stringify(request.oldData))
-                });
+                await upsertAppointmentToCloud(request.oldData);
+                await syncAppointmentWithGoogle(request.oldData, 'upsert');
             }
         }
 
@@ -1885,7 +1901,7 @@ const App: React.FC = () => {
                                 showToast('Paciente cadastrado com sucesso!', 'success');
                             }}
                             onClear={() => setEditingPatient(null)}
-                            convenios={convenios}
+                            convenios={convenioNames}
                             profissionais={profissionais}
                             especialidades={
                                 currentUser?.role === 'professional' && currentUser?.specialty
