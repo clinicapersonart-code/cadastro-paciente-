@@ -13,6 +13,7 @@ interface AgendaProps {
     onUpdateAppointment: (appt: Appointment) => void;
     onDeleteAppointment: (id: string, name?: string) => void;
     currentUser?: UserProfile;
+    googleSyncEnabled?: boolean;
 }
 
 const DAY_START_HOUR = 7;
@@ -126,7 +127,8 @@ export const Agenda: React.FC<AgendaProps> = ({
     onAddBatchAppointments,
     onUpdateAppointment,
     onDeleteAppointment,
-    currentUser
+    currentUser,
+    googleSyncEnabled = false
 }) => {
     // RBAC: Filtrar agendamentos para profissionais
     const filteredAppointments = useMemo(() => {
@@ -518,7 +520,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                 </div>
 
                 {/* Legenda de cores dos profissionais */}
-                <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-700/50">
+                <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-slate-700/50">
                     {(currentUser?.role === 'professional'
                         ? profissionais.filter(p => {
                             const normalizedPro = currentUser.name.toLowerCase();
@@ -534,6 +536,10 @@ export const Agenda: React.FC<AgendaProps> = ({
                             </div>
                         );
                     })}
+                    <div className={`ml-auto flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border ${googleSyncEnabled ? 'bg-emerald-900/30 border-emerald-700/50 text-emerald-400' : 'bg-slate-700/40 border-slate-600/50 text-slate-500'}`}>
+                        <span className={`w-2 h-2 rounded-full ${googleSyncEnabled ? 'bg-emerald-400' : 'bg-slate-500'}`} />
+                        {googleSyncEnabled ? 'Google Agenda: ativo' : 'Google Agenda: inativo'}
+                    </div>
                 </div>
             </div>
 
@@ -549,6 +555,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                         onDeleteAppointment={onDeleteAppointment}
                         onStatusChange={handleStatusChange}
                         isToday={isToday}
+                        googleSyncEnabled={googleSyncEnabled}
                     />
                 )}
 
@@ -572,6 +579,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                         onEditAppointment={handleEditClick}
                         onDeleteAppointment={onDeleteAppointment}
                         onStatusChange={handleStatusChange}
+                        googleSyncEnabled={googleSyncEnabled}
                     />
                 )}
             </div>
@@ -811,6 +819,7 @@ interface WeekViewProps {
     onDeleteAppointment: (id: string, name?: string) => void;
     onStatusChange: (appt: Appointment, status: Appointment['status']) => void;
     isToday: (date: Date) => boolean;
+    googleSyncEnabled?: boolean;
 }
 
 const WeekView: React.FC<WeekViewProps> = ({
@@ -821,7 +830,8 @@ const WeekView: React.FC<WeekViewProps> = ({
     onEditAppointment,
     onDeleteAppointment,
     onStatusChange,
-    isToday
+    isToday,
+    googleSyncEnabled = false
 }) => {
     const dayStartMin = DAY_START_HOUR * 60;
     const dayEndMin = (DAY_END_HOUR + 1) * 60;
@@ -896,6 +906,7 @@ const WeekView: React.FC<WeekViewProps> = ({
                                             onEdit={onEditAppointment}
                                             onDelete={onDeleteAppointment}
                                             onStatusChange={onStatusChange}
+                                            googleSyncEnabled={googleSyncEnabled}
                                         />
                                     ))}
                                 </div>
@@ -989,6 +1000,7 @@ interface DayViewProps {
     onEditAppointment: (appt: Appointment) => void;
     onDeleteAppointment: (id: string, name?: string) => void;
     onStatusChange: (appt: Appointment, status: Appointment['status']) => void;
+    googleSyncEnabled?: boolean;
 }
 
 const DayView: React.FC<DayViewProps> = ({
@@ -998,7 +1010,8 @@ const DayView: React.FC<DayViewProps> = ({
     onGridClick,
     onEditAppointment,
     onDeleteAppointment,
-    onStatusChange
+    onStatusChange,
+    googleSyncEnabled = false
 }) => {
     const dayStartMin = DAY_START_HOUR * 60;
     const dayEndMin = (DAY_END_HOUR + 1) * 60;
@@ -1054,6 +1067,7 @@ const DayView: React.FC<DayViewProps> = ({
                             onEdit={onEditAppointment}
                             onDelete={onDeleteAppointment}
                             onStatusChange={onStatusChange}
+                            googleSyncEnabled={googleSyncEnabled}
                         />
                     ))}
                 </div>
@@ -1070,9 +1084,10 @@ interface EventBlockProps {
     onEdit: (appt: Appointment) => void;
     onDelete: (id: string, name?: string) => void;
     onStatusChange: (appt: Appointment, status: Appointment['status']) => void;
+    googleSyncEnabled?: boolean;
 }
 
-const EventBlock: React.FC<EventBlockProps> = ({ appt, profissionais, dayStartMin, onEdit, onDelete, onStatusChange }) => {
+const EventBlock: React.FC<EventBlockProps> = ({ appt, profissionais, dayStartMin, onEdit, onDelete, onStatusChange, googleSyncEnabled = false }) => {
     const color = getProfessionalColor(appt.profissional, profissionais);
     const [showMenu, setShowMenu] = useState(false);
 
@@ -1098,6 +1113,11 @@ const EventBlock: React.FC<EventBlockProps> = ({ appt, profissionais, dayStartMi
                 </div>
                 <div className="text-[10px] opacity-70 truncate">{(appt.profissional || '').split(' - ')[0]} • {dur}m</div>
                 {isCompleted && <div className="text-[10px] text-green-300 font-bold">Realizado</div>}
+                {googleSyncEnabled && (
+                    appt.googleEventId
+                        ? <div className="text-[9px] font-semibold text-emerald-400 leading-tight">● Sync</div>
+                        : <div className="text-[9px] font-semibold text-amber-400 leading-tight">● Pendente</div>
+                )}
             </div>
 
             {showMenu && (

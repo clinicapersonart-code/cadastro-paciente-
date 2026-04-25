@@ -97,6 +97,8 @@ const App: React.FC = () => {
     const [patientDocuments, setPatientDocuments] = useLocalStorage<Record<string, import('./types').PatientDocument[]>>('personart.patient_documents.db', {});
     const [documentFolders, setDocumentFolders] = useLocalStorage<Record<string, import('./types').DocumentFolder[]>>('personart.document_folders.db', {});
 
+    const googleSyncEnabled = String(import.meta.env.VITE_GOOGLE_CALENDAR_SYNC_ENABLED ?? '').toLowerCase().trim() === 'true';
+
     // --- SISTEMA DE NOTIFICAÇÕES ---
     const [activityLogs, setActivityLogs] = useLocalStorage<ActivityLog[]>('personart.notifications.db', []);
     const [showNotifications, setShowNotifications] = useState(false);
@@ -1506,7 +1508,7 @@ const App: React.FC = () => {
                         </div>
                     </div>
                 )}
-                {activeTab === 'agenda' && <Agenda patients={patients} profissionais={profissionais} convenios={convenioList} appointments={appointments} onAddAppointment={handleAddAppointment} onAddBatchAppointments={handleAddBatchAppointments} onUpdateAppointment={handleUpdateAppointment} onDeleteAppointment={handleDeleteAppointment} currentUser={currentUser} />}
+                {activeTab === 'agenda' && <Agenda patients={patients} profissionais={profissionais} convenios={convenioList} appointments={appointments} onAddAppointment={handleAddAppointment} onAddBatchAppointments={handleAddBatchAppointments} onUpdateAppointment={handleUpdateAppointment} onDeleteAppointment={handleDeleteAppointment} currentUser={currentUser} googleSyncEnabled={googleSyncEnabled} />}
 
                 {activeTab === 'fila' && (currentUser?.role === 'clinic' || currentUser?.role === 'admin') && (
                     <Waitlist
