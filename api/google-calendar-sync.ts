@@ -66,6 +66,41 @@ function validateDateTime(date: string, time: string) {
   }
 }
 
+function normalizeProfessionalName(name = '') {
+  return name
+    .split(' - ')[0]
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+function parseCalendarMap() {
+  const raw = process.env.GOOGLE_CALENDAR_IDS_BY_PROFESSIONAL;
+  if (!raw) return {} as Record<string, string>;
+
+  const parsed = JSON.parse(raw) as Record<string, string>;
+  return Object.entries(parsed).reduce<Record<string, string>>((acc, [professional, calendarId]) => {
+    const normalized = normalizeProfessionalName(professional);
+    if (normalized && calendarId) acc[normalized] = calendarId.trim();
+    return acc;
+  }, {});
+}
+
+function resolveCalendarId(appointment: AppointmentPayload) {
+  const fallbackCalendarId = process.env.GOOGLE_CALENDAR_ID?.trim();
+  const calendarsByProfessional = parseCalendarMap();
+  const professionalKey = normalizeProfessionalName(appointment.profissional);
+  const professionalCalendarId = professionalKey ? calendarsByProfessional[professionalKey] : undefined;
+
+  const calendarId = professionalCalendarId || fallbackCalendarId;
+  if (!calendarId) {
+    throw new Error(`Calendário Google não configurado para o profissional: ${appointment.profissional || 'não informado'}.`);
+  }
+
+  return calendarId;
+}
+
 function addMinutes(date: string, time: string, minutesToAdd: number) {
   const base = new Date(`${date}T${time}:00Z`);
   base.setUTCMinutes(base.getUTCMinutes() + minutesToAdd);
@@ -164,16 +199,12 @@ export default async function handler(req: Req, res: Res) {
   }
 
   try {
-    const calendarId = process.env.GOOGLE_CALENDAR_ID;
-    if (!calendarId) {
-      throw new Error('GOOGLE_CALENDAR_ID não configurado.');
-    }
-
     const payload = req.body as SyncPayload;
     if (!payload?.action || !payload?.appointment?.id) {
       return res.status(400).json({ ok: false, error: 'Payload inválido.' });
     }
 
+    const calendarId = resolveCalendarId(payload.appointment);
     const accessToken = await getAccessToken();
     const encodedCalendarId = encodeURIComponent(calendarId);
 
