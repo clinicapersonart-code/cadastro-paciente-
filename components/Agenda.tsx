@@ -511,6 +511,20 @@ export const Agenda: React.FC<AgendaProps> = ({
                         )}
 
                         <button
+                            type="button"
+                            disabled
+                            title={googleSyncEnabled ? 'Sincronização automática com Google Agenda ativa' : 'Sincronização com Google Agenda inativa ou não configurada'}
+                            className={`font-semibold px-3 py-2 rounded-lg text-sm flex items-center gap-2 border transition cursor-default ${googleSyncEnabled
+                                ? 'bg-emerald-900/30 border-emerald-700/60 text-emerald-300'
+                                : 'bg-slate-800 border-slate-700 text-slate-500'
+                                }`}
+                        >
+                            <CalendarIcon className="w-4 h-4" />
+                            <span>Google Agenda</span>
+                            <span className={`w-2 h-2 rounded-full ${googleSyncEnabled ? 'bg-emerald-400' : 'bg-slate-500'}`} />
+                        </button>
+
+                        <button
                             onClick={() => setShowForm(true)}
                             className="bg-sky-600 hover:bg-sky-500 text-white font-semibold px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition"
                         >
