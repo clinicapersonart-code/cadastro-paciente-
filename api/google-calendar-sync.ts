@@ -24,6 +24,7 @@ type AppointmentPayload = {
   type?: string;
   status?: string;
   convenioName?: string;
+  professionalEmail?: string;
   obs?: string;
 };
 
@@ -109,6 +110,11 @@ function addMinutes(date: string, time: string, minutesToAdd: number) {
   return { endDate, endTime };
 }
 
+function normalizeEmail(email = '') {
+  const trimmed = email.trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed) ? trimmed : '';
+}
+
 async function getAccessToken() {
   const sa = parseServiceAccountJson();
   const auth = new JWT({
@@ -157,6 +163,7 @@ function buildEventBody(appointment: AppointmentPayload) {
 
   const { endDate, endTime } = addMinutes(appointment.date, appointment.time, durationMin);
   const calendarTimezone = process.env.GOOGLE_CALENDAR_TIMEZONE || 'America/Sao_Paulo';
+  const professionalEmail = normalizeEmail(appointment.professionalEmail);
 
   const summary = `${appointment.patientName} • ${appointment.type || 'Sessão'}`;
   const description = [
@@ -188,6 +195,7 @@ function buildEventBody(appointment: AppointmentPayload) {
         patientId: appointment.patientId || '',
       },
     },
+    ...(professionalEmail ? { attendees: [{ email: professionalEmail }] } : {}),
   };
 }
 
@@ -214,7 +222,7 @@ export default async function handler(req: Req, res: Res) {
       }
 
       const encodedEventId = encodeURIComponent(payload.googleEventId);
-      const deleteUrl = `https://www.googleapis.com/calendar/v3/calendars/${encodedCalendarId}/events/${encodedEventId}?sendUpdates=none`;
+      const deleteUrl = `https://www.googleapis.com/calendar/v3/calendars/${encodedCalendarId}/events/${encodedEventId}?sendUpdates=all`;
 
       try {
         await googleRequest(deleteUrl, { method: 'DELETE', accessToken });
@@ -229,7 +237,7 @@ export default async function handler(req: Req, res: Res) {
     const encodedEventId = payload.googleEventId ? encodeURIComponent(payload.googleEventId) : '';
 
     if (payload.googleEventId) {
-      const patchUrl = `https://www.googleapis.com/calendar/v3/calendars/${encodedCalendarId}/events/${encodedEventId}?sendUpdates=none`;
+      const patchUrl = `https://www.googleapis.com/calendar/v3/calendars/${encodedCalendarId}/events/${encodedEventId}?sendUpdates=all`;
       const patched = await googleRequest(patchUrl, {
         method: 'PATCH',
         body: JSON.stringify(eventBody),
@@ -239,7 +247,7 @@ export default async function handler(req: Req, res: Res) {
       return res.status(200).json({ ok: true, action: 'updated', eventId: patched?.id, htmlLink: patched?.htmlLink });
     }
 
-    const insertUrl = `https://www.googleapis.com/calendar/v3/calendars/${encodedCalendarId}/events?sendUpdates=none`;
+    const insertUrl = `https://www.googleapis.com/calendar/v3/calendars/${encodedCalendarId}/events?sendUpdates=all`;
     const inserted = await googleRequest(insertUrl, {
       method: 'POST',
       body: JSON.stringify(eventBody),

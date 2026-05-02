@@ -62,6 +62,7 @@ export interface Appointment {
   time: string;
   type: 'Convênio' | 'Particular';
   convenioName?: string;
+  professionalEmail?: string;
   status: 'Agendado' | 'Realizado' | 'Cancelado';
   obs?: string;
 
@@ -173,6 +174,7 @@ export interface UserProfile {
   // Novos campos para sincronização com lista de profissionais
   specialty?: string; // Especialidade (ex: Psicologia, Fonoaudiologia)
   professionalRegister?: string; // CRM/CRP completo
+  email?: string; // E-mail para convites do Google Agenda
   color?: string; // Cor na agenda
 }
 

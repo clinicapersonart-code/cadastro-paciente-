@@ -26,6 +26,7 @@ export const UserManager: React.FC<UserManagerProps> = ({
     const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
     const [formData, setFormData] = useState({
         name: '',
+        email: '',
         role: 'professional' as 'admin' | 'professional',
         pin: '',
         specialty: '',
@@ -36,6 +37,7 @@ export const UserManager: React.FC<UserManagerProps> = ({
     const resetForm = () => {
         setFormData({
             name: '',
+            email: '',
             role: 'professional',
             pin: '',
             specialty: '',
@@ -55,6 +57,7 @@ export const UserManager: React.FC<UserManagerProps> = ({
             onUpdateUser({
                 ...editingUser,
                 name: formData.name.trim(),
+                email: formData.email.trim(),
                 role: formData.role,
                 pin: formData.pin || editingUser.pin,
                 specialty: formData.specialty,
@@ -66,6 +69,7 @@ export const UserManager: React.FC<UserManagerProps> = ({
             const newUser: UserProfile = {
                 id: `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                 name: formData.name.trim(),
+                email: formData.email.trim(),
                 role: formData.role,
                 pin: formData.pin || '1234',
                 active: true,
@@ -84,6 +88,7 @@ export const UserManager: React.FC<UserManagerProps> = ({
         setEditingUser(user);
         setFormData({
             name: user.name,
+            email: user.email || '',
             role: user.role === 'clinic' ? 'admin' : user.role,
             pin: '',
             specialty: user.specialty || '',
@@ -159,6 +164,7 @@ export const UserManager: React.FC<UserManagerProps> = ({
                                                 {user.specialty && ` • ${user.specialty}`}
                                                 {user.professionalRegister && ` • ${user.professionalRegister}`}
                                             </p>
+                                            {user.email && <p className="text-xs text-slate-500">{user.email}</p>}
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <button
@@ -208,6 +214,18 @@ export const UserManager: React.FC<UserManagerProps> = ({
                                     placeholder="Ex: Maria Silva"
                                     required
                                 />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm text-slate-400 mb-1">E-mail para Google Agenda</label>
+                                <input
+                                    type="email"
+                                    value={formData.email}
+                                    onChange={e => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white outline-none focus:ring-2 focus:ring-sky-500"
+                                    placeholder="profissional@email.com"
+                                />
+                                <p className="text-[11px] text-slate-500 mt-1">Usado para convidar a profissional no evento do Google Agenda.</p>
                             </div>
 
                             {/* Função */}

@@ -84,6 +84,7 @@ const App: React.FC = () => {
     const [passwordError, setPasswordError] = useState('');
 
     const [profileForm, setProfileForm] = useState({
+        email: '',
         specialty: '',
         professionalRegister: ''
     });
@@ -468,19 +469,55 @@ const App: React.FC = () => {
         });
     };
 
+    const normalizeProfessionalName = (name = '') => name
+        .split(' - ')[0]
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ')
+        .toLowerCase()
+        .trim();
+
+    const getProfessionalEmail = (professionalDisplayName?: string) => {
+        const key = normalizeProfessionalName(professionalDisplayName || '');
+        if (!key) return undefined;
+
+        const matchedUser = users.find(u => {
+            if (u.role !== 'professional' || u.active === false || !u.email?.trim()) return false;
+            const userKey = normalizeProfessionalName(u.name);
+            return userKey === key || key.includes(userKey) || userKey.includes(key);
+        });
+
+        return matchedUser?.email?.trim() || undefined;
+    };
+
+    const withProfessionalEmail = (appt: Appointment): Appointment => {
+        const existingAppt = appointments.find(x => x.id === appt.id);
+        const sameProfessional = existingAppt
+            ? normalizeProfessionalName(existingAppt.profissional) === normalizeProfessionalName(appt.profissional)
+            : false;
+
+        return {
+            ...appt,
+            professionalEmail: appt.professionalEmail
+                || getProfessionalEmail(appt.profissional)
+                || (sameProfessional ? existingAppt?.professionalEmail : undefined)
+        };
+    };
+
     const syncAppointmentWithGoogle = async (appt: Appointment, action: 'upsert' | 'delete') => {
         try {
+            const appointmentForSync = withProfessionalEmail(appt);
             const result = await syncAppointmentToGoogle({
                 action,
-                appointment: appt,
-                googleEventId: appt.googleEventId
+                appointment: appointmentForSync,
+                googleEventId: appointmentForSync.googleEventId
             });
 
             if (action === 'upsert' && result.eventId) {
                 const syncedAppt: Appointment = {
-                    ...appt,
+                    ...appointmentForSync,
                     googleEventId: result.eventId,
-                    googleCalendarHtmlLink: result.htmlLink || appt.googleCalendarHtmlLink
+                    googleCalendarHtmlLink: result.htmlLink || appointmentForSync.googleCalendarHtmlLink
                 };
 
                 setAppointments(prev => prev.map(x => x.id === appt.id ? syncedAppt : x));
@@ -616,11 +653,11 @@ const App: React.FC = () => {
 
     const handleAddAppointment = async (appt: Appointment) => {
         const patient = patients.find(p => p.id === appt.patientId);
-        const enrichedAppt = {
+        const enrichedAppt = withProfessionalEmail({
             ...appt,
             numero_autorizacao: patient?.funservConfig?.numeroAutorizacao || patient?.numero_autorizacao || appt.numero_autorizacao || '',
             data_autorizacao: patient?.funservConfig?.dataAutorizacao || patient?.data_autorizacao || appt.data_autorizacao || null
-        };
+        });
 
         // Salva local
         setAppointments(prev => [...prev, enrichedAppt]);
@@ -644,11 +681,11 @@ const App: React.FC = () => {
         // Local
         const enrichedBatch = batch.map(a => {
             const patient = patients.find(p => p.id === a.patientId);
-            return {
+            return withProfessionalEmail({
                 ...a,
                 numero_autorizacao: patient?.funservConfig?.numeroAutorizacao || patient?.numero_autorizacao || '',
                 data_autorizacao: patient?.funservConfig?.dataAutorizacao || patient?.data_autorizacao || null
-            };
+            });
         });
         setAppointments(prev => [...prev, ...enrichedBatch]);
         showToast(
@@ -681,17 +718,19 @@ const App: React.FC = () => {
     };
 
     const handleUpdateAppointment = async (appt: Appointment) => {
+        const apptForSave = withProfessionalEmail(appt);
+
         // Aplica a alteração diretamente no estado local
-        setAppointments(prev => prev.map(x => x.id === appt.id ? appt : x));
+        setAppointments(prev => prev.map(x => x.id === apptForSave.id ? apptForSave : x));
 
         // Aplica na nuvem
         if (supabase && connectionStatus !== 'offline') {
-            const { error } = await upsertAppointmentToCloud(appt);
+            const { error } = await upsertAppointmentToCloud(apptForSave);
             if (error) {
                 console.error("Erro atualização agenda nuvem:", error);
             } else {
-                logActivity('ALTERACAO_AGENDA', `${currentUser?.name} alterou agendamento de ${appt.patientName}`, { apptId: appt.id });
-                await syncAppointmentWithGoogle(appt, 'upsert');
+                logActivity('ALTERACAO_AGENDA', `${currentUser?.name} alterou agendamento de ${apptForSave.patientName}`, { apptId: apptForSave.id });
+                await syncAppointmentWithGoogle(apptForSave, 'upsert');
             }
         }
 
@@ -703,19 +742,19 @@ const App: React.FC = () => {
             // Felizmente, o objeto oldAppt ainda não foi mutado (o map cria novo ref), e este closure tem acesso ao appointments antigo?
             // De qualquer forma, a UI passa os dados novos. 
             // Uma ideia mais segura: o appt veio modificado do form. A busca em `appointments` (closure) ainda tem o original.
-            const oldAppt = appointments.find(x => x.id === appt.id);
+            const oldAppt = appointments.find(x => x.id === apptForSave.id);
             if (!oldAppt) return;
 
             const request: ScheduleChangeRequest = {
                 id: `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                appointmentId: appt.id,
+                appointmentId: apptForSave.id,
                 type: 'UPDATE',
                 status: 'PENDING',
                 requestedBy: currentUser.id,
                 requestedByName: currentUser.name,
                 timestamp: new Date().toISOString(),
                 oldData: { ...oldAppt }, // o estado antigo antes desta renderização
-                newData: { ...appt }
+                newData: { ...apptForSave }
             };
 
             setScheduleChangeRequests(prev => [request, ...prev]);
@@ -737,7 +776,7 @@ const App: React.FC = () => {
                 }
             }
 
-            logActivity('SOLICITACAO_ALTERACAO', `${currentUser.name} alterou agendamento de ${appt.patientName} (${appt.date} ${appt.time})`, { requestId: request.id, apptId: appt.id });
+            logActivity('SOLICITACAO_ALTERACAO', `${currentUser.name} alterou agendamento de ${apptForSave.patientName} (${apptForSave.date} ${apptForSave.time})`, { requestId: request.id, apptId: apptForSave.id });
             showToast('Alteração salva (Notificação enviada à clínica)', 'success');
         } else {
              // Admin feedback
@@ -942,6 +981,7 @@ const App: React.FC = () => {
 
         const updatedUser: UserProfile = {
             ...currentUser,
+            email: profileForm.email?.trim() || '',
             specialty: profileForm.specialty?.trim() || '',
             professionalRegister: profileForm.professionalRegister?.trim() || ''
         };
@@ -1264,6 +1304,7 @@ const App: React.FC = () => {
                             <button
                                 onClick={() => {
                                     setProfileForm({
+                                        email: currentUser?.email || '',
                                         specialty: currentUser?.specialty || '',
                                         professionalRegister: (currentUser as any)?.professionalRegister || (currentUser as any)?.crp || ''
                                     });
@@ -2093,6 +2134,18 @@ const App: React.FC = () => {
                                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-slate-400 outline-none opacity-70 cursor-not-allowed"
                                 />
                                 <p className="text-[11px] text-slate-500 mt-1">(Nome é alterado apenas pela clínica, para evitar bagunçar atribuições.)</p>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm text-slate-400 mb-1">E-mail para Google Agenda</label>
+                                <input
+                                    type="email"
+                                    value={profileForm.email}
+                                    onChange={e => setProfileForm(prev => ({ ...prev, email: e.target.value }))}
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white outline-none focus:ring-2 focus:ring-[#e9c49e]"
+                                    placeholder="profissional@email.com"
+                                />
+                                <p className="text-[11px] text-slate-500 mt-1">Esse e-mail será convidado nos eventos do Google Agenda.</p>
                             </div>
 
                             <div>
