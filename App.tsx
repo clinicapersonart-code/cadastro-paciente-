@@ -624,6 +624,7 @@ const App: React.FC = () => {
 
         // Salva local
         setAppointments(prev => [...prev, enrichedAppt]);
+        showToast('Agendamento salvo na agenda.', 'success');
 
         // Salva nuvem
         if (supabase && connectionStatus !== 'offline') {
@@ -650,6 +651,12 @@ const App: React.FC = () => {
             };
         });
         setAppointments(prev => [...prev, ...enrichedBatch]);
+        showToast(
+            enrichedBatch.length === 1
+                ? 'Agendamento salvo na agenda.'
+                : `${enrichedBatch.length} agendamentos salvos na agenda.`,
+            'success'
+        );
 
         // Nuvem
         if (supabase && connectionStatus !== 'offline') {

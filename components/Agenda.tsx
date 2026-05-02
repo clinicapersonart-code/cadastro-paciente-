@@ -20,6 +20,14 @@ const DAY_START_HOUR = 7;
 const DAY_END_HOUR = 20;
 const SLOT_STEP_MIN = 15;
 const PX_PER_MIN = 1.2; // altura do bloco (ajuste fino visual)
+const DURATION_OPTIONS_MIN = [15, 30, 45, 60, 75, 90];
+
+const formatDurationLabel = (minutes: number) => {
+    if (minutes < 60) return `${minutes} min`;
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return m ? `${h}h${String(m).padStart(2, '0')}` : `${h}h`;
+};
 
 const TIME_SLOTS = Array.from({ length: (DAY_END_HOUR - DAY_START_HOUR + 1) }, (_, i) => {
     const h = String(DAY_START_HOUR + i).padStart(2, '0');
@@ -157,6 +165,7 @@ export const Agenda: React.FC<AgendaProps> = ({
     const [formId, setFormId] = useState<string | null>(null);
     const [selectedPatientId, setSelectedPatientId] = useState('');
     const [formProfissional, setFormProfissional] = useState('');
+    const [formConvenioName, setFormConvenioName] = useState('');
     const [formDate, setFormDate] = useState('');
     const [time, setTime] = useState('08:00');
     const [type, setType] = useState<'Convênio' | 'Particular'>('Convênio');
@@ -192,16 +201,14 @@ export const Agenda: React.FC<AgendaProps> = ({
         }
     }, [selectedSlot]);
 
-    // Auto-preenche duração/valor quando for Convênio
+    // Auto-preenche duração/valor quando um convênio é selecionado, mas mantém a duração editável.
     useEffect(() => {
         if (!showForm) return;
         if (type !== 'Convênio') return;
-        const patient = patients.find(p => p.id === selectedPatientId);
-        const convName = patient?.convenio;
-        const cfg = getConvenioConfig(convName || undefined);
+        const cfg = getConvenioConfig(formConvenioName || undefined);
         if (cfg?.durationMin) setDurationMin(cfg.durationMin);
         if (typeof cfg?.price === 'number') setPrice(cfg.price);
-    }, [type, selectedPatientId, showForm, patients]);
+    }, [type, formConvenioName, showForm, convenios]);
 
     const getConvenioConfig = (name?: string) => {
         if (!name) return null;
@@ -215,6 +222,7 @@ export const Agenda: React.FC<AgendaProps> = ({
             setRecurrenceEndDate('');
             setDurationMin(45);
             setPrice('');
+            setFormConvenioName('');
             if (selectedDate && !selectedSlot) setFormDate(selectedDate);
         }
     }, [showForm, formId, selectedDate, selectedSlot]);
@@ -246,19 +254,21 @@ export const Agenda: React.FC<AgendaProps> = ({
         const patient = patients.find(p => p.id === selectedPatientId);
         if (!patient) return;
 
-        // Regras: Convênio puxa valor/duração do convênio do paciente; Particular é editável
-        let effectiveDuration = durationMin;
+        // Regras: Convênio pode ser escolhido no agendamento; valor vem do convênio e duração pode ser ajustada.
+        let effectiveDuration = durationMin || 45;
         let effectivePrice: number | undefined = typeof price === 'number' ? price : undefined;
+        let effectiveConvenioName: string | undefined;
 
         if (type === 'Convênio') {
-            const convName = patient.convenio;
+            const convName = (formConvenioName || patient.convenio || '').trim();
             if (!convName) {
-                alert('Este paciente não tem convênio selecionado no cadastro. Selecione um convênio no paciente ou marque como Particular.');
+                alert('Selecione um convênio para este agendamento ou marque como Particular.');
                 return;
             }
             const cfg = getConvenioConfig(convName);
-            effectiveDuration = cfg?.durationMin || effectiveDuration || 45;
-            effectivePrice = typeof cfg?.price === 'number' ? cfg!.price : effectivePrice;
+            effectiveConvenioName = convName;
+            effectiveDuration = effectiveDuration || cfg?.durationMin || 45;
+            effectivePrice = typeof cfg?.price === 'number' ? cfg.price : effectivePrice;
         }
 
         const createAppointmentObj = (dateStr: string, idStr?: string, suffix?: string, index = 0): Appointment => ({
@@ -270,7 +280,7 @@ export const Agenda: React.FC<AgendaProps> = ({
             date: dateStr,
             time,
             type,
-            convenioName: type === 'Convênio' ? patient.convenio : undefined,
+            convenioName: type === 'Convênio' ? effectiveConvenioName : undefined,
             status: 'Agendado',
             obs: suffix ? (obs ? `${obs} (${suffix})` : suffix) : obs,
             durationMin: effectiveDuration,
@@ -278,12 +288,16 @@ export const Agenda: React.FC<AgendaProps> = ({
         });
 
         if (formId) {
-            const updatedSingle = createAppointmentObj(formDate, formId);
+            const originAppt = appointments.find(a => a.id === formId);
+            const updatedSingle = {
+                ...createAppointmentObj(formDate, formId),
+                googleEventId: originAppt?.googleEventId,
+                googleCalendarHtmlLink: originAppt?.googleCalendarHtmlLink
+            };
 
             // Se o usuário escolheu aplicar para futuros, recalcula toda a sequência existente.
             if (editApplyScope === 'future') {
                 const baseProf = (effectiveProfissional || '').split(' - ')[0].trim().toLowerCase();
-                const originAppt = appointments.find(a => a.id === formId);
                 const originDate = originAppt?.date || updatedSingle.date;
 
                 const series = appointments
@@ -318,7 +332,9 @@ export const Agenda: React.FC<AgendaProps> = ({
                         time: updatedSingle.time,
                         type: updatedSingle.type,
                         convenioName: updatedSingle.convenioName,
-                        obs: updatedSingle.obs
+                        obs: updatedSingle.obs,
+                        durationMin: updatedSingle.durationMin,
+                        price: updatedSingle.price
                     });
                 });
 
@@ -382,6 +398,7 @@ export const Agenda: React.FC<AgendaProps> = ({
         setSelectedSlot(null);
         setSelectedPatientId('');
         setFormProfissional('');
+        setFormConvenioName('');
         setType('Convênio');
         setDurationMin(45);
         setPrice('');
@@ -391,6 +408,7 @@ export const Agenda: React.FC<AgendaProps> = ({
         setFormId(appt.id);
         setSelectedPatientId(appt.patientId);
         setFormProfissional(appt.profissional);
+        setFormConvenioName(appt.convenioName || patients.find(p => p.id === appt.patientId)?.convenio || '');
         setFormDate(appt.date);
         setTime(appt.time);
         setType(appt.type);
@@ -650,7 +668,19 @@ export const Agenda: React.FC<AgendaProps> = ({
                             {formId ? 'Editar Agendamento' : 'Novo Agendamento'}
                         </h3>
                         <form onSubmit={handleSubmit} className="space-y-4">
-                            <select required value={selectedPatientId} onChange={e => setSelectedPatientId(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white">
+                            <select
+                                required
+                                value={selectedPatientId}
+                                onChange={e => {
+                                    const nextPatientId = e.target.value;
+                                    setSelectedPatientId(nextPatientId);
+                                    if (type === 'Convênio') {
+                                        const patient = patients.find(p => p.id === nextPatientId);
+                                        setFormConvenioName(patient?.convenio || '');
+                                    }
+                                }}
+                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white"
+                            >
                                 <option value="">Selecione o paciente...</option>
                                 {patients
                                     .filter(p => {
@@ -679,7 +709,7 @@ export const Agenda: React.FC<AgendaProps> = ({
 
                             <div className="grid grid-cols-2 gap-3">
                                 <input type="date" required value={formDate} onChange={e => setFormDate(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white" />
-                                <input type="time" required value={time} onChange={e => setTime(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white" />
+                                <input type="time" required step={900} value={time} onChange={e => setTime(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white" />
                             </div>
 
                             <select
@@ -698,7 +728,16 @@ export const Agenda: React.FC<AgendaProps> = ({
                                     <label className="block text-[11px] text-slate-400 mb-1">Tipo</label>
                                     <select
                                         value={type}
-                                        onChange={e => setType(e.target.value as any)}
+                                        onChange={e => {
+                                            const nextType = e.target.value as 'Convênio' | 'Particular';
+                                            setType(nextType);
+                                            if (nextType === 'Particular') {
+                                                setFormConvenioName('');
+                                            } else if (!formConvenioName) {
+                                                const patient = patients.find(p => p.id === selectedPatientId);
+                                                setFormConvenioName(patient?.convenio || '');
+                                            }
+                                        }}
                                         className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
                                     >
                                         <option value="Convênio">Convênio</option>
@@ -706,19 +745,36 @@ export const Agenda: React.FC<AgendaProps> = ({
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-[11px] text-slate-400 mb-1">Duração (min)</label>
+                                    <label className="block text-[11px] text-slate-400 mb-1">Convênio</label>
                                     <select
-                                        value={durationMin}
-                                        onChange={e => setDurationMin(Number(e.target.value))}
-                                        disabled={type === 'Convênio'}
-                                        className={`w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white ${type === 'Convênio' ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                        value={formConvenioName}
+                                        onChange={e => {
+                                            setFormConvenioName(e.target.value);
+                                            if (e.target.value) setType('Convênio');
+                                        }}
+                                        disabled={type === 'Particular'}
+                                        className={`w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white ${type === 'Particular' ? 'opacity-60 cursor-not-allowed' : ''}`}
                                     >
-                                        {[15, 30, 45, 60, 75, 90].map(m => <option key={m} value={m}>{m}</option>)}
+                                        <option value="">Selecione...</option>
+                                        {convenios
+                                            .filter(c => c?.active !== false)
+                                            .map(c => <option key={c.id || c.name} value={c.name}>{c.name}</option>)}
                                     </select>
-                                    {type === 'Convênio' && (
-                                        <p className="text-[10px] text-slate-500 mt-1">(Convênio: duração vem do cadastro do convênio do paciente)</p>
-                                    )}
                                 </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-[11px] text-slate-400 mb-1">Duração</label>
+                                <select
+                                    value={durationMin}
+                                    onChange={e => setDurationMin(Number(e.target.value))}
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                                >
+                                    {DURATION_OPTIONS_MIN.map(m => <option key={m} value={m}>{formatDurationLabel(m)}</option>)}
+                                </select>
+                                {type === 'Convênio' && (
+                                    <p className="text-[10px] text-slate-500 mt-1">Se o convênio tiver duração padrão, ela entra automaticamente, mas você pode ajustar.</p>
+                                )}
                             </div>
 
                             <div className="grid grid-cols-2 gap-3">
