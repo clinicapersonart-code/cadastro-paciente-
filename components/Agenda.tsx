@@ -202,13 +202,15 @@ export const Agenda: React.FC<AgendaProps> = ({
     }, [selectedSlot]);
 
     // Auto-preenche duração/valor quando um convênio é selecionado, mas mantém a duração editável.
+    // Ao editar (formId presente) preserva os valores já salvos no agendamento.
     useEffect(() => {
         if (!showForm) return;
+        if (formId) return;
         if (type !== 'Convênio') return;
         const cfg = getConvenioConfig(formConvenioName || undefined);
         if (cfg?.durationMin) setDurationMin(cfg.durationMin);
         if (typeof cfg?.price === 'number') setPrice(cfg.price);
-    }, [type, formConvenioName, showForm, convenios]);
+    }, [type, formConvenioName, showForm, convenios, formId]);
 
     const getConvenioConfig = (name?: string) => {
         if (!name) return null;
