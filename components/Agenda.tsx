@@ -390,8 +390,8 @@ export const Agenda: React.FC<AgendaProps> = ({
             }
         }
 
-        if (onAddBatchAppointments) onAddBatchAppointments(newBatch);
-        else newBatch.forEach(a => onAddAppointment(a));
+        if (onAddBatchAppointments) await onAddBatchAppointments(newBatch);
+        else await Promise.all(newBatch.map(a => onAddAppointment(a)));
 
         closeForm();
     };
