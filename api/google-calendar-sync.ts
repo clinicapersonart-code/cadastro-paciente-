@@ -154,6 +154,16 @@ async function googleRequest(url: string, init: RequestInit & { accessToken: str
   return data;
 }
 
+async function findExistingGoogleEventId(calendarId: string, accessToken: string, appointmentId: string) {
+  const encodedCalendarId = encodeURIComponent(calendarId);
+  const property = encodeURIComponent(`appointmentId=${appointmentId}`);
+  const url = `https://www.googleapis.com/calendar/v3/calendars/${encodedCalendarId}/events?privateExtendedProperty=${property}&maxResults=10&singleEvents=true&showDeleted=false`;
+  const data = await googleRequest(url, { method: 'GET', accessToken });
+  const items = Array.isArray(data?.items) ? data.items : [];
+  const match = items.find((item: any) => item?.id && item?.status !== 'cancelled');
+  return match?.id as string | undefined;
+}
+
 function buildEventBody(appointment: AppointmentPayload) {
   validateDateTime(appointment.date, appointment.time);
 
@@ -217,11 +227,12 @@ export default async function handler(req: Req, res: Res) {
     const encodedCalendarId = encodeURIComponent(calendarId);
 
     if (payload.action === 'delete') {
-      if (!payload.googleEventId) {
-        return res.status(200).json({ ok: true, skipped: true, reason: 'sem googleEventId' });
+      const eventIdToDelete = payload.googleEventId || await findExistingGoogleEventId(calendarId, accessToken, payload.appointment.id);
+      if (!eventIdToDelete) {
+        return res.status(200).json({ ok: true, skipped: true, reason: 'sem googleEventId e nenhum evento existente encontrado' });
       }
 
-      const encodedEventId = encodeURIComponent(payload.googleEventId);
+      const encodedEventId = encodeURIComponent(eventIdToDelete);
       const deleteUrl = `https://www.googleapis.com/calendar/v3/calendars/${encodedCalendarId}/events/${encodedEventId}?sendUpdates=all`;
 
       try {
@@ -230,13 +241,14 @@ export default async function handler(req: Req, res: Res) {
         if (error?.status !== 404) throw error;
       }
 
-      return res.status(200).json({ ok: true, deleted: true, eventId: payload.googleEventId });
+      return res.status(200).json({ ok: true, deleted: true, eventId: eventIdToDelete });
     }
 
     const eventBody = buildEventBody(payload.appointment);
-    const encodedEventId = payload.googleEventId ? encodeURIComponent(payload.googleEventId) : '';
+    const existingEventId = payload.googleEventId || await findExistingGoogleEventId(calendarId, accessToken, payload.appointment.id);
+    const encodedEventId = existingEventId ? encodeURIComponent(existingEventId) : '';
 
-    if (payload.googleEventId) {
+    if (existingEventId) {
       const patchUrl = `https://www.googleapis.com/calendar/v3/calendars/${encodedCalendarId}/events/${encodedEventId}?sendUpdates=all`;
       const patched = await googleRequest(patchUrl, {
         method: 'PATCH',
@@ -244,7 +256,7 @@ export default async function handler(req: Req, res: Res) {
         accessToken,
       });
 
-      return res.status(200).json({ ok: true, action: 'updated', eventId: patched?.id, htmlLink: patched?.htmlLink });
+      return res.status(200).json({ ok: true, action: 'updated', eventId: patched?.id || existingEventId, htmlLink: patched?.htmlLink });
     }
 
     const insertUrl = `https://www.googleapis.com/calendar/v3/calendars/${encodedCalendarId}/events?sendUpdates=all`;
