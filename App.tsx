@@ -637,12 +637,12 @@ const App: React.FC = () => {
                     supabase.from('patient_documents').delete().eq('patient_id', id),
                     supabase.from('document_folders').delete().eq('patient_id', id),
                 ]);
-                await Promise.all(patientAppointments.map(appt => syncAppointmentWithGoogle(appt, 'delete')));
                 showToast(`Paciente "${patientName}" excluído permanentemente.`, 'info');
             } catch (e) {
                 console.error('Erro ao excluir da nuvem:', e);
                 showToast(`Paciente excluído localmente. Erro na nuvem.`, 'error');
             }
+            await Promise.all(patientAppointments.map(appt => syncAppointmentWithGoogle(appt, 'delete')));
         } else {
             showToast(`Paciente "${patientName}" excluído localmente.`, 'info');
         }
@@ -670,8 +670,8 @@ const App: React.FC = () => {
                 console.error("Erro agendamento nuvem:", error);
             } else {
                 logActivity('AGENDAMENTO', `${currentUser?.name} agendou ${enrichedAppt.patientName} para ${enrichedAppt.date} às ${enrichedAppt.time}`, { apptId: enrichedAppt.id });
-                await syncAppointmentWithGoogle(enrichedAppt, 'upsert');
             }
+            await syncAppointmentWithGoogle(enrichedAppt, 'upsert');
         } else {
             logActivity('AGENDAMENTO', `${currentUser?.name} agendou ${enrichedAppt.patientName} (Local)`, { apptId: enrichedAppt.id });
         }
@@ -711,9 +711,8 @@ const App: React.FC = () => {
             const { error } = await supabase.from('appointments').upsert(records);
             if (error) {
                 console.error("Erro batch nuvem:", error);
-            } else {
-                await Promise.all(enrichedBatch.map(appt => syncAppointmentWithGoogle(appt, 'upsert')));
             }
+            await Promise.all(enrichedBatch.map(appt => syncAppointmentWithGoogle(appt, 'upsert')));
         }
     };
 
@@ -730,8 +729,8 @@ const App: React.FC = () => {
                 console.error("Erro atualização agenda nuvem:", error);
             } else {
                 logActivity('ALTERACAO_AGENDA', `${currentUser?.name} alterou agendamento de ${apptForSave.patientName}`, { apptId: apptForSave.id });
-                await syncAppointmentWithGoogle(apptForSave, 'upsert');
             }
+            await syncAppointmentWithGoogle(apptForSave, 'upsert');
         }
 
         // Se for profissional, TAMBÉM cria solicitação pendente para a clínica revisar
@@ -796,8 +795,8 @@ const App: React.FC = () => {
             const { error } = await supabase.from('appointments').delete().eq('id', id);
             if (!error) {
                 logActivity('EXCLUSAO_AGENDA', `${currentUser?.name} excluiu agendamento de ${name || 'paciente'}`, { apptId: id });
-                if (oldAppt) await syncAppointmentWithGoogle(oldAppt, 'delete');
             }
+            if (oldAppt) await syncAppointmentWithGoogle(oldAppt, 'delete');
         }
 
         // Se for profissional, cria requisição para o log da clínica
