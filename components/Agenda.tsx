@@ -8,10 +8,10 @@ interface AgendaProps {
     profissionais: string[];
     convenios: ConvenioConfig[];
     appointments: Appointment[];
-    onAddAppointment: (appt: Appointment) => void;
-    onAddBatchAppointments?: (appts: Appointment[]) => void;
-    onUpdateAppointment: (appt: Appointment) => void;
-    onDeleteAppointment: (id: string, name?: string) => void;
+    onAddAppointment: (appt: Appointment) => void | Promise<void>;
+    onAddBatchAppointments?: (appts: Appointment[]) => void | Promise<void>;
+    onUpdateAppointment: (appt: Appointment) => void | Promise<void>;
+    onDeleteAppointment: (id: string, name?: string) => void | Promise<void>;
     currentUser?: UserProfile;
     googleSyncEnabled?: boolean;
 }
@@ -239,7 +239,7 @@ export const Agenda: React.FC<AgendaProps> = ({
         return d;
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
         // RBAC: Se for profissional, o profissional da sessão é ele próprio.
@@ -313,8 +313,10 @@ export const Agenda: React.FC<AgendaProps> = ({
 
                 if (editRecurrence === 'none') {
                     // Mantém apenas este (atualizado) e remove futuros
-                    onUpdateAppointment(updatedSingle);
-                    series.filter(a => a.id !== formId).forEach(a => onDeleteAppointment(a.id, a.patientName));
+                    await onUpdateAppointment(updatedSingle);
+                    for (const a of series.filter(a => a.id !== formId)) {
+                        await onDeleteAppointment(a.id, a.patientName);
+                    }
                     closeForm();
                     return;
                 }
@@ -322,9 +324,9 @@ export const Agenda: React.FC<AgendaProps> = ({
                 const [sy, sm, sd] = updatedSingle.date.split('-').map(Number);
                 const start = new Date(sy, sm - 1, sd);
 
-                series.forEach((old, i) => {
+                for (const [i, old] of series.entries()) {
                     const nextDate = toISODate(addInterval(start, i, editRecurrence));
-                    onUpdateAppointment({
+                    await onUpdateAppointment({
                         ...old,
                         patientId: updatedSingle.patientId,
                         patientName: updatedSingle.patientName,
@@ -338,13 +340,13 @@ export const Agenda: React.FC<AgendaProps> = ({
                         durationMin: updatedSingle.durationMin,
                         price: updatedSingle.price
                     });
-                });
+                }
 
                 closeForm();
                 return;
             }
 
-            onUpdateAppointment(updatedSingle);
+            await onUpdateAppointment(updatedSingle);
             closeForm();
             return;
         }
