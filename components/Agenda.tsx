@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Appointment, Patient, UserProfile, ConvenioConfig } from '../types';
 import { CalendarIcon, PlusIcon, TrashIcon, CheckIcon, EditIcon, ChevronLeftIcon, ChevronRightIcon, XIcon } from './icons';
 import useLocalStorage from '../hooks/useLocalStorage';
@@ -126,6 +126,9 @@ const formatDateISO = (date: Date): string => {
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 
+const normalizeStr = (s: string) =>
+    s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
 const WEEKDAY_NAMES = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
@@ -162,7 +165,13 @@ export const Agenda: React.FC<AgendaProps> = ({
     const [viewMode, setViewMode] = useLocalStorage<'day' | 'week' | 'month'>('personart.agenda.view', 'week');
 
     const [filterProfissional, setFilterProfissional] = useState('');
+    const [filterPatientName, setFilterPatientName] = useState('');
     const [showForm, setShowForm] = useState(false);
+
+    // Patient search in modal
+    const [patientSearchQuery, setPatientSearchQuery] = useState('');
+    const [patientDropdownOpen, setPatientDropdownOpen] = useState(false);
+    const patientInputRef = useRef<HTMLInputElement>(null);
     const [selectedSlot, setSelectedSlot] = useState<{ date: string, time: string } | null>(null);
 
     const [formId, setFormId] = useState<string | null>(null);
@@ -182,6 +191,37 @@ export const Agenda: React.FC<AgendaProps> = ({
     const [editApplyScope, setEditApplyScope] = useState<'single' | 'future'>('single');
     const [editRecurrence, setEditRecurrence] = useState<'none' | 'weekly' | 'biweekly' | 'monthly'>('none');
     const [cancelModal, setCancelModal] = useState<{ isOpen: boolean; appt: Appointment | null; reason: string }>({ isOpen: false, appt: null, reason: '' });
+
+    // Patients available in modal (RBAC + search query)
+    const filteredModalPatients = useMemo(() => {
+        const rbacFiltered = patients
+            .filter(p => {
+                if (currentUser?.role === 'professional' && currentUser?.name) {
+                    const normalizedPro = currentUser.name.toLowerCase().trim();
+                    const matchingProEntry = profissionais.find(pr =>
+                        pr.toLowerCase().includes(normalizedPro) ||
+                        normalizedPro.includes(pr.toLowerCase().split(' - ')[0].trim())
+                    );
+                    if (matchingProEntry) return p.profissionais?.some(prof => prof === matchingProEntry) ?? false;
+                    return p.profissionais?.some(prof =>
+                        prof.toLowerCase().includes(normalizedPro) ||
+                        normalizedPro.includes(prof.toLowerCase().split(' - ')[0].trim())
+                    ) ?? false;
+                }
+                return true;
+            })
+            .sort((a, b) => a.nome.localeCompare(b.nome));
+
+        if (!patientSearchQuery.trim()) return formId && selectedPatientId
+            ? rbacFiltered.filter(p => p.id === selectedPatientId)
+            : [];
+        const q = normalizeStr(patientSearchQuery.trim());
+        return rbacFiltered.filter(p =>
+            normalizeStr(p.nome).includes(q) ||
+            (p.carteirinha ? normalizeStr(p.carteirinha).includes(q) : false) ||
+            (p.responsavel ? normalizeStr(p.responsavel).includes(q) : false)
+        );
+    }, [patients, patientSearchQuery, currentUser, profissionais, formId, selectedPatientId]);
 
     const handleStatusChange = (appt: Appointment, status: Appointment['status']) => {
         if (status === 'Cancelado') {
@@ -418,6 +458,8 @@ export const Agenda: React.FC<AgendaProps> = ({
         setFormId(null);
         setSelectedSlot(null);
         setSelectedPatientId('');
+        setPatientSearchQuery('');
+        setPatientDropdownOpen(false);
         setFormProfissional('');
         setFormConvenioName('');
         setType('Convênio');
@@ -428,6 +470,9 @@ export const Agenda: React.FC<AgendaProps> = ({
     const handleEditClick = (appt: Appointment) => {
         setFormId(appt.id);
         setSelectedPatientId(appt.patientId);
+        const editPatient = patients.find(p => p.id === appt.patientId);
+        setPatientSearchQuery(editPatient?.nome || appt.patientName || '');
+        setPatientDropdownOpen(false);
         setFormProfissional(appt.profissional);
         setFormConvenioName(appt.convenioName || patients.find(p => p.id === appt.patientId)?.convenio || '');
         setFormDate(appt.date);
@@ -444,9 +489,11 @@ export const Agenda: React.FC<AgendaProps> = ({
 
     const getAppointmentsForDay = (date: Date): Appointment[] => {
         const dateStr = formatDateISO(date);
+        const q = filterPatientName.trim() ? normalizeStr(filterPatientName.trim()) : '';
         return filteredAppointments
             .filter(a => a.date === dateStr)
             .filter(a => !filterProfissional || a.profissional === filterProfissional)
+            .filter(a => !q || normalizeStr(a.patientName || '').includes(q))
             .sort((a, b) => a.time.localeCompare(b.time));
     };
 
@@ -548,6 +595,31 @@ export const Agenda: React.FC<AgendaProps> = ({
                                 {profissionais.map(p => <option key={p} value={p}>{p.split(' - ')[0]}</option>)}
                             </select>
                         )}
+
+                        {/* Busca por paciente na agenda */}
+                        <div className="relative">
+                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                                    <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" />
+                                </svg>
+                            </span>
+                            <input
+                                type="text"
+                                placeholder="Buscar paciente..."
+                                value={filterPatientName}
+                                onChange={e => setFilterPatientName(e.target.value)}
+                                className="bg-slate-900 border border-slate-700 rounded-lg pl-8 pr-3 py-2 text-sm text-white placeholder-slate-500 focus:ring-2 focus:ring-sky-500 outline-none w-44"
+                            />
+                            {filterPatientName && (
+                                <button
+                                    type="button"
+                                    onClick={() => setFilterPatientName('')}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                                >
+                                    <XIcon className="w-3.5 h-3.5" />
+                                </button>
+                            )}
+                        </div>
 
                         <button
                             type="button"
@@ -689,44 +761,79 @@ export const Agenda: React.FC<AgendaProps> = ({
                             {formId ? 'Editar Agendamento' : 'Novo Agendamento'}
                         </h3>
                         <form onSubmit={handleSubmit} className="space-y-4">
-                            <select
-                                required
-                                value={selectedPatientId}
-                                onChange={e => {
-                                    const nextPatientId = e.target.value;
-                                    setSelectedPatientId(nextPatientId);
-                                    if (type === 'Convênio') {
-                                        const patient = patients.find(p => p.id === nextPatientId);
-                                        setFormConvenioName(patient?.convenio || '');
-                                    }
-                                }}
-                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white"
-                            >
-                                <option value="">Selecione o paciente...</option>
-                                {patients
-                                    .filter(p => {
-                                        if (currentUser?.role === 'professional' && currentUser?.name) {
-                                            const normalizedPro = currentUser.name.toLowerCase().trim();
-                                            // Encontra a entrada exata do profissional na lista global
-                                            const matchingProEntry = profissionais.find(pr =>
-                                                pr.toLowerCase().includes(normalizedPro) ||
-                                                normalizedPro.includes(pr.toLowerCase().split(' - ')[0].trim())
-                                            );
-                                            // Verifica se o paciente tem este profissional vinculado
-                                            if (matchingProEntry) {
-                                                return p.profissionais?.some(prof => prof === matchingProEntry) ?? false;
-                                            }
-                                            // Fallback: comparação parcial caso não encontre entrada exata
-                                            return p.profissionais?.some(prof =>
-                                                prof.toLowerCase().includes(normalizedPro) ||
-                                                normalizedPro.includes(prof.toLowerCase().split(' - ')[0].trim())
-                                            ) ?? false;
-                                        }
-                                        return true;
-                                    })
-                                    .sort((a, b) => a.nome.localeCompare(b.nome))
-                                    .map(p => <option key={p.id} value={p.id}>{p.nome} {p.carteirinha ? `(${p.carteirinha})` : ''}</option>)}
-                            </select>
+                            {/* Busca de paciente */}
+                            <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                                        <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" />
+                                    </svg>
+                                </span>
+                                <input
+                                    ref={patientInputRef}
+                                    type="text"
+                                    placeholder={formId ? 'Alterar paciente...' : 'Buscar paciente por nome, carteirinha ou responsável...'}
+                                    value={patientSearchQuery}
+                                    onChange={e => {
+                                        setPatientSearchQuery(e.target.value);
+                                        if (selectedPatientId) setSelectedPatientId('');
+                                        setPatientDropdownOpen(true);
+                                    }}
+                                    onFocus={() => { if (!selectedPatientId) setPatientDropdownOpen(true); }}
+                                    onBlur={() => setTimeout(() => setPatientDropdownOpen(false), 150)}
+                                    className={`w-full bg-slate-900 border rounded-lg pl-9 pr-8 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:ring-2 focus:ring-sky-500 ${selectedPatientId ? 'border-sky-600' : 'border-slate-700'}`}
+                                    autoComplete="off"
+                                />
+                                {patientSearchQuery && (
+                                    <button
+                                        type="button"
+                                        onMouseDown={e => e.preventDefault()}
+                                        onClick={() => {
+                                            setPatientSearchQuery('');
+                                            setSelectedPatientId('');
+                                            setPatientDropdownOpen(false);
+                                            patientInputRef.current?.focus();
+                                        }}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                                    >
+                                        <XIcon className="w-4 h-4" />
+                                    </button>
+                                )}
+                                {/* Dropdown de resultados */}
+                                {patientDropdownOpen && patientSearchQuery.length > 0 && (
+                                    <div className="absolute top-full left-0 right-0 mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-xl z-30 max-h-48 overflow-y-auto">
+                                        {filteredModalPatients.length === 0 ? (
+                                            <div className="px-3 py-2.5 text-sm text-slate-500">Nenhum paciente encontrado.</div>
+                                        ) : (
+                                            filteredModalPatients.map(p => (
+                                                <button
+                                                    key={p.id}
+                                                    type="button"
+                                                    onMouseDown={() => {
+                                                        setSelectedPatientId(p.id);
+                                                        setPatientSearchQuery(p.nome);
+                                                        setPatientDropdownOpen(false);
+                                                        if (type === 'Convênio') setFormConvenioName(p.convenio || '');
+                                                    }}
+                                                    className="w-full px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-700 flex items-center justify-between gap-2"
+                                                >
+                                                    <span className="truncate">{p.nome}</span>
+                                                    {p.carteirinha && <span className="text-xs text-slate-500 shrink-0">{p.carteirinha}</span>}
+                                                </button>
+                                            ))
+                                        )}
+                                    </div>
+                                )}
+                                {/* Instrução quando campo vazio em criação */}
+                                {!formId && !patientSearchQuery && (
+                                    <p className="text-[11px] text-slate-500 mt-1">Digite para buscar e selecionar um paciente.</p>
+                                )}
+                                {/* Confirmação de seleção */}
+                                {selectedPatientId && (
+                                    <p className="text-[11px] text-sky-400 mt-1">
+                                        Paciente selecionado ✓
+                                    </p>
+                                )}
+                            </div>
 
                             <div className="grid grid-cols-2 gap-3">
                                 <input type="date" required value={formDate} onChange={e => setFormDate(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white" />
