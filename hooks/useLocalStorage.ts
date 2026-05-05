@@ -1,5 +1,9 @@
 import { useState, useEffect } from 'react';
 
+export const resolveLocalStorageUpdate = <T,>(currentValue: T, value: T | ((val: T) => T)): T => (
+  value instanceof Function ? (value as (val: T) => T)(currentValue) : value
+);
+
 function useLocalStorage<T>(key: string, initialValue: T): [T, (value: T | ((val: T) => T)) => void] {
   const [storedValue, setStoredValue] = useState<T>(() => {
     try {
@@ -13,9 +17,11 @@ function useLocalStorage<T>(key: string, initialValue: T): [T, (value: T | ((val
 
   const setValue = (value: T | ((val: T) => T)) => {
     try {
-      const valueToStore = value instanceof Function ? (value as (val: T) => T)(storedValue) : value;
-      setStoredValue(valueToStore);
-      window.localStorage.setItem(key, JSON.stringify(valueToStore));
+      setStoredValue(prevStoredValue => {
+        const valueToStore = resolveLocalStorageUpdate(prevStoredValue, value);
+        window.localStorage.setItem(key, JSON.stringify(valueToStore));
+        return valueToStore;
+      });
     } catch (error) {
       console.error(error);
     }
