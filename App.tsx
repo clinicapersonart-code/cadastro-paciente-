@@ -5,6 +5,7 @@ import useLocalStorage from './hooks/useLocalStorage';
 import { downloadFile, exportToCSV } from './services/fileService';
 import { supabase, isSupabaseConfigured } from './services/supabase';
 import { syncAppointmentToGoogle } from './services/googleCalendarSync';
+import { groupPendingScheduleChangeRequests, formatScheduleDate } from './utils/scheduleRequests';
 import { PatientForm } from './components/PatientForm';
 import { PatientTable } from './components/PatientTable';
 import { Agenda } from './components/Agenda';
@@ -107,6 +108,17 @@ const App: React.FC = () => {
 
     // --- SOLICITAÇÕES DE ALTERAÇÃO DE AGENDA ---
     const [scheduleChangeRequests, setScheduleChangeRequests] = useLocalStorage<ScheduleChangeRequest[]>('personart.schedule_requests.db', []);
+    const pendingScheduleRequests = useMemo(
+        () => scheduleChangeRequests.filter(r => r.status === 'PENDING'),
+        [scheduleChangeRequests]
+    );
+    const pendingScheduleRequestGroups = useMemo(
+        () => groupPendingScheduleChangeRequests(scheduleChangeRequests),
+        [scheduleChangeRequests]
+    );
+    const pendingScheduleBadge = pendingScheduleRequestGroups.length === pendingScheduleRequests.length
+        ? `${pendingScheduleRequests.length} pendente(s)`
+        : `${pendingScheduleRequestGroups.length} grupo(s) • ${pendingScheduleRequests.length} itens`;
 
     // --- ROTEAMENTO PÚBLICO ---
     const params = new URLSearchParams(window.location.search);
@@ -837,6 +849,96 @@ const App: React.FC = () => {
     };
 
     // --- HANDLERS DE APROVAÇÃO/REJEIÇÃO DE SOLICITAÇÕES ---
+    const serializeScheduleRequestForCloud = (request: ScheduleChangeRequest) => ({
+        id: request.id,
+        appointment_id: request.appointmentId,
+        type: request.type,
+        status: request.status,
+        requested_by: request.requestedBy,
+        timestamp: request.timestamp,
+        data: JSON.parse(JSON.stringify(request))
+    });
+
+    const handleApproveChangeBatch = async (requestIds: string[]) => {
+        const requests = scheduleChangeRequests.filter(r => requestIds.includes(r.id) && r.status === 'PENDING');
+        if (requests.length === 0) return;
+
+        const reviewedAt = new Date().toISOString();
+        const updatedRequests = requests.map(request => ({
+            ...request,
+            status: 'APPROVED' as const,
+            reviewedBy: currentUser?.id,
+            reviewedByName: currentUser?.name,
+            reviewedAt
+        }));
+        const updatedById = new Map(updatedRequests.map(request => [request.id, request]));
+
+        setScheduleChangeRequests(prev => prev.map(request => updatedById.get(request.id) || request));
+
+        if (supabase && connectionStatus !== 'offline') {
+            try {
+                await supabase.from('schedule_change_requests').upsert(updatedRequests.map(serializeScheduleRequestForCloud));
+            } catch (e) {
+                console.error('Erro ao aprovar solicitações em lote:', e);
+            }
+        }
+
+        const first = requests[0];
+        const actionLabel = first.type === 'UPDATE' ? 'alterações' : 'exclusões';
+        logActivity('APROVACAO_ALTERACAO', `${currentUser?.name} aprovou ${requests.length} ${actionLabel} de ${first.oldData.patientName} efetuadas por ${first.requestedByName}`, { requestIds, appointmentIds: requests.map(r => r.appointmentId) });
+        showToast(`${requests.length} solicitações aprovadas.`, 'success');
+    };
+
+    const handleRejectChangeBatch = async (requestIds: string[]) => {
+        const requests = scheduleChangeRequests.filter(r => requestIds.includes(r.id) && r.status === 'PENDING');
+        if (requests.length === 0) return;
+
+        // Reverte todas as ocorrências do lote de uma vez, sem inundar a UI com 55 toasts/logs.
+        setAppointments(prev => {
+            let next = [...prev];
+            for (const request of requests) {
+                if (request.type === 'UPDATE') {
+                    next = next.map(appt => appt.id === request.appointmentId ? request.oldData : appt);
+                } else if (request.type === 'DELETE' && !next.some(appt => appt.id === request.appointmentId)) {
+                    next = [...next, request.oldData];
+                }
+            }
+            return next;
+        });
+
+        if (supabase && connectionStatus !== 'offline') {
+            await Promise.all(requests.map(async request => {
+                await upsertAppointmentToCloud(request.oldData);
+                await syncAppointmentWithGoogle(request.oldData, 'upsert');
+            }));
+        }
+
+        const reviewedAt = new Date().toISOString();
+        const updatedRequests = requests.map(request => ({
+            ...request,
+            status: 'REJECTED' as const,
+            reviewedBy: currentUser?.id,
+            reviewedByName: currentUser?.name,
+            reviewedAt
+        }));
+        const updatedById = new Map(updatedRequests.map(request => [request.id, request]));
+
+        setScheduleChangeRequests(prev => prev.map(request => updatedById.get(request.id) || request));
+
+        if (supabase && connectionStatus !== 'offline') {
+            try {
+                await supabase.from('schedule_change_requests').upsert(updatedRequests.map(serializeScheduleRequestForCloud));
+            } catch (e) {
+                console.error('Erro ao rejeitar solicitações em lote:', e);
+            }
+        }
+
+        const first = requests[0];
+        const actionLabel = first.type === 'UPDATE' ? 'alterações' : 'exclusões';
+        logActivity('REJEICAO_ALTERACAO', `${currentUser?.name} rejeitou (desfez) ${requests.length} ${actionLabel} de ${first.oldData.patientName} efetuadas por ${first.requestedByName}`, { requestIds, appointmentIds: requests.map(r => r.appointmentId) });
+        showToast(`${requests.length} solicitações rejeitadas e desfeitas.`, 'info');
+    };
+
     const handleApproveChange = async (requestId: string) => {
         const request = scheduleChangeRequests.find(r => r.id === requestId);
         if (!request || request.status !== 'PENDING') return;
@@ -1336,7 +1438,7 @@ const App: React.FC = () => {
                                 title="Notificações"
                             >
                                 <BellIcon className="w-5 h-5" />
-                                {(activityLogs.filter(log => log.timestamp > lastReadTimestamp).length > 0 || scheduleChangeRequests.filter(r => r.status === 'PENDING').length > 0) && (
+                                {(activityLogs.filter(log => log.timestamp > lastReadTimestamp).length > 0 || pendingScheduleRequests.length > 0) && (
                                     <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-slate-900" />
                                 )}
                             </button>
@@ -1349,9 +1451,9 @@ const App: React.FC = () => {
                                             <BellIcon className="w-4 h-4 text-[#e9c49e]" /> Notificações
                                         </h3>
                                         <div className="flex items-center gap-2">
-                                            {scheduleChangeRequests.filter(r => r.status === 'PENDING').length > 0 && (
+                                            {pendingScheduleRequests.length > 0 && (
                                                 <span className="text-[10px] bg-amber-900/30 text-amber-400 px-2 py-0.5 rounded font-bold animate-pulse">
-                                                    {scheduleChangeRequests.filter(r => r.status === 'PENDING').length} pendente(s)
+                                                    {pendingScheduleBadge}
                                                 </span>
                                             )}
                                             <span className="text-[10px] bg-slate-700 px-2 py-0.5 rounded text-slate-400">Últimos 50</span>
@@ -1359,46 +1461,70 @@ const App: React.FC = () => {
                                     </div>
 
                                     {/* Solicitações Pendentes — visível apenas para clínica */}
-                                    {currentUser?.role === 'clinic' && scheduleChangeRequests.filter(r => r.status === 'PENDING').length > 0 && (
+                                    {currentUser?.role === 'clinic' && pendingScheduleRequestGroups.length > 0 && (
                                         <div className="border-b border-amber-500/20 bg-amber-900/10">
                                             <div className="px-4 py-2 flex items-center gap-2 border-b border-amber-500/10">
                                                 <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">⏳ Solicitações Pendentes</span>
                                             </div>
-                                            {scheduleChangeRequests.filter(r => r.status === 'PENDING').map(req => (
-                                                <div key={req.id} className="p-3 border-b border-amber-500/10 hover:bg-amber-500/5 transition-colors">
-                                                    <div className="flex items-center gap-2 mb-1">
-                                                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${req.type === 'UPDATE' ? 'bg-amber-900/30 text-amber-400' : 'bg-red-900/30 text-red-400'}`}>
-                                                            {req.type === 'UPDATE' ? 'ALTERAÇÃO' : 'EXCLUSÃO'}
-                                                        </span>
-                                                        <span className="text-[9px] text-slate-500">
-                                                            {new Date(req.timestamp).toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                                                        </span>
+                                            {pendingScheduleRequestGroups.map(group => {
+                                                const req = group.firstRequest;
+                                                const isGrouped = group.occurrenceCount > 1;
+                                                const dateRange = group.firstDate === group.lastDate
+                                                    ? formatScheduleDate(group.firstDate)
+                                                    : `${formatScheduleDate(group.firstDate)} a ${formatScheduleDate(group.lastDate)}`;
+
+                                                return (
+                                                    <div key={group.id} className="p-3 border-b border-amber-500/10 hover:bg-amber-500/5 transition-colors">
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${req.type === 'UPDATE' ? 'bg-amber-900/30 text-amber-400' : 'bg-red-900/30 text-red-400'}`}>
+                                                                {req.type === 'UPDATE' ? 'ALTERAÇÃO' : 'EXCLUSÃO'}
+                                                            </span>
+                                                            {isGrouped && (
+                                                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">
+                                                                    {group.occurrenceCount} ocorrências
+                                                                </span>
+                                                            )}
+                                                            <span className="text-[9px] text-slate-500">
+                                                                {new Date(req.timestamp).toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-xs text-slate-300 font-medium mb-1">
+                                                            <span className="text-[#e9c49e]">{req.requestedByName}</span> solicitou {req.type === 'UPDATE' ? 'alteração' : 'exclusão'} {isGrouped ? 'em série' : 'do agendamento'} de <span className="text-white font-bold">{req.oldData.patientName}</span>
+                                                        </p>
+                                                        <p className="text-[10px] text-slate-500 mb-2">
+                                                            {isGrouped ? (
+                                                                <>
+                                                                    📅 {dateRange} • {req.oldData.profissional}
+                                                                    {req.type === 'UPDATE' && req.newData && (
+                                                                        <span className="text-amber-400"> → novo horário {req.newData.time}</span>
+                                                                    )}
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    📅 {req.oldData.date} às {req.oldData.time} • {req.oldData.profissional}
+                                                                    {req.type === 'UPDATE' && req.newData && (
+                                                                        <span className="text-amber-400"> → {req.newData.date} às {req.newData.time}</span>
+                                                                    )}
+                                                                </>
+                                                            )}
+                                                        </p>
+                                                        <div className="flex gap-2">
+                                                            <button
+                                                                onClick={() => isGrouped ? handleApproveChangeBatch(group.requestIds) : handleApproveChange(req.id)}
+                                                                className="flex-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold rounded-lg transition-colors flex items-center justify-center gap-1"
+                                                            >
+                                                                <CheckIcon className="w-3 h-3" /> Aceitar{isGrouped ? ' série' : ''}
+                                                            </button>
+                                                            <button
+                                                                onClick={() => isGrouped ? handleRejectChangeBatch(group.requestIds) : handleRejectChange(req.id)}
+                                                                className="flex-1 px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-[11px] font-bold rounded-lg transition-colors flex items-center justify-center gap-1"
+                                                            >
+                                                                <XIcon className="w-3 h-3" /> Rejeitar{isGrouped ? ' série' : ''}
+                                                            </button>
+                                                        </div>
                                                     </div>
-                                                    <p className="text-xs text-slate-300 font-medium mb-1">
-                                                        <span className="text-[#e9c49e]">{req.requestedByName}</span> solicitou {req.type === 'UPDATE' ? 'alteração' : 'exclusão'} do agendamento de <span className="text-white font-bold">{req.oldData.patientName}</span>
-                                                    </p>
-                                                    <p className="text-[10px] text-slate-500 mb-2">
-                                                        📅 {req.oldData.date} às {req.oldData.time} • {req.oldData.profissional}
-                                                        {req.type === 'UPDATE' && req.newData && (
-                                                            <span className="text-amber-400"> → {req.newData.date} às {req.newData.time}</span>
-                                                        )}
-                                                    </p>
-                                                    <div className="flex gap-2">
-                                                        <button
-                                                            onClick={() => handleApproveChange(req.id)}
-                                                            className="flex-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold rounded-lg transition-colors flex items-center justify-center gap-1"
-                                                        >
-                                                            <CheckIcon className="w-3 h-3" /> Aceitar
-                                                        </button>
-                                                        <button
-                                                            onClick={() => handleRejectChange(req.id)}
-                                                            className="flex-1 px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-[11px] font-bold rounded-lg transition-colors flex items-center justify-center gap-1"
-                                                        >
-                                                            <XIcon className="w-3 h-3" /> Rejeitar
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     )}
 
