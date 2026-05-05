@@ -1,5 +1,4 @@
 import { JWT } from 'google-auth-library';
-import { buildGoogleRecurrenceRule } from '../utils/googleRecurrence';
 
 type Req = {
   method?: string;
@@ -135,6 +134,23 @@ function getOccurrenceDayBounds(date: string) {
   };
 }
 
+function normalizeDateForUntil(date: string) {
+  const compact = (date || '').replace(/-/g, '');
+  if (!/^\d{8}$/.test(compact)) throw new Error('Data final de recorrência inválida.');
+  return `${compact}T235959Z`;
+}
+
+function buildGoogleRecurrenceRule(recurrence: AppointmentPayload['recurrence'], endDate?: string) {
+  if (!recurrence || recurrence === 'none') return undefined;
+  if (!endDate) throw new Error('Informe a data final da recorrência para sincronizar com o Google Agenda.');
+
+  const config = recurrence === 'monthly'
+    ? { freq: 'MONTHLY', interval: 1 }
+    : { freq: 'WEEKLY', interval: recurrence === 'biweekly' ? 2 : 1 };
+
+  return `RRULE:FREQ=${config.freq};INTERVAL=${config.interval};UNTIL=${normalizeDateForUntil(endDate)}`;
+}
+
 function normalizeEmail(email = '') {
   const trimmed = email.trim().toLowerCase();
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed) ? trimmed : '';
@@ -246,8 +262,8 @@ function buildEventBody(appointment: AppointmentPayload) {
         seriesId: appointment.seriesId || '',
       },
     },
-    ...(buildGoogleRecurrenceRule(appointment.recurrence, appointment.date, appointment.recurrenceEndDate)
-      ? { recurrence: [buildGoogleRecurrenceRule(appointment.recurrence, appointment.date, appointment.recurrenceEndDate)] }
+    ...(buildGoogleRecurrenceRule(appointment.recurrence, appointment.recurrenceEndDate)
+      ? { recurrence: [buildGoogleRecurrenceRule(appointment.recurrence, appointment.recurrenceEndDate)] }
       : {}),
     ...(professionalEmail ? { attendees: [{ email: professionalEmail }] } : {}),
   };
