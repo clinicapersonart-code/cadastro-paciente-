@@ -63,6 +63,10 @@ export interface Appointment {
   type: 'Convênio' | 'Particular';
   convenioName?: string;
   professionalEmail?: string;
+  patientResponsavel?: string;
+  patientContato?: string;
+  patientFaixa?: 'Criança' | 'Adulto' | '';
+  patientNascimento?: string;
   status: 'Agendado' | 'Realizado' | 'Cancelado';
   obs?: string;
 

@@ -516,9 +516,28 @@ const App: React.FC = () => {
         };
     };
 
+    const withPatientGoogleDetails = (appt: Appointment): Appointment => {
+        const patient = patients.find(p => p.id === appt.patientId);
+        const existingAppt = appointments.find(x => x.id === appt.id);
+
+        return {
+            ...appt,
+            carteirinha: appt.carteirinha || patient?.carteirinha || existingAppt?.carteirinha || '',
+            patientResponsavel: appt.patientResponsavel || patient?.responsavel || existingAppt?.patientResponsavel || '',
+            patientContato: appt.patientContato || patient?.contato || existingAppt?.patientContato || '',
+            patientFaixa: appt.patientFaixa ?? patient?.faixa ?? existingAppt?.patientFaixa,
+            patientNascimento: appt.patientNascimento || patient?.nascimento || existingAppt?.patientNascimento || '',
+            convenioName: appt.type === 'Convênio'
+                ? (appt.convenioName || patient?.convenio || existingAppt?.convenioName || '')
+                : appt.convenioName
+        };
+    };
+
+    const withGooglePayloadDetails = (appt: Appointment): Appointment => withProfessionalEmail(withPatientGoogleDetails(appt));
+
     const syncAppointmentWithGoogle = async (appt: Appointment, action: 'upsert' | 'delete', deleteScope: 'single' | 'all' = 'single') => {
         try {
-            const appointmentForSync = withProfessionalEmail(appt);
+            const appointmentForSync = withGooglePayloadDetails(appt);
             if (action === 'upsert' && appointmentForSync.seriesId && !appointmentForSync.isSeriesMaster) {
                 // Evita corromper o evento mestre recorrente no Google ao editar uma ocorrência isolada.
                 // Exclusão de ocorrência isolada é tratada pelo fluxo deleteScope='single'.
@@ -595,6 +614,10 @@ const App: React.FC = () => {
                 patientId: newPatientId,
                 patientName: patientToSave.nome,
                 carteirinha: patientToSave.carteirinha,
+                patientResponsavel: patientToSave.responsavel,
+                patientContato: patientToSave.contato,
+                patientFaixa: patientToSave.faixa,
+                patientNascimento: patientToSave.nascimento,
                 numero_autorizacao: numAut,
                 data_autorizacao: dataAut,
                 profissional: initialAppointment.professional,
@@ -672,7 +695,7 @@ const App: React.FC = () => {
 
     const handleAddAppointment = async (appt: Appointment) => {
         const patient = patients.find(p => p.id === appt.patientId);
-        const enrichedAppt = withProfessionalEmail({
+        const enrichedAppt = withGooglePayloadDetails({
             ...appt,
             numero_autorizacao: patient?.funservConfig?.numeroAutorizacao || patient?.numero_autorizacao || appt.numero_autorizacao || '',
             data_autorizacao: patient?.funservConfig?.dataAutorizacao || patient?.data_autorizacao || appt.data_autorizacao || null
@@ -700,7 +723,7 @@ const App: React.FC = () => {
         // Local
         const enrichedBatch = batch.map(a => {
             const patient = patients.find(p => p.id === a.patientId);
-            return withProfessionalEmail({
+            return withGooglePayloadDetails({
                 ...a,
                 numero_autorizacao: patient?.funservConfig?.numeroAutorizacao || patient?.numero_autorizacao || '',
                 data_autorizacao: patient?.funservConfig?.dataAutorizacao || patient?.data_autorizacao || null
@@ -761,7 +784,7 @@ const App: React.FC = () => {
     };
 
     const handleUpdateAppointment = async (appt: Appointment) => {
-        const apptForSave = withProfessionalEmail(appt);
+        const apptForSave = withGooglePayloadDetails(appt);
 
         // Aplica a alteração diretamente no estado local
         setAppointments(prev => prev.map(x => x.id === apptForSave.id ? apptForSave : x));

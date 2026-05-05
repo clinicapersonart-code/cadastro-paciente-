@@ -22,10 +22,15 @@ type AppointmentPayload = {
   date: string; // YYYY-MM-DD
   time: string; // HH:mm
   durationMin?: number;
+  carteirinha?: string;
   type?: string;
   status?: string;
   convenioName?: string;
   professionalEmail?: string;
+  patientResponsavel?: string;
+  patientContato?: string;
+  patientFaixa?: 'Criança' | 'Adulto' | '';
+  patientNascimento?: string;
   obs?: string;
   seriesId?: string;
   recurrence?: 'none' | 'weekly' | 'biweekly' | 'monthly';
@@ -220,7 +225,13 @@ async function findGoogleRecurringInstanceId(calendarId: string, accessToken: st
   return match?.id as string | undefined;
 }
 
-function buildEventBody(appointment: AppointmentPayload) {
+function formatDateBR(date = '') {
+  const [year, month, day] = date.split('-');
+  if (!year || !month || !day) return date;
+  return `${day}/${month}/${year}`;
+}
+
+export function buildEventBody(appointment: AppointmentPayload) {
   validateDateTime(appointment.date, appointment.time);
 
   const durationMin = Number.isFinite(appointment.durationMin)
@@ -231,11 +242,19 @@ function buildEventBody(appointment: AppointmentPayload) {
   const calendarTimezone = process.env.GOOGLE_CALENDAR_TIMEZONE || 'America/Sao_Paulo';
   const professionalEmail = normalizeEmail(appointment.professionalEmail);
 
-  const summary = `${appointment.patientName} • ${appointment.type || 'Sessão'}`;
+  const eventLabel = appointment.type === 'Convênio'
+    ? (appointment.convenioName || 'Convênio')
+    : (appointment.type || 'Sessão');
+  const shouldShowResponsible = appointment.patientFaixa === 'Criança' && Boolean(appointment.patientResponsavel?.trim());
+  const summary = `${appointment.patientName} • ${eventLabel}`;
   const description = [
     `Paciente: ${appointment.patientName}`,
+    `Data de início: ${formatDateBR(appointment.date)}`,
     appointment.profissional ? `Profissional: ${appointment.profissional}` : null,
     appointment.convenioName ? `Convênio: ${appointment.convenioName}` : null,
+    appointment.carteirinha ? `Carteirinha: ${appointment.carteirinha}` : null,
+    shouldShowResponsible ? `Responsável: ${appointment.patientResponsavel}` : null,
+    appointment.patientContato ? `Contato: ${appointment.patientContato}` : null,
     appointment.status ? `Status: ${appointment.status}` : null,
     appointment.obs ? `Obs: ${appointment.obs}` : null,
     `Origem: Cadastro Paciente (Personart)`,
