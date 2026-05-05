@@ -15,6 +15,7 @@ type GoogleCalendarSyncPayload = {
   action: 'upsert' | 'delete';
   appointment: Appointment;
   googleEventId?: string;
+  deleteScope?: 'single' | 'all';
 };
 
 const isEnabled = () => {

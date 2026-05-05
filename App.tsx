@@ -516,13 +516,19 @@ const App: React.FC = () => {
         };
     };
 
-    const syncAppointmentWithGoogle = async (appt: Appointment, action: 'upsert' | 'delete') => {
+    const syncAppointmentWithGoogle = async (appt: Appointment, action: 'upsert' | 'delete', deleteScope: 'single' | 'all' = 'single') => {
         try {
             const appointmentForSync = withProfessionalEmail(appt);
+            if (action === 'upsert' && appointmentForSync.seriesId && !appointmentForSync.isSeriesMaster) {
+                // Evita corromper o evento mestre recorrente no Google ao editar uma ocorrência isolada.
+                // Exclusão de ocorrência isolada é tratada pelo fluxo deleteScope='single'.
+                return undefined;
+            }
             const result = await syncAppointmentToGoogle({
                 action,
                 appointment: appointmentForSync,
-                googleEventId: appointmentForSync.googleEventId
+                googleEventId: appointmentForSync.googleEventId,
+                deleteScope
             });
 
             if (action === 'upsert' && result.eventId) {
@@ -534,6 +540,7 @@ const App: React.FC = () => {
 
                 setAppointments(prev => prev.map(x => x.id === appt.id ? syncedAppt : x));
                 await upsertAppointmentToCloud(syncedAppt);
+                return syncedAppt;
             }
         } catch (error: any) {
             console.error('Erro sync Google Agenda:', error);
@@ -724,7 +731,32 @@ const App: React.FC = () => {
             if (error) {
                 console.error("Erro batch nuvem:", error);
             }
-            await Promise.all(enrichedBatch.map(appt => syncAppointmentWithGoogle(appt, 'upsert')));
+
+            const isRecurringSeries = enrichedBatch.length > 1 && Boolean(enrichedBatch[0]?.seriesId && enrichedBatch[0]?.recurrence && enrichedBatch[0]?.recurrence !== 'none');
+            if (isRecurringSeries) {
+                const syncedMaster = await syncAppointmentWithGoogle(enrichedBatch[0], 'upsert');
+                if (syncedMaster?.googleEventId) {
+                    const syncedBatch = enrichedBatch.map(appt => ({
+                        ...appt,
+                        googleEventId: syncedMaster.googleEventId,
+                        googleCalendarHtmlLink: syncedMaster.googleCalendarHtmlLink
+                    }));
+                    const syncedIds = new Set(syncedBatch.map(appt => appt.id));
+                    setAppointments(prev => prev.map(appt => syncedIds.has(appt.id) ? (syncedBatch.find(x => x.id === appt.id) || appt) : appt));
+                    await supabase.from('appointments').upsert(syncedBatch.map(a => ({
+                        id: a.id,
+                        date: a.date,
+                        patient_id: a.patientId,
+                        status: a.status,
+                        carteirinha: a.carteirinha || '',
+                        numero_autorizacao: a.numero_autorizacao || '',
+                        data_autorizacao: a.data_autorizacao,
+                        data: JSON.parse(JSON.stringify(a))
+                    })));
+                }
+            } else {
+                await Promise.all(enrichedBatch.map(appt => syncAppointmentWithGoogle(appt, 'upsert')));
+            }
         }
     };
 
@@ -795,20 +827,34 @@ const App: React.FC = () => {
         }
     };
 
-    const handleDeleteAppointment = async (id: string, name?: string) => {
-        // Resgata o agendamento antigo
+    const handleDeleteAppointment = async (id: string, name?: string, scope: 'single' | 'all' = 'single') => {
         const oldAppt = appointments.find(x => x.id === id);
+        const deleteWholeSeries = scope === 'all' && Boolean(oldAppt?.seriesId);
+        const appointmentsToDelete = oldAppt
+            ? (deleteWholeSeries ? appointments.filter(x => x.seriesId === oldAppt.seriesId) : [oldAppt])
+            : [];
+        const idsToDelete = appointmentsToDelete.map(appt => appt.id);
+
+        if (idsToDelete.length === 0) return;
 
         // Aplica exclusão imediatamente no local
-        setAppointments(prev => prev.filter(x => x.id !== id));
+        setAppointments(prev => prev.filter(x => !idsToDelete.includes(x.id)));
 
         // Aplica na nuvem imediatamente
         if (supabase && connectionStatus !== 'offline') {
-            const { error } = await supabase.from('appointments').delete().eq('id', id);
+            const { error } = deleteWholeSeries
+                ? await supabase.from('appointments').delete().in('id', idsToDelete)
+                : await supabase.from('appointments').delete().eq('id', id);
             if (!error) {
-                logActivity('EXCLUSAO_AGENDA', `${currentUser?.name} excluiu agendamento de ${name || 'paciente'}`, { apptId: id });
+                logActivity(
+                    'EXCLUSAO_AGENDA',
+                    deleteWholeSeries
+                        ? `${currentUser?.name} excluiu a série de agendamentos de ${name || 'paciente'} (${idsToDelete.length} sessões)`
+                        : `${currentUser?.name} excluiu agendamento de ${name || 'paciente'}`,
+                    { apptId: id, apptIds: idsToDelete, scope: deleteWholeSeries ? 'all' : 'single' }
+                );
             }
-            if (oldAppt) await syncAppointmentWithGoogle(oldAppt, 'delete');
+            if (oldAppt) await syncAppointmentWithGoogle(oldAppt, 'delete', deleteWholeSeries ? 'all' : 'single');
         }
 
         // Se for profissional, cria requisição para o log da clínica

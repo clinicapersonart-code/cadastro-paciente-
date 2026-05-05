@@ -1,4 +1,5 @@
 import { JWT } from 'google-auth-library';
+import { buildGoogleRecurrenceRule } from '../utils/googleRecurrence';
 
 type Req = {
   method?: string;
@@ -12,6 +13,7 @@ type Res = {
 };
 
 type SyncAction = 'upsert' | 'delete';
+type DeleteScope = 'single' | 'all';
 
 type AppointmentPayload = {
   id: string;
@@ -26,12 +28,18 @@ type AppointmentPayload = {
   convenioName?: string;
   professionalEmail?: string;
   obs?: string;
+  seriesId?: string;
+  recurrence?: 'none' | 'weekly' | 'biweekly' | 'monthly';
+  recurrenceEndDate?: string;
+  recurrenceIndex?: number;
+  isSeriesMaster?: boolean;
 };
 
 type SyncPayload = {
   action: SyncAction;
   appointment: AppointmentPayload;
   googleEventId?: string;
+  deleteScope?: DeleteScope;
 };
 
 const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar';
@@ -110,6 +118,23 @@ function addMinutes(date: string, time: string, minutesToAdd: number) {
   return { endDate, endTime };
 }
 
+function addDays(date: string, daysToAdd: number) {
+  const [year, month, day] = date.split('-').map(Number);
+  const base = new Date(Date.UTC(year, month - 1, day));
+  base.setUTCDate(base.getUTCDate() + daysToAdd);
+  return base.toISOString().slice(0, 10);
+}
+
+function getOccurrenceDayBounds(date: string) {
+  validateDateTime(date, '00:00');
+  const nextDate = addDays(date, 1);
+  // America/Sao_Paulo is currently UTC-03 and Brazil has no DST; this keeps instance lookup local-day scoped.
+  return {
+    timeMin: `${date}T00:00:00-03:00`,
+    timeMax: `${nextDate}T00:00:00-03:00`,
+  };
+}
+
 function normalizeEmail(email = '') {
   const trimmed = email.trim().toLowerCase();
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed) ? trimmed : '';
@@ -157,10 +182,25 @@ async function googleRequest(url: string, init: RequestInit & { accessToken: str
 async function findExistingGoogleEventId(calendarId: string, accessToken: string, appointmentId: string) {
   const encodedCalendarId = encodeURIComponent(calendarId);
   const property = encodeURIComponent(`appointmentId=${appointmentId}`);
-  const url = `https://www.googleapis.com/calendar/v3/calendars/${encodedCalendarId}/events?privateExtendedProperty=${property}&maxResults=10&singleEvents=true&showDeleted=false`;
+  const url = `https://www.googleapis.com/calendar/v3/calendars/${encodedCalendarId}/events?privateExtendedProperty=${property}&maxResults=10&singleEvents=false&showDeleted=false`;
   const data = await googleRequest(url, { method: 'GET', accessToken });
   const items = Array.isArray(data?.items) ? data.items : [];
   const match = items.find((item: any) => item?.id && item?.status !== 'cancelled');
+  return match?.id as string | undefined;
+}
+
+async function findGoogleRecurringInstanceId(calendarId: string, accessToken: string, masterEventId: string, appointment: AppointmentPayload) {
+  const encodedCalendarId = encodeURIComponent(calendarId);
+  const encodedMasterEventId = encodeURIComponent(masterEventId);
+  const { timeMin, timeMax } = getOccurrenceDayBounds(appointment.date);
+  const url = `https://www.googleapis.com/calendar/v3/calendars/${encodedCalendarId}/events/${encodedMasterEventId}/instances?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&showDeleted=false`;
+  const data = await googleRequest(url, { method: 'GET', accessToken });
+  const items = Array.isArray(data?.items) ? data.items : [];
+  const match = items.find((item: any) => {
+    const originalStart = item?.originalStartTime?.dateTime || item?.start?.dateTime || '';
+    return item?.id && originalStart.startsWith(`${appointment.date}T${appointment.time}`);
+  }) || items.find((item: any) => item?.id);
+
   return match?.id as string | undefined;
 }
 
@@ -203,8 +243,12 @@ function buildEventBody(appointment: AppointmentPayload) {
         app: 'cadastro-paciente',
         appointmentId: appointment.id,
         patientId: appointment.patientId || '',
+        seriesId: appointment.seriesId || '',
       },
     },
+    ...(buildGoogleRecurrenceRule(appointment.recurrence, appointment.date, appointment.recurrenceEndDate)
+      ? { recurrence: [buildGoogleRecurrenceRule(appointment.recurrence, appointment.date, appointment.recurrenceEndDate)] }
+      : {}),
     ...(professionalEmail ? { attendees: [{ email: professionalEmail }] } : {}),
   };
 }
@@ -232,16 +276,24 @@ export default async function handler(req: Req, res: Res) {
         return res.status(200).json({ ok: true, skipped: true, reason: 'sem googleEventId e nenhum evento existente encontrado' });
       }
 
-      const encodedEventId = encodeURIComponent(eventIdToDelete);
+      const targetEventId = payload.deleteScope === 'single' && payload.appointment.seriesId
+        ? await findGoogleRecurringInstanceId(calendarId, accessToken, eventIdToDelete, payload.appointment)
+        : eventIdToDelete;
+
+      if (!targetEventId) {
+        return res.status(200).json({ ok: true, skipped: true, reason: 'instância recorrente não encontrada' });
+      }
+
+      const encodedEventId = encodeURIComponent(targetEventId);
       const deleteUrl = `https://www.googleapis.com/calendar/v3/calendars/${encodedCalendarId}/events/${encodedEventId}?sendUpdates=all`;
 
       try {
         await googleRequest(deleteUrl, { method: 'DELETE', accessToken });
       } catch (error: any) {
-        if (error?.status !== 404) throw error;
+        if (error?.status !== 404 && error?.status !== 410) throw error;
       }
 
-      return res.status(200).json({ ok: true, deleted: true, eventId: eventIdToDelete });
+      return res.status(200).json({ ok: true, deleted: true, eventId: targetEventId });
     }
 
     const eventBody = buildEventBody(payload.appointment);

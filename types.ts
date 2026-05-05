@@ -70,6 +70,13 @@ export interface Appointment {
   googleEventId?: string;
   googleCalendarHtmlLink?: string;
 
+  // Série recorrente local + Google RRULE
+  seriesId?: string;
+  recurrence?: 'none' | 'weekly' | 'biweekly' | 'monthly';
+  recurrenceEndDate?: string;
+  recurrenceIndex?: number;
+  isSeriesMaster?: boolean;
+
   // Financeiro / duração
   durationMin?: number; // duração da sessão
   price?: number; // valor da sessão (R$)

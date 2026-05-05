@@ -2,6 +2,9 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Appointment, Patient, UserProfile, ConvenioConfig } from '../types';
 import { CalendarIcon, PlusIcon, TrashIcon, CheckIcon, EditIcon, ChevronLeftIcon, ChevronRightIcon, XIcon } from './icons';
 import useLocalStorage from '../hooks/useLocalStorage';
+import { buildSeriesId } from '../utils/googleRecurrence';
+
+type DeleteScope = 'single' | 'all';
 
 interface AgendaProps {
     patients: Patient[];
@@ -11,7 +14,7 @@ interface AgendaProps {
     onAddAppointment: (appt: Appointment) => void | Promise<void>;
     onAddBatchAppointments?: (appts: Appointment[]) => void | Promise<void>;
     onUpdateAppointment: (appt: Appointment) => void | Promise<void>;
-    onDeleteAppointment: (id: string, name?: string) => void | Promise<void>;
+    onDeleteAppointment: (id: string, name?: string, scope?: DeleteScope) => void | Promise<void>;
     currentUser?: UserProfile;
     googleSyncEnabled?: boolean;
 }
@@ -352,6 +355,9 @@ export const Agenda: React.FC<AgendaProps> = ({
         }
 
         const newBatch: Appointment[] = [];
+        const seriesId = recurrence !== 'none'
+            ? buildSeriesId(patient.id, effectiveProfissional, formDate, time)
+            : undefined;
         const [y, m, d] = formDate.split('-').map(Number);
         const currentDateCalculator = new Date(y, m - 1, d);
         
@@ -388,6 +394,17 @@ export const Agenda: React.FC<AgendaProps> = ({
                 if (recurrence === 'monthly') currentDateCalculator.setMonth(currentDateCalculator.getMonth() + 1);
                 else currentDateCalculator.setDate(currentDateCalculator.getDate() + intervalDays);
             }
+        }
+
+        if (recurrence !== 'none' && seriesId && newBatch.length > 0) {
+            const effectiveRecurrenceEndDate = recurrenceEndDate || newBatch[newBatch.length - 1].date;
+            newBatch.forEach((appt, index) => {
+                appt.seriesId = seriesId;
+                appt.recurrence = recurrence;
+                appt.recurrenceEndDate = effectiveRecurrenceEndDate;
+                appt.recurrenceIndex = index;
+                appt.isSeriesMaster = index === 0;
+            });
         }
 
         if (onAddBatchAppointments) await onAddBatchAppointments(newBatch);
@@ -890,7 +907,7 @@ interface WeekViewProps {
     profissionais: string[];
     onGridClick: (date: Date, time: string) => void;
     onEditAppointment: (appt: Appointment) => void;
-    onDeleteAppointment: (id: string, name?: string) => void;
+    onDeleteAppointment: (id: string, name?: string, scope?: DeleteScope) => void;
     onStatusChange: (appt: Appointment, status: Appointment['status']) => void;
     isToday: (date: Date) => boolean;
     googleSyncEnabled?: boolean;
@@ -1072,7 +1089,7 @@ interface DayViewProps {
     profissionais: string[];
     onGridClick: (time: string) => void;
     onEditAppointment: (appt: Appointment) => void;
-    onDeleteAppointment: (id: string, name?: string) => void;
+    onDeleteAppointment: (id: string, name?: string, scope?: DeleteScope) => void;
     onStatusChange: (appt: Appointment, status: Appointment['status']) => void;
     googleSyncEnabled?: boolean;
 }
@@ -1156,10 +1173,25 @@ interface EventBlockProps {
     profissionais: string[];
     dayStartMin: number;
     onEdit: (appt: Appointment) => void;
-    onDelete: (id: string, name?: string) => void;
+    onDelete: (id: string, name?: string, scope?: DeleteScope) => void;
     onStatusChange: (appt: Appointment, status: Appointment['status']) => void;
     googleSyncEnabled?: boolean;
 }
+
+const resolveDeleteScope = (appt: Appointment): DeleteScope | null => {
+    if (!appt.seriesId || !appt.recurrence || appt.recurrence === 'none') {
+        return confirm('Excluir?') ? 'single' : null;
+    }
+
+    const answer = window.prompt(
+        'Este agendamento faz parte de uma série recorrente.\n\nDigite 1 para excluir apenas esta sessão.\nDigite 2 para excluir toda a série.',
+        '1'
+    );
+
+    if (answer === '1') return 'single';
+    if (answer === '2') return 'all';
+    return null;
+};
 
 const EventBlock: React.FC<EventBlockProps> = ({ appt, profissionais, dayStartMin, onEdit, onDelete, onStatusChange, googleSyncEnabled = false }) => {
     const color = getProfessionalColor(appt.profissional, profissionais);
@@ -1186,6 +1218,7 @@ const EventBlock: React.FC<EventBlockProps> = ({ appt, profissionais, dayStartMi
                     <div className="text-[10px] opacity-80 whitespace-nowrap">{appt.time}</div>
                 </div>
                 <div className="text-[10px] opacity-70 truncate">{(appt.profissional || '').split(' - ')[0]} • {dur}m</div>
+                {appt.seriesId && appt.recurrence && appt.recurrence !== 'none' && <div className="text-[10px] opacity-80 truncate">↻ Série recorrente</div>}
                 {isCompleted && <div className="text-[10px] text-green-300 font-bold">Realizado</div>}
                 {googleSyncEnabled && (
                     appt.googleEventId
@@ -1209,7 +1242,7 @@ const EventBlock: React.FC<EventBlockProps> = ({ appt, profissionais, dayStartMi
                             <XIcon className="w-3 h-3" /> Cancelar
                         </button>
                     )}
-                    <button onClick={() => { if (confirm('Excluir?')) onDelete(appt.id, appt.patientName); setShowMenu(false); }} className="w-full px-3 py-2 text-left text-xs text-red-400 hover:bg-slate-700 flex items-center gap-2">
+                    <button onClick={() => { const scope = resolveDeleteScope(appt); if (scope) onDelete(appt.id, appt.patientName, scope); setShowMenu(false); }} className="w-full px-3 py-2 text-left text-xs text-red-400 hover:bg-slate-700 flex items-center gap-2">
                         <TrashIcon className="w-3 h-3" /> Excluir
                     </button>
                 </div>
@@ -1223,7 +1256,7 @@ interface AppointmentChipProps {
     appt: Appointment;
     profissionais: string[];
     onEdit: (appt: Appointment) => void;
-    onDelete: (id: string, name?: string) => void;
+    onDelete: (id: string, name?: string, scope?: DeleteScope) => void;
     onStatusChange: (appt: Appointment, status: Appointment['status']) => void;
 }
 
@@ -1261,7 +1294,7 @@ const AppointmentChip: React.FC<AppointmentChipProps> = ({ appt, profissionais, 
                             <XIcon className="w-3 h-3" /> Cancelar
                         </button>
                     )}
-                    <button onClick={() => { if (confirm('Excluir?')) onDelete(appt.id, appt.patientName); setShowMenu(false); }} className="w-full px-3 py-2 text-left text-xs text-red-400 hover:bg-slate-700 flex items-center gap-2">
+                    <button onClick={() => { const scope = resolveDeleteScope(appt); if (scope) onDelete(appt.id, appt.patientName, scope); setShowMenu(false); }} className="w-full px-3 py-2 text-left text-xs text-red-400 hover:bg-slate-700 flex items-center gap-2">
                         <TrashIcon className="w-3 h-3" /> Excluir
                     </button>
                 </div>
@@ -1275,7 +1308,7 @@ interface AppointmentCardProps {
     appt: Appointment;
     profissionais: string[];
     onEdit: (appt: Appointment) => void;
-    onDelete: (id: string, name?: string) => void;
+    onDelete: (id: string, name?: string, scope?: DeleteScope) => void;
     onStatusChange: (appt: Appointment, status: Appointment['status']) => void;
 }
 
@@ -1316,7 +1349,7 @@ const AppointmentCard: React.FC<AppointmentCardProps> = ({ appt, profissionais, 
                         <XIcon className="w-4 h-4" />
                     </button>
                 )}
-                <button onClick={() => { if (confirm('Excluir?')) onDelete(appt.id, appt.patientName); }} className="p-2 text-slate-400 hover:text-red-400 transition" title="Excluir">
+                <button onClick={() => { const scope = resolveDeleteScope(appt); if (scope) onDelete(appt.id, appt.patientName, scope); }} className="p-2 text-slate-400 hover:text-red-400 transition" title="Excluir">
                     <TrashIcon className="w-4 h-4" />
                 </button>
             </div>
