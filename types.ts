@@ -84,6 +84,9 @@ export interface Appointment {
   // Financeiro / duração
   durationMin?: number; // duração da sessão
   price?: number; // valor da sessão (R$)
+
+  // Importação do Google Agenda — impede re-criação de evento já existente no sync
+  importSource?: 'google';
 }
 
 export interface BrandConfig {

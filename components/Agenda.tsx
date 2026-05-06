@@ -3,6 +3,7 @@ import { Appointment, Patient, UserProfile, ConvenioConfig } from '../types';
 import { CalendarIcon, PlusIcon, TrashIcon, CheckIcon, EditIcon, ChevronLeftIcon, ChevronRightIcon, XIcon } from './icons';
 import useLocalStorage from '../hooks/useLocalStorage';
 import { buildSeriesId } from '../utils/googleRecurrence';
+import { listImportCandidates, type ImportCandidate } from '../services/googleCalendarImport';
 
 type DeleteScope = 'single' | 'all';
 
@@ -167,6 +168,12 @@ export const Agenda: React.FC<AgendaProps> = ({
     const [filterProfissional, setFilterProfissional] = useState('');
     const [filterPatientName, setFilterPatientName] = useState('');
     const [showForm, setShowForm] = useState(false);
+    const [showGoogleImport, setShowGoogleImport] = useState(false);
+    const [googleImportCandidates, setGoogleImportCandidates] = useState<ImportCandidate[]>([]);
+    const [googleImportLoading, setGoogleImportLoading] = useState(false);
+    const [googleImportError, setGoogleImportError] = useState('');
+    const [googleImportPatientByEvent, setGoogleImportPatientByEvent] = useState<Record<string, string>>({});
+    const [googleImportSavingId, setGoogleImportSavingId] = useState<string | null>(null);
 
     // Patient search in modal
     const [patientSearchQuery, setPatientSearchQuery] = useState('');
@@ -548,6 +555,117 @@ export const Agenda: React.FC<AgendaProps> = ({
         return date.toDateString() === today.toDateString();
     };
 
+    const candidateAlreadyImported = (candidate: ImportCandidate) =>
+        appointments.some(a =>
+            a.googleEventId === candidate.googleEventId ||
+            (candidate.appointmentId && a.id === candidate.appointmentId)
+        );
+
+    const findSuggestedPatient = (candidate: ImportCandidate) => {
+        const name = candidate.suggestedPatientName || candidate.summary.split(' • ')[0];
+        const key = normalizeStr((name || '').trim());
+        if (!key) return undefined;
+        return patients.find(p => normalizeStr(p.nome || '') === key)
+            || patients.find(p => normalizeStr(p.nome || '').includes(key) || key.includes(normalizeStr(p.nome || '')));
+    };
+
+    const getGoogleImportRange = () => {
+        const base = new Date(`${selectedDate}T00:00:00`);
+        const start = new Date(base);
+        const end = new Date(base);
+
+        if (viewMode === 'week') {
+            const week = getWeekStart(base);
+            start.setTime(week.getTime());
+            end.setTime(week.getTime());
+            end.setDate(end.getDate() + 6);
+        } else if (viewMode === 'month') {
+            start.setDate(1);
+            end.setMonth(start.getMonth() + 1, 0);
+        }
+
+        return {
+            timeMin: `${formatDateISO(start)}T00:00:00-03:00`,
+            timeMax: `${formatDateISO(end)}T23:59:59-03:00`,
+        };
+    };
+
+    const loadGoogleImportCandidates = async () => {
+        setGoogleImportLoading(true);
+        setGoogleImportError('');
+        try {
+            const { timeMin, timeMax } = getGoogleImportRange();
+            const result = await listImportCandidates(timeMin, timeMax);
+            setGoogleImportCandidates(result.candidates || []);
+        } catch (error: any) {
+            setGoogleImportError(error?.message || 'Falha ao buscar eventos do Google Agenda.');
+        } finally {
+            setGoogleImportLoading(false);
+        }
+    };
+
+    const openGoogleImport = async () => {
+        setShowGoogleImport(true);
+        await loadGoogleImportCandidates();
+    };
+
+    const confirmGoogleImport = async (candidate: ImportCandidate) => {
+        if (candidateAlreadyImported(candidate)) {
+            setGoogleImportError('Este evento já está vinculado/importado no sistema.');
+            return;
+        }
+
+        const selectedPatientId = googleImportPatientByEvent[candidate.googleEventId] || findSuggestedPatient(candidate)?.id || '';
+        const patient = patients.find(p => p.id === selectedPatientId);
+        if (!patient) {
+            setGoogleImportError('Escolha um paciente antes de importar este evento.');
+            return;
+        }
+
+        setGoogleImportSavingId(candidate.googleEventId);
+        setGoogleImportError('');
+        try {
+            const profKey = normalizeStr(candidate.professionalName || '');
+            const profissional = profissionais.find(p => {
+                const pKey = normalizeStr(p);
+                return pKey === profKey || pKey.includes(profKey) || profKey.includes(pKey.split(' - ')[0]);
+            }) || candidate.professionalName || '';
+            const safeGoogleId = (candidate.googleEventId || String(Date.now())).replace(/[^a-zA-Z0-9_-]/g, '-');
+            const id = candidate.appointmentId && !appointments.some(a => a.id === candidate.appointmentId)
+                ? candidate.appointmentId
+                : `google-import-${safeGoogleId}`;
+
+            const appt: Appointment = {
+                id,
+                patientId: patient.id,
+                patientName: patient.nome,
+                carteirinha: patient.carteirinha || candidate.patientId || '',
+                profissional,
+                date: candidate.date,
+                time: candidate.time,
+                type: patient.convenio ? 'Convênio' : 'Particular',
+                convenioName: patient.convenio || '',
+                status: 'Agendado',
+                durationMin: candidate.durationMin || 50,
+                googleEventId: candidate.googleEventId,
+                googleCalendarHtmlLink: candidate.htmlLink,
+                importSource: 'google',
+                obs: [
+                    'Importado do Google Agenda — revisar convênio/status antes de faturar.',
+                    candidate.summary ? `Evento Google: ${candidate.summary}` : '',
+                    candidate.warnings?.length ? `Avisos: ${candidate.warnings.join('; ')}` : '',
+                ].filter(Boolean).join('\n'),
+            };
+
+            await onAddAppointment(appt);
+            setGoogleImportCandidates(prev => prev.filter(c => c.googleEventId !== candidate.googleEventId || c.calendarId !== candidate.calendarId));
+        } catch (error: any) {
+            setGoogleImportError(error?.message || 'Falha ao importar evento.');
+        } finally {
+            setGoogleImportSavingId(null);
+        }
+    };
+
     return (
         <div className="space-y-4">
             {/* Header com navegação e controles */}
@@ -635,6 +753,16 @@ export const Agenda: React.FC<AgendaProps> = ({
                             <span className={`w-2 h-2 rounded-full ${googleSyncEnabled ? 'bg-emerald-400' : 'bg-slate-500'}`} />
                         </button>
 
+                        {googleSyncEnabled && (!currentUser || currentUser.role !== 'professional') && (
+                            <button
+                                type="button"
+                                onClick={openGoogleImport}
+                                className="bg-emerald-700 hover:bg-emerald-600 text-white font-semibold px-3 py-2 rounded-lg text-sm flex items-center gap-2 transition"
+                            >
+                                <CalendarIcon className="w-4 h-4" /> Importar do Google
+                            </button>
+                        )}
+
                         <button
                             onClick={() => setShowForm(true)}
                             className="bg-sky-600 hover:bg-sky-500 text-white font-semibold px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition"
@@ -708,6 +836,106 @@ export const Agenda: React.FC<AgendaProps> = ({
                     />
                 )}
             </div>
+
+            {/* Modal de Importação Google Agenda */}
+            {showGoogleImport && (
+                <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[60] p-4">
+                    <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-4xl max-h-[85vh] overflow-hidden shadow-2xl flex flex-col">
+                        <div className="p-5 border-b border-slate-700 flex items-start justify-between gap-4">
+                            <div>
+                                <h3 className="text-xl font-bold text-white">Importar do Google Agenda</h3>
+                                <p className="text-sm text-slate-400 mt-1">
+                                    Revise cada evento e vincule a um paciente antes de subir para a agenda do sistema.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowGoogleImport(false)}
+                                className="text-slate-400 hover:text-white"
+                            >
+                                <XIcon className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="p-5 space-y-4 overflow-y-auto">
+                            <div className="flex flex-wrap items-center gap-3">
+                                <button
+                                    type="button"
+                                    onClick={loadGoogleImportCandidates}
+                                    disabled={googleImportLoading}
+                                    className="bg-emerald-700 hover:bg-emerald-600 disabled:opacity-60 text-white font-semibold px-3 py-2 rounded-lg text-sm"
+                                >
+                                    {googleImportLoading ? 'Buscando...' : 'Atualizar busca'}
+                                </button>
+                                <span className="text-xs text-slate-400">
+                                    Período: {viewMode === 'day' ? 'dia atual' : viewMode === 'week' ? 'semana atual' : 'mês atual'} da agenda.
+                                </span>
+                            </div>
+
+                            {googleImportError && (
+                                <div className="bg-red-900/30 border border-red-800 text-red-200 rounded-lg p-3 text-sm">
+                                    {googleImportError}
+                                </div>
+                            )}
+
+                            {!googleImportLoading && googleImportCandidates.length === 0 && (
+                                <div className="bg-slate-900/60 border border-slate-700 rounded-xl p-6 text-center text-slate-400">
+                                    Nenhum evento encontrado para importação neste período.
+                                </div>
+                            )}
+
+                            <div className="space-y-3">
+                                {googleImportCandidates.map(candidate => {
+                                    const suggestedPatient = findSuggestedPatient(candidate);
+                                    const selectedPatientId = googleImportPatientByEvent[candidate.googleEventId] || suggestedPatient?.id || '';
+                                    const alreadyImported = candidateAlreadyImported(candidate);
+                                    return (
+                                        <div key={`${candidate.calendarId}-${candidate.googleEventId}`} className="bg-slate-900/60 border border-slate-700 rounded-xl p-4">
+                                            <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-3">
+                                                <div className="space-y-1 min-w-0">
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <h4 className="font-semibold text-white truncate">{candidate.summary || 'Evento sem título'}</h4>
+                                                        {alreadyImported && <span className="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">já vinculado</span>}
+                                                        {candidate.hasAppointmentId && <span className="text-xs bg-sky-900/50 text-sky-200 px-2 py-0.5 rounded-full">criado pelo sistema</span>}
+                                                    </div>
+                                                    <p className="text-sm text-slate-300">
+                                                        {candidate.date.split('-').reverse().join('/')} às {candidate.time} • {candidate.durationMin || 50} min • {candidate.professionalName}
+                                                    </p>
+                                                    {candidate.warnings.length > 0 && (
+                                                        <p className="text-xs text-amber-300">{candidate.warnings.join(' • ')}</p>
+                                                    )}
+                                                </div>
+
+                                                <div className="flex flex-col sm:flex-row gap-2 lg:min-w-[420px]">
+                                                    <select
+                                                        value={selectedPatientId}
+                                                        disabled={alreadyImported}
+                                                        onChange={e => setGoogleImportPatientByEvent(prev => ({ ...prev, [candidate.googleEventId]: e.target.value }))}
+                                                        className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-emerald-500 outline-none disabled:opacity-60"
+                                                    >
+                                                        <option value="">Vincular paciente...</option>
+                                                        {patients.map(patient => (
+                                                            <option key={patient.id} value={patient.id}>{patient.nome}</option>
+                                                        ))}
+                                                    </select>
+                                                    <button
+                                                        type="button"
+                                                        disabled={alreadyImported || googleImportSavingId === candidate.googleEventId}
+                                                        onClick={() => confirmGoogleImport(candidate)}
+                                                        className="bg-sky-600 hover:bg-sky-500 disabled:bg-slate-700 disabled:text-slate-400 text-white font-semibold px-4 py-2 rounded-lg text-sm transition"
+                                                    >
+                                                        {googleImportSavingId === candidate.googleEventId ? 'Importando...' : 'Importar'}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Modal de Cancelamento */}
             {cancelModal.isOpen && cancelModal.appt && (

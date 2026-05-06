@@ -543,6 +543,10 @@ const App: React.FC = () => {
                 // Exclusão de ocorrência isolada é tratada pelo fluxo deleteScope='single'.
                 return undefined;
             }
+            if (action === 'upsert' && appointmentForSync.importSource === 'google' && appointmentForSync.googleEventId) {
+                // Evento importado do Google: já existe lá, não criar duplicata.
+                return undefined;
+            }
             const result = await syncAppointmentToGoogle({
                 action,
                 appointment: appointmentForSync,
