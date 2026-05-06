@@ -4,6 +4,11 @@ import {
   parseGoogleEventToCandidate,
   deduplicateCandidates,
 } from '../api/google-calendar-import';
+import {
+  detectRecurrencePattern,
+  groupImportCandidates,
+} from '../utils/googleCalendarGrouping';
+import type { ImportCandidate } from '../api/google-calendar-import';
 
 // ────────────────────────────────────────────────────────────────────────────
 // parseDateTimeToSP
@@ -153,5 +158,163 @@ describe('deduplicateCandidates', () => {
   test('preserves order of first occurrence', () => {
     const result = deduplicateCandidates([make('e3', 'c1'), make('e1', 'c1'), make('e3', 'c1')]);
     expect(result.map(r => r.googleEventId)).toEqual(['e3', 'e1']);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// detectRecurrencePattern
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('detectRecurrencePattern', () => {
+  test('dates 7 days apart → weekly', () => {
+    expect(detectRecurrencePattern(['2026-05-04', '2026-05-11', '2026-05-18'])).toBe('weekly');
+  });
+
+  test('dates 14 days apart → biweekly', () => {
+    expect(detectRecurrencePattern(['2026-05-04', '2026-05-18', '2026-06-01'])).toBe('biweekly');
+  });
+
+  test('dates ~30 days apart → monthly', () => {
+    expect(detectRecurrencePattern(['2026-05-04', '2026-06-04', '2026-07-04'])).toBe('monthly');
+    // 28-day months also qualify
+    expect(detectRecurrencePattern(['2026-01-31', '2026-02-28'])).toBe('monthly');
+  });
+
+  test('mixed intervals → none', () => {
+    expect(detectRecurrencePattern(['2026-05-04', '2026-05-11', '2026-05-20'])).toBe('none');
+  });
+
+  test('single date → none', () => {
+    expect(detectRecurrencePattern(['2026-05-04'])).toBe('none');
+  });
+
+  test('empty array → none', () => {
+    expect(detectRecurrencePattern([])).toBe('none');
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// groupImportCandidates
+// ────────────────────────────────────────────────────────────────────────────
+
+const makeCandidate = (overrides: Partial<ImportCandidate>): ImportCandidate => ({
+  googleEventId: 'evt-default',
+  calendarId: 'cal1',
+  professionalName: 'Dr. Teste',
+  summary: 'Paciente X • Unimed',
+  startDateTime: '',
+  endDateTime: '',
+  date: '2026-05-04',
+  time: '09:00',
+  durationMin: 50,
+  googleStatus: 'confirmed',
+  isRecurring: false,
+  hasAppointmentId: false,
+  warnings: [],
+  importSource: 'google',
+  ...overrides,
+});
+
+describe('groupImportCandidates', () => {
+  test('candidates without recurringEventId remain individual', () => {
+    const candidates = [
+      makeCandidate({ googleEventId: 'a', date: '2026-05-04' }),
+      makeCandidate({ googleEventId: 'b', date: '2026-05-11' }),
+    ];
+    const groups = groupImportCandidates(candidates);
+    expect(groups).toHaveLength(2);
+    expect(groups.every(g => g.type === 'individual')).toBe(true);
+  });
+
+  test('three candidates with same recurringEventId form a series group', () => {
+    const candidates = [
+      makeCandidate({ googleEventId: 'r_1', recurringEventId: 'rec123', isRecurring: true, date: '2026-05-04' }),
+      makeCandidate({ googleEventId: 'r_2', recurringEventId: 'rec123', isRecurring: true, date: '2026-05-11' }),
+      makeCandidate({ googleEventId: 'r_3', recurringEventId: 'rec123', isRecurring: true, date: '2026-05-18' }),
+    ];
+    const groups = groupImportCandidates(candidates);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].type).toBe('series');
+    if (groups[0].type === 'series') {
+      expect(groups[0].candidates).toHaveLength(3);
+      expect(groups[0].recurringEventId).toBe('rec123');
+      expect(groups[0].detectedRecurrence).toBe('weekly');
+    }
+  });
+
+  test('series with only 1 occurrence in range becomes individual', () => {
+    const candidates = [
+      makeCandidate({ googleEventId: 'r_1', recurringEventId: 'rec456', isRecurring: true, date: '2026-05-04' }),
+    ];
+    const groups = groupImportCandidates(candidates);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].type).toBe('individual');
+  });
+
+  test('candidates from different calendarIds with same recurringEventId form separate groups', () => {
+    const candidates = [
+      makeCandidate({ googleEventId: 'r_1', calendarId: 'cal1', recurringEventId: 'recX', date: '2026-05-04' }),
+      makeCandidate({ googleEventId: 'r_2', calendarId: 'cal1', recurringEventId: 'recX', date: '2026-05-11' }),
+      makeCandidate({ googleEventId: 'r_3', calendarId: 'cal2', recurringEventId: 'recX', date: '2026-05-04' }),
+      makeCandidate({ googleEventId: 'r_4', calendarId: 'cal2', recurringEventId: 'recX', date: '2026-05-11' }),
+    ];
+    const groups = groupImportCandidates(candidates);
+    expect(groups).toHaveLength(2);
+    expect(groups.every(g => g.type === 'series')).toBe(true);
+  });
+
+  test('mixed: series + individual candidates coexist', () => {
+    const candidates = [
+      makeCandidate({ googleEventId: 'ind1', date: '2026-05-01' }),
+      makeCandidate({ googleEventId: 'r_1', recurringEventId: 'recABC', isRecurring: true, date: '2026-05-04' }),
+      makeCandidate({ googleEventId: 'r_2', recurringEventId: 'recABC', isRecurring: true, date: '2026-05-11' }),
+    ];
+    const groups = groupImportCandidates(candidates);
+    expect(groups).toHaveLength(2);
+    const seriesGroup = groups.find(g => g.type === 'series');
+    const individualGroup = groups.find(g => g.type === 'individual');
+    expect(seriesGroup).toBeDefined();
+    expect(individualGroup).toBeDefined();
+  });
+
+  test('series candidates are sorted by date ascending', () => {
+    const candidates = [
+      makeCandidate({ googleEventId: 'r_3', recurringEventId: 'recZ', date: '2026-05-18' }),
+      makeCandidate({ googleEventId: 'r_1', recurringEventId: 'recZ', date: '2026-05-04' }),
+      makeCandidate({ googleEventId: 'r_2', recurringEventId: 'recZ', date: '2026-05-11' }),
+    ];
+    const groups = groupImportCandidates(candidates);
+    expect(groups[0].type).toBe('series');
+    if (groups[0].type === 'series') {
+      expect(groups[0].candidates.map(c => c.date)).toEqual(['2026-05-04', '2026-05-11', '2026-05-18']);
+    }
+  });
+
+  test('biweekly series detected correctly', () => {
+    const candidates = [
+      makeCandidate({ googleEventId: 'r_1', recurringEventId: 'recBi', date: '2026-05-04' }),
+      makeCandidate({ googleEventId: 'r_2', recurringEventId: 'recBi', date: '2026-05-18' }),
+      makeCandidate({ googleEventId: 'r_3', recurringEventId: 'recBi', date: '2026-06-01' }),
+    ];
+    const groups = groupImportCandidates(candidates);
+    expect(groups[0].type).toBe('series');
+    if (groups[0].type === 'series') {
+      expect(groups[0].detectedRecurrence).toBe('biweekly');
+    }
+  });
+
+  test('irregular recurring candidates remain individual for manual review', () => {
+    const candidates = [
+      makeCandidate({ googleEventId: 'r_1', recurringEventId: 'recIrregular', isRecurring: true, date: '2026-05-04' }),
+      makeCandidate({ googleEventId: 'r_2', recurringEventId: 'recIrregular', isRecurring: true, date: '2026-05-11' }),
+      makeCandidate({ googleEventId: 'r_3', recurringEventId: 'recIrregular', isRecurring: true, date: '2026-05-20' }),
+    ];
+    const groups = groupImportCandidates(candidates);
+    expect(groups).toHaveLength(3);
+    expect(groups.every(g => g.type === 'individual')).toBe(true);
+  });
+
+  test('empty candidates array returns empty groups', () => {
+    expect(groupImportCandidates([])).toEqual([]);
   });
 });

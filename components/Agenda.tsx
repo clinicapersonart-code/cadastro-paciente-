@@ -4,6 +4,7 @@ import { CalendarIcon, PlusIcon, TrashIcon, CheckIcon, EditIcon, ChevronLeftIcon
 import useLocalStorage from '../hooks/useLocalStorage';
 import { buildSeriesId } from '../utils/googleRecurrence';
 import { listImportCandidates, type ImportCandidate } from '../services/googleCalendarImport';
+import { groupImportCandidates, type ImportSeriesGroup } from '../utils/googleCalendarGrouping';
 
 type DeleteScope = 'single' | 'all';
 
@@ -242,6 +243,9 @@ export const Agenda: React.FC<AgendaProps> = ({
     const [googleImportError, setGoogleImportError] = useState('');
     const [googleImportPatientByEvent, setGoogleImportPatientByEvent] = useState<Record<string, string>>({});
     const [googleImportSavingId, setGoogleImportSavingId] = useState<string | null>(null);
+    // key para séries: `calendarId::recurringEventId`
+    const [googleImportPatientBySeries, setGoogleImportPatientBySeries] = useState<Record<string, string>>({});
+    const [googleImportSavingSeriesId, setGoogleImportSavingSeriesId] = useState<string | null>(null);
 
     // Patient search in modal
     const [patientSearchQuery, setPatientSearchQuery] = useState('');
@@ -734,6 +738,81 @@ export const Agenda: React.FC<AgendaProps> = ({
         }
     };
 
+    const confirmGoogleSeriesImport = async (group: ImportSeriesGroup) => {
+        const groupKey = `${group.calendarId}::${group.recurringEventId}`;
+        const selectedPatientId = googleImportPatientBySeries[groupKey] || '';
+        const patient = patients.find(p => p.id === selectedPatientId);
+        if (!patient) {
+            setGoogleImportError('Escolha um paciente antes de importar a série.');
+            return;
+        }
+
+        setGoogleImportSavingSeriesId(groupKey);
+        setGoogleImportError('');
+        try {
+            const profKey = normalizeStr(group.professionalName || '');
+            const profissional = profissionais.find(p => {
+                const pKey = normalizeStr(p);
+                return pKey === profKey || pKey.includes(profKey) || profKey.includes(pKey.split(' - ')[0]);
+            }) || group.professionalName || '';
+
+            if (group.detectedRecurrence === 'none') {
+                setGoogleImportError('Padrão de recorrência irregular não suportado como série. Importe as ocorrências individualmente.');
+                return;
+            }
+
+            const recurrence = group.detectedRecurrence;
+            const firstCandidate = group.candidates[0];
+            const lastCandidate = group.candidates[group.candidates.length - 1];
+            const seriesId = buildSeriesId(patient.id, profissional, firstCandidate.date, firstCandidate.time);
+            const recurrenceEndDate = lastCandidate.date;
+
+            const batch: Appointment[] = group.candidates.map((candidate, index) => {
+                const safeGoogleId = (candidate.googleEventId || String(Date.now())).replace(/[^a-zA-Z0-9_-]/g, '-');
+                const id = candidate.appointmentId && !appointments.some(a => a.id === candidate.appointmentId)
+                    ? candidate.appointmentId
+                    : `google-import-${safeGoogleId}`;
+
+                return {
+                    id,
+                    patientId: patient.id,
+                    patientName: patient.nome,
+                    carteirinha: patient.carteirinha || '',
+                    profissional,
+                    date: candidate.date,
+                    time: candidate.time,
+                    type: patient.convenio ? 'Convênio' : 'Particular',
+                    convenioName: patient.convenio || '',
+                    status: 'Agendado',
+                    durationMin: candidate.durationMin || 50,
+                    googleEventId: group.recurringEventId,
+                    googleCalendarHtmlLink: candidate.htmlLink,
+                    importSource: 'google' as const,
+                    seriesId,
+                    recurrence,
+                    recurrenceEndDate,
+                    recurrenceIndex: index,
+                    isSeriesMaster: index === 0,
+                    obs: [
+                        'Importado do Google Agenda — revisar convênio/status antes de faturar.',
+                        candidate.summary ? `Evento Google: ${candidate.summary}` : '',
+                        candidate.warnings?.length ? `Avisos: ${candidate.warnings.join('; ')}` : '',
+                    ].filter(Boolean).join('\n'),
+                };
+            });
+
+            if (onAddBatchAppointments) await onAddBatchAppointments(batch);
+            else await Promise.all(batch.map(a => onAddAppointment(a)));
+
+            const importedIds = new Set(group.candidates.map(c => `${c.calendarId}::${c.googleEventId}`));
+            setGoogleImportCandidates(prev => prev.filter(c => !importedIds.has(`${c.calendarId}::${c.googleEventId}`)));
+        } catch (error: any) {
+            setGoogleImportError(error?.message || 'Falha ao importar série.');
+        } finally {
+            setGoogleImportSavingSeriesId(null);
+        }
+    };
+
     return (
         <div className="space-y-4">
             {/* Header com navegação e controles */}
@@ -953,7 +1032,73 @@ export const Agenda: React.FC<AgendaProps> = ({
                             )}
 
                             <div className="space-y-3">
-                                {googleImportCandidates.map(candidate => {
+                                {groupImportCandidates(googleImportCandidates).map(group => {
+                                    if (group.type === 'series') {
+                                        const groupKey = `${group.calendarId}::${group.recurringEventId}`;
+                                        const selectedPatientId = googleImportPatientBySeries[groupKey] || '';
+                                        const alreadyImported = appointments.some(
+                                            a => a.googleEventId === group.recurringEventId && a.importSource === 'google'
+                                        );
+                                        const isSaving = googleImportSavingSeriesId === groupKey;
+                                        const first = group.candidates[0];
+                                        const last = group.candidates[group.candidates.length - 1];
+                                        const recurrenceLabel: Record<string, string> = { weekly: 'Semanal', biweekly: 'Quinzenal', monthly: 'Mensal' };
+                                        const patternLabel = group.detectedRecurrence !== 'none'
+                                            ? recurrenceLabel[group.detectedRecurrence]
+                                            : 'Irregular';
+                                        const allWarnings = [...new Set(group.candidates.flatMap(c => c.warnings))];
+                                        return (
+                                            <div key={groupKey} className="bg-slate-900/60 border border-indigo-700/60 rounded-xl p-4">
+                                                <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-3">
+                                                    <div className="space-y-1 min-w-0">
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            <h4 className="font-semibold text-white truncate">{first.summary || 'Série sem título'}</h4>
+                                                            <span className="text-xs bg-indigo-800/70 text-indigo-200 px-2 py-0.5 rounded-full">{group.candidates.length} ocorrências</span>
+                                                            <span className="text-xs bg-indigo-900/50 text-indigo-300 px-2 py-0.5 rounded-full">{patternLabel}</span>
+                                                            {alreadyImported && <span className="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">já importado</span>}
+                                                            {group.detectedRecurrence === 'none' && !alreadyImported && (
+                                                                <span className="text-xs bg-amber-900/50 text-amber-300 px-2 py-0.5 rounded-full">padrão irregular</span>
+                                                            )}
+                                                        </div>
+                                                        <p className="text-sm text-slate-300">
+                                                            {first.date.split('-').reverse().join('/')} até {last.date.split('-').reverse().join('/')} às {first.time} • {first.durationMin || 50} min • {group.professionalName}
+                                                        </p>
+                                                        {allWarnings.length > 0 && (
+                                                            <p className="text-xs text-amber-300">{allWarnings.join(' • ')}</p>
+                                                        )}
+                                                        {group.detectedRecurrence === 'none' && !alreadyImported && (
+                                                            <p className="text-xs text-amber-400">Intervalos irregulares — série será criada como semanal. Revise após importar.</p>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="flex flex-col sm:flex-row gap-2 lg:min-w-[420px]">
+                                                        <select
+                                                            value={selectedPatientId}
+                                                            disabled={alreadyImported}
+                                                            onChange={e => setGoogleImportPatientBySeries(prev => ({ ...prev, [groupKey]: e.target.value }))}
+                                                            className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-indigo-500 outline-none disabled:opacity-60"
+                                                        >
+                                                            <option value="">Vincular paciente...</option>
+                                                            {patients.map(p => (
+                                                                <option key={p.id} value={p.id}>{p.nome}</option>
+                                                            ))}
+                                                        </select>
+                                                        <button
+                                                            type="button"
+                                                            disabled={alreadyImported || isSaving}
+                                                            onClick={() => confirmGoogleSeriesImport(group)}
+                                                            className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:text-slate-400 text-white font-semibold px-4 py-2 rounded-lg text-sm transition whitespace-nowrap"
+                                                        >
+                                                            {isSaving ? 'Importando...' : 'Importar série'}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    }
+
+                                    // individual candidate
+                                    const candidate = group.candidate;
                                     const suggestedPatient = findSuggestedPatient(candidate);
                                     const selectedPatientId = googleImportPatientByEvent[candidate.googleEventId] || suggestedPatient?.id || '';
                                     const alreadyImported = candidateAlreadyImported(candidate);
@@ -982,8 +1127,8 @@ export const Agenda: React.FC<AgendaProps> = ({
                                                         className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-emerald-500 outline-none disabled:opacity-60"
                                                     >
                                                         <option value="">Vincular paciente...</option>
-                                                        {patients.map(patient => (
-                                                            <option key={patient.id} value={patient.id}>{patient.nome}</option>
+                                                        {patients.map(p => (
+                                                            <option key={p.id} value={p.id}>{p.nome}</option>
                                                         ))}
                                                     </select>
                                                     <button
