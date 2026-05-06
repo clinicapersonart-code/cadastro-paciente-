@@ -51,6 +51,74 @@ const minutesToTime = (mins: number): string => {
 
 const snapToStep = (mins: number, step = SLOT_STEP_MIN) => Math.round(mins / step) * step;
 
+// Distribui eventos sobrepostos em colunas para evitar sobreposição visual
+const computeOverlapLayout = (appts: Appointment[]): { leftPct: number; widthPct: number }[] => {
+    if (appts.length === 0) return [];
+
+    const intervals = appts.map(a => ({
+        start: timeToMinutes(a.time || '00:00'),
+        end: timeToMinutes(a.time || '00:00') + (a.durationMin || 50),
+    }));
+
+    // Atribui coluna greedy (reusa coluna quando não há conflito)
+    const colEndTimes: number[] = [];
+    const colAssignments: number[] = new Array(appts.length).fill(0);
+
+    for (let i = 0; i < intervals.length; i++) {
+        let placed = false;
+        for (let col = 0; col < colEndTimes.length; col++) {
+            if (colEndTimes[col] <= intervals[i].start) {
+                colEndTimes[col] = intervals[i].end;
+                colAssignments[i] = col;
+                placed = true;
+                break;
+            }
+        }
+        if (!placed) {
+            colAssignments[i] = colEndTimes.length;
+            colEndTimes.push(intervals[i].end);
+        }
+    }
+
+    // Determina componentes conectados de sobreposição para calcular totalColunas por grupo
+    const overlaps = (i: number, j: number) =>
+        intervals[i].start < intervals[j].end && intervals[j].start < intervals[i].end;
+
+    const n = appts.length;
+    const visited = new Array(n).fill(false);
+    const groupOf = new Array(n).fill(-1);
+    let groupCount = 0;
+
+    for (let i = 0; i < n; i++) {
+        if (visited[i]) continue;
+        const queue = [i];
+        visited[i] = true;
+        while (queue.length > 0) {
+            const cur = queue.shift()!;
+            groupOf[cur] = groupCount;
+            for (let j = 0; j < n; j++) {
+                if (!visited[j] && overlaps(cur, j)) {
+                    visited[j] = true;
+                    queue.push(j);
+                }
+            }
+        }
+        groupCount++;
+    }
+
+    const groupColCount = new Array(groupCount).fill(0);
+    for (let i = 0; i < n; i++) {
+        groupColCount[groupOf[i]] = Math.max(groupColCount[groupOf[i]], colAssignments[i] + 1);
+    }
+
+    return appts.map((_, i) => {
+        const totalCols = groupColCount[groupOf[i]];
+        const leftPct = colAssignments[i] * (100 / totalCols);
+        const widthPct = Math.max(8, (100 / totalCols) - 1);
+        return { leftPct, widthPct };
+    });
+};
+
 // Paleta de cores fixas para profissionais
 const PROFESSIONAL_COLORS = [
     { bg: 'bg-blue-500/20', border: 'border-blue-500', text: 'text-blue-300', accent: '#3b82f6' },
@@ -1323,18 +1391,23 @@ const WeekView: React.FC<WeekViewProps> = ({
                                 </div>
 
                                 <div className="relative" style={{ height: heightPx }}>
-                                    {appts.map(appt => (
-                                        <EventBlock
-                                            key={appt.id}
-                                            appt={appt}
-                                            profissionais={profissionais}
-                                            dayStartMin={dayStartMin}
-                                            onEdit={onEditAppointment}
-                                            onDelete={onDeleteAppointment}
-                                            onStatusChange={onStatusChange}
-                                            googleSyncEnabled={googleSyncEnabled}
-                                        />
-                                    ))}
+                                    {(() => {
+                                        const layout = computeOverlapLayout(appts);
+                                        return appts.map((appt, idx) => (
+                                            <EventBlock
+                                                key={appt.id}
+                                                appt={appt}
+                                                profissionais={profissionais}
+                                                dayStartMin={dayStartMin}
+                                                leftPct={layout[idx].leftPct}
+                                                widthPct={layout[idx].widthPct}
+                                                onEdit={onEditAppointment}
+                                                onDelete={onDeleteAppointment}
+                                                onStatusChange={onStatusChange}
+                                                googleSyncEnabled={googleSyncEnabled}
+                                            />
+                                        ));
+                                    })()}
                                 </div>
                             </div>
                         );
@@ -1484,18 +1557,23 @@ const DayView: React.FC<DayViewProps> = ({
                 </div>
 
                 <div className="relative" style={{ height: heightPx }}>
-                    {appts.map(appt => (
-                        <EventBlock
-                            key={appt.id}
-                            appt={appt}
-                            profissionais={profissionais}
-                            dayStartMin={dayStartMin}
-                            onEdit={onEditAppointment}
-                            onDelete={onDeleteAppointment}
-                            onStatusChange={onStatusChange}
-                            googleSyncEnabled={googleSyncEnabled}
-                        />
-                    ))}
+                    {(() => {
+                        const layout = computeOverlapLayout(appts);
+                        return appts.map((appt, idx) => (
+                            <EventBlock
+                                key={appt.id}
+                                appt={appt}
+                                profissionais={profissionais}
+                                dayStartMin={dayStartMin}
+                                leftPct={layout[idx].leftPct}
+                                widthPct={layout[idx].widthPct}
+                                onEdit={onEditAppointment}
+                                onDelete={onDeleteAppointment}
+                                onStatusChange={onStatusChange}
+                                googleSyncEnabled={googleSyncEnabled}
+                            />
+                        ));
+                    })()}
                 </div>
             </div>
         </div>
@@ -1507,6 +1585,8 @@ interface EventBlockProps {
     appt: Appointment;
     profissionais: string[];
     dayStartMin: number;
+    leftPct?: number;
+    widthPct?: number;
     onEdit: (appt: Appointment) => void;
     onDelete: (id: string, name?: string, scope?: DeleteScope) => void;
     onStatusChange: (appt: Appointment, status: Appointment['status']) => void;
@@ -1528,7 +1608,7 @@ const resolveDeleteScope = (appt: Appointment): DeleteScope | null => {
     return null;
 };
 
-const EventBlock: React.FC<EventBlockProps> = ({ appt, profissionais, dayStartMin, onEdit, onDelete, onStatusChange, googleSyncEnabled = false }) => {
+const EventBlock: React.FC<EventBlockProps> = ({ appt, profissionais, dayStartMin, leftPct = 0, widthPct = 98, onEdit, onDelete, onStatusChange, googleSyncEnabled = false }) => {
     const color = getProfessionalColor(appt.profissional, profissionais);
     const [showMenu, setShowMenu] = useState(false);
 
@@ -1542,8 +1622,8 @@ const EventBlock: React.FC<EventBlockProps> = ({ appt, profissionais, dayStartMi
 
     return (
         <div
-            className={`absolute left-1 right-1 rounded-lg border ${color.border} ${color.bg} ${isCancelled ? 'opacity-50 grayscale' : ''}`}
-            style={{ top, height }}
+            className={`absolute rounded-lg border ${color.border} ${color.bg} ${isCancelled ? 'opacity-50 grayscale' : ''}`}
+            style={{ top, height, left: `${leftPct}%`, width: `${widthPct}%` }}
             onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
             title={`${appt.time} • ${appt.patientName} • ${appt.profissional}`}
         >
