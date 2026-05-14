@@ -1287,12 +1287,12 @@ export const Agenda: React.FC<AgendaProps> = ({
 
             {/* Modal de Agendamento */}
             {showForm && (
-                <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-                    <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-md p-6 shadow-2xl">
-                        <h3 className="text-xl font-bold text-white mb-4">
+                <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-2 sm:p-4">
+                    <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto p-4 shadow-2xl">
+                        <h3 className="text-lg font-bold text-white mb-3">
                             {formId ? 'Editar Agendamento' : 'Novo Agendamento'}
                         </h3>
-                        <form onSubmit={handleSubmit} className="space-y-4">
+                        <form onSubmit={handleSubmit} className="space-y-3">
                             {/* Busca de paciente */}
                             <div className="relative">
                                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
@@ -1466,21 +1466,20 @@ export const Agenda: React.FC<AgendaProps> = ({
                                 </div>
                             </div>
 
-                            <div>
-                                <label className="block text-[11px] text-slate-400 mb-1">Duração</label>
-                                <select
-                                    value={durationMin}
-                                    onChange={e => setDurationMin(Number(e.target.value))}
-                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
-                                >
-                                    {DURATION_OPTIONS_MIN.map(m => <option key={m} value={m}>{formatDurationLabel(m)}</option>)}
-                                </select>
-                                {type === 'Convênio' && (
-                                    <p className="text-[10px] text-slate-500 mt-1">Se o convênio tiver duração padrão, ela entra automaticamente, mas você pode ajustar.</p>
-                                )}
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-[11px] text-slate-400 mb-1">Duração</label>
+                                    <select
+                                        value={durationMin}
+                                        onChange={e => setDurationMin(Number(e.target.value))}
+                                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                                    >
+                                        {DURATION_OPTIONS_MIN.map(m => <option key={m} value={m}>{formatDurationLabel(m)}</option>)}
+                                    </select>
+                                    {type === 'Convênio' && (
+                                        <p className="text-[10px] text-slate-500 mt-1">Se o convênio tiver duração padrão, ela entra automaticamente, mas você pode ajustar.</p>
+                                    )}
+                                </div>
                                 <div>
                                     <label className="block text-[11px] text-slate-400 mb-1">Valor (R$)</label>
                                     <input
@@ -1493,10 +1492,8 @@ export const Agenda: React.FC<AgendaProps> = ({
                                         className={`w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white ${type === 'Convênio' ? 'opacity-60 cursor-not-allowed' : ''}`}
                                         placeholder={type === 'Convênio' ? 'Convênio' : 'ex: 150'}
                                     />
-                                </div>
-                                <div className="flex items-end">
                                     {type === 'Convênio' && (
-                                        <p className="text-[10px] text-slate-500">(Convênio: valor vem do cadastro do convênio do paciente)</p>
+                                        <p className="text-[10px] text-slate-500 mt-1">Valor vem do cadastro do convênio do paciente.</p>
                                     )}
                                 </div>
                             </div>
@@ -1557,10 +1554,10 @@ export const Agenda: React.FC<AgendaProps> = ({
                                 placeholder="Observações (opcional)"
                                 value={obs}
                                 onChange={e => setObs(e.target.value)}
-                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white h-20 resize-none"
+                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white h-14 resize-none"
                             />
 
-                            <div className="flex gap-3 pt-2">
+                            <div className="sticky bottom-0 -mx-4 px-4 pt-3 pb-1 bg-slate-800 border-t border-slate-700 flex gap-3">
                                 <button type="button" onClick={closeForm} className="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-200 py-2.5 rounded-lg transition">
                                     Cancelar
                                 </button>
