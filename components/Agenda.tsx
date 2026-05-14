@@ -283,6 +283,70 @@ export const preserveRecurrenceMetadata = (updated: Appointment, original?: Appo
     };
 };
 
+const toISODateValue = (date: Date): string =>
+    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+const nextWeeklyDateFrom = (templateDateISO: string, selectedDateISO: string): string | undefined => {
+    const templateDate = parseISODateLocal(templateDateISO);
+    const selectedDate = parseISODateLocal(selectedDateISO);
+    if (!templateDate || !selectedDate) return undefined;
+    const next = new Date(selectedDate);
+    const daysAhead = (templateDate.getDay() - selectedDate.getDay() + 7) % 7;
+    next.setDate(selectedDate.getDate() + daysAhead);
+    return toISODateValue(next);
+};
+
+const nextBiweeklyDateFrom = (templateDateISO: string, selectedDateISO: string): string | undefined => {
+    const templateDate = parseISODateLocal(templateDateISO);
+    const selectedDate = parseISODateLocal(selectedDateISO);
+    if (!templateDate || !selectedDate) return undefined;
+    const next = new Date(templateDate);
+    while (next < selectedDate) next.setDate(next.getDate() + 14);
+    return toISODateValue(next);
+};
+
+const nextMonthlyDateFrom = (templateDateISO: string, selectedDateISO: string): string | undefined => {
+    const templateDate = parseISODateLocal(templateDateISO);
+    const selectedDate = parseISODateLocal(selectedDateISO);
+    if (!templateDate || !selectedDate) return undefined;
+    const next = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), templateDate.getDate());
+    if (next < selectedDate) next.setMonth(next.getMonth() + 1);
+    return toISODateValue(next);
+};
+
+export const getPatientScheduleSuggestion = (
+    patient: Patient,
+    allAppointments: Appointment[],
+    selectedDateISO: string
+): { profissional?: string; date?: string; time?: string; recurrence?: 'none' | 'weekly' | 'biweekly' | 'monthly' } => {
+    const patientAppointments = allAppointments
+        .filter(a => a.patientId === patient.id)
+        .sort((a, b) => (b.date + 'T' + b.time).localeCompare(a.date + 'T' + a.time));
+
+    const linkedProfessional = patient.profissionais?.[0] || '';
+    const recurringAppointment = patientAppointments.find(a => getEffectiveAppointmentRecurrence(a, allAppointments) !== 'none');
+
+    if (!recurringAppointment) {
+        return { profissional: linkedProfessional || patientAppointments[0]?.profissional };
+    }
+
+    const recurrence = getEffectiveAppointmentRecurrence(recurringAppointment, allAppointments);
+    const date = recurrence === 'weekly'
+        ? nextWeeklyDateFrom(recurringAppointment.date, selectedDateISO)
+        : recurrence === 'biweekly'
+            ? nextBiweeklyDateFrom(recurringAppointment.date, selectedDateISO)
+            : recurrence === 'monthly'
+                ? nextMonthlyDateFrom(recurringAppointment.date, selectedDateISO)
+                : undefined;
+
+    return {
+        profissional: recurringAppointment.profissional || linkedProfessional,
+        date,
+        time: recurringAppointment.time,
+        recurrence,
+    };
+};
+
 const recurrenceLabel = (value?: Appointment['recurrence'] | 'none') => {
     if (value === 'weekly') return 'semanal';
     if (value === 'biweekly') return 'quinzenal';
@@ -443,6 +507,20 @@ export const Agenda: React.FC<AgendaProps> = ({
     const getConvenioConfig = (name?: string) => {
         if (!name) return null;
         return convenios.find(c => (c.name || '').toLowerCase().trim() === name.toLowerCase().trim()) || null;
+    };
+
+    const applyPatientScheduleSuggestion = (patient: Patient) => {
+        if (formId) return;
+        const suggestion = getPatientScheduleSuggestion(patient, appointments, formDate || selectedDate || new Date().toISOString().split('T')[0]);
+
+        if (suggestion.profissional && currentUser?.role !== 'professional') {
+            setFormProfissional(suggestion.profissional);
+        }
+        if (suggestion.date) setFormDate(suggestion.date);
+        if (suggestion.time) setTime(suggestion.time);
+        if (suggestion.recurrence && suggestion.recurrence !== 'none') {
+            setRecurrence(suggestion.recurrence);
+        }
     };
 
     useEffect(() => {
@@ -1345,6 +1423,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                                                         setPatientSearchQuery(p.nome);
                                                         setPatientDropdownOpen(false);
                                                         if (type === 'Convênio') setFormConvenioName(p.convenio || '');
+                                                        applyPatientScheduleSuggestion(p);
                                                     }}
                                                     className="w-full px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-700 flex items-center justify-between gap-2"
                                                 >

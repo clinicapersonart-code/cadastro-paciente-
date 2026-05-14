@@ -3,11 +3,12 @@ import {
   formatAppointmentWeekday,
   formatRecurringWeekdayPhrase,
   getEffectiveAppointmentRecurrence,
+  getPatientScheduleSuggestion,
   hasScheduleDayOrTimeChanged,
   isRecurringAppointment,
   preserveRecurrenceMetadata,
 } from '../components/Agenda';
-import type { Appointment } from '../types';
+import type { Appointment, Patient } from '../types';
 
 const makeAppointment = (overrides: Partial<Appointment> = {}): Appointment => ({
   id: 'appt-1',
@@ -20,6 +21,15 @@ const makeAppointment = (overrides: Partial<Appointment> = {}): Appointment => (
   status: 'Agendado',
   seriesId: 'series-1',
   recurrence: 'weekly',
+  ...overrides,
+});
+
+const makePatient = (overrides: Partial<Patient> = {}): Patient => ({
+  id: 'patient-1',
+  nome: 'Paciente Teste',
+  faixa: 'Adulto',
+  profissionais: ['Nayara Cinthia Malandrim'],
+  especialidades: [],
   ...overrides,
 });
 
@@ -85,6 +95,37 @@ describe('agenda recurring edit helpers', () => {
       recurrenceIndex: 2,
       isSeriesMaster: false,
       googleEventId: 'google-master',
+    });
+  });
+
+  test('suggests linked professional and next weekly slot when selecting a patient', () => {
+    const patient = makePatient({ profissionais: ['Nayara Cinthia Malandrim - CRP 06/143570'] });
+    const appointments = [
+      makeAppointment({
+        id: 'fri-1',
+        patientId: patient.id,
+        date: '2026-05-08',
+        time: '19:00',
+        profissional: 'Nayara Cinthia Malandrim - CRP 06/143570',
+        recurrence: 'weekly',
+        seriesId: 'series-friday',
+      }),
+      makeAppointment({
+        id: 'fri-2',
+        patientId: patient.id,
+        date: '2026-05-15',
+        time: '19:00',
+        profissional: 'Nayara Cinthia Malandrim - CRP 06/143570',
+        recurrence: 'weekly',
+        seriesId: 'series-friday',
+      }),
+    ];
+
+    expect(getPatientScheduleSuggestion(patient, appointments, '2026-07-15')).toEqual({
+      profissional: 'Nayara Cinthia Malandrim - CRP 06/143570',
+      date: '2026-07-17',
+      time: '19:00',
+      recurrence: 'weekly',
     });
   });
 });
