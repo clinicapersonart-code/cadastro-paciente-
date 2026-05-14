@@ -8,7 +8,29 @@ import {
   detectRecurrencePattern,
   groupImportCandidates,
 } from '../utils/googleCalendarGrouping';
+import { getGoogleImportRange, GOOGLE_IMPORT_MONTHS_AHEAD } from '../utils/googleCalendarImportRange';
 import type { ImportCandidate } from '../api/google-calendar-import';
+
+describe('getGoogleImportRange', () => {
+  test('uses a six-month window starting at the selected day for day view', () => {
+    const range = getGoogleImportRange('2026-05-04', 'day');
+
+    expect(GOOGLE_IMPORT_MONTHS_AHEAD).toBe(6);
+    expect(range).toEqual({
+      timeMin: '2026-05-04T00:00:00-03:00',
+      timeMax: '2026-11-04T23:59:59-03:00',
+    });
+  });
+
+  test('uses the first day of the visible month and keeps the six-month import window for month view', () => {
+    const range = getGoogleImportRange('2026-05-15', 'month');
+
+    expect(range).toEqual({
+      timeMin: '2026-05-01T00:00:00-03:00',
+      timeMax: '2026-11-01T23:59:59-03:00',
+    });
+  });
+});
 
 // ────────────────────────────────────────────────────────────────────────────
 // parseDateTimeToSP

@@ -5,6 +5,7 @@ import useLocalStorage from '../hooks/useLocalStorage';
 import { buildSeriesId } from '../utils/googleRecurrence';
 import { listImportCandidates, type ImportCandidate } from '../services/googleCalendarImport';
 import { groupImportCandidates, type ImportSeriesGroup } from '../utils/googleCalendarGrouping';
+import { getGoogleImportRange, GOOGLE_IMPORT_MONTHS_AHEAD } from '../utils/googleCalendarImportRange';
 
 type DeleteScope = 'single' | 'all';
 
@@ -641,32 +642,11 @@ export const Agenda: React.FC<AgendaProps> = ({
             || patients.find(p => normalizeStr(p.nome || '').includes(key) || key.includes(normalizeStr(p.nome || '')));
     };
 
-    const getGoogleImportRange = () => {
-        const base = new Date(`${selectedDate}T00:00:00`);
-        const start = new Date(base);
-        const end = new Date(base);
-
-        if (viewMode === 'week') {
-            const week = getWeekStart(base);
-            start.setTime(week.getTime());
-            end.setTime(week.getTime());
-            end.setDate(end.getDate() + 6);
-        } else if (viewMode === 'month') {
-            start.setDate(1);
-            end.setMonth(start.getMonth() + 1, 0);
-        }
-
-        return {
-            timeMin: `${formatDateISO(start)}T00:00:00-03:00`,
-            timeMax: `${formatDateISO(end)}T23:59:59-03:00`,
-        };
-    };
-
     const loadGoogleImportCandidates = async () => {
         setGoogleImportLoading(true);
         setGoogleImportError('');
         try {
-            const { timeMin, timeMax } = getGoogleImportRange();
+            const { timeMin, timeMax } = getGoogleImportRange(selectedDate, viewMode);
             const result = await listImportCandidates(timeMin, timeMax);
             setGoogleImportCandidates(result.candidates || []);
         } catch (error: any) {
@@ -1015,7 +995,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                                     {googleImportLoading ? 'Buscando...' : 'Atualizar busca'}
                                 </button>
                                 <span className="text-xs text-slate-400">
-                                    Período: {viewMode === 'day' ? 'dia atual' : viewMode === 'week' ? 'semana atual' : 'mês atual'} da agenda.
+                                    Busca a partir da {viewMode === 'day' ? 'data selecionada' : viewMode === 'week' ? 'semana selecionada' : 'primeiro dia do mês selecionado'} por {GOOGLE_IMPORT_MONTHS_AHEAD} meses.
                                 </span>
                             </div>
 
