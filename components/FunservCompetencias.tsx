@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import useLocalStorage from '../hooks/useLocalStorage';
 
-interface FaturamentoItem {
+export interface FaturamentoItem {
   autorizacao: string;
   data: string;
   matricula: string;
@@ -170,6 +170,14 @@ const parseFaturamentoRows = (rows: unknown[][]): FaturamentoItem[] => {
   return out;
 };
 
+export const summarizeFaturamentoPorPaciente = (itens: FaturamentoItem[]): Array<{ nome: string; sessoes: number }> => {
+  const map = new Map<string, number>();
+  itens.forEach((it) => map.set(it.nome, (map.get(it.nome) || 0) + 1));
+  return Array.from(map.entries())
+    .map(([nome, sessoes]) => ({ nome, sessoes }))
+    .sort((a, b) => a.nome.localeCompare(b.nome));
+};
+
 const pickCol = (header: unknown[] | null, candidates: string[], fallback: number): number => {
   if (!header) return fallback;
   const lowered = header.map((v) => normalize(v).toLowerCase());
@@ -321,11 +329,7 @@ export const FunservCompetencias: React.FC = () => {
       const competencia = compDetected || selectedCompetencia || monthNow();
 
       const itens = parseFaturamentoRows(rows);
-      const map = new Map<string, number>();
-      itens.forEach((it) => map.set(it.nome, (map.get(it.nome) || 0) + 1));
-      const porPaciente = Array.from(map.entries())
-        .map(([nome, sessoes]) => ({ nome, sessoes }))
-        .sort((a, b) => a.nome.localeCompare(b.nome));
+      const porPaciente = summarizeFaturamentoPorPaciente(itens);
 
       saveCompetencia(competencia, (prev) => ({
         competencia,
@@ -571,6 +575,31 @@ export const FunservCompetencias: React.FC = () => {
           </tbody>
         </table>
       </div>
+
+      {selectedData?.faturamento && selectedData.faturamento.porPaciente.length > 0 && (
+        <div className="bg-slate-900/30 border border-slate-700 rounded-xl p-3 space-y-2">
+          <h4 className="text-white font-semibold">Resumo faturado por paciente ({selectedCompetencia})</h4>
+          <div className="overflow-x-auto rounded-lg border border-slate-700">
+            <table className="w-full text-xs">
+              <thead className="bg-slate-900 text-slate-300">
+                <tr>
+                  <th className="text-left p-2">Paciente</th>
+                  <th className="text-right p-2">Sessões faturadas</th>
+                </tr>
+              </thead>
+              <tbody>
+                {selectedData.faturamento.porPaciente.map((item) => (
+                  <tr key={item.nome} className="border-t border-slate-800 text-slate-200">
+                    <td className="p-2">{item.nome}</td>
+                    <td className="p-2 text-right font-semibold text-sky-300">{item.sessoes}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[11px] text-slate-400">Cada linha encontrada na guia de faturamento conta como 1 sessão faturada.</p>
+        </div>
+      )}
 
       {selectedData?.recebimento && resumoRecebimentoPorPaciente.length > 0 && (
         <div className="bg-slate-900/30 border border-slate-700 rounded-xl p-3 space-y-2">
