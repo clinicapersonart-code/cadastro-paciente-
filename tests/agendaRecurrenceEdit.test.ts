@@ -2,8 +2,10 @@ import { describe, expect, test } from 'vitest';
 import {
   formatAppointmentWeekday,
   formatRecurringWeekdayPhrase,
+  getEffectiveAppointmentRecurrence,
   hasScheduleDayOrTimeChanged,
   isRecurringAppointment,
+  preserveRecurrenceMetadata,
 } from '../components/Agenda';
 import type { Appointment } from '../types';
 
@@ -42,5 +44,47 @@ describe('agenda recurring edit helpers', () => {
   test('recognizes series appointments for enabling this/future choice', () => {
     expect(isRecurringAppointment(makeAppointment())).toBe(true);
     expect(isRecurringAppointment(makeAppointment({ seriesId: undefined, recurrence: 'none' }))).toBe(false);
+  });
+
+  test('uses saved recurrence when present', () => {
+    expect(getEffectiveAppointmentRecurrence(makeAppointment({ recurrence: 'weekly' }), [])).toBe('weekly');
+  });
+
+  test('infers weekly recurrence from series dates when saved recurrence is missing', () => {
+    const appts = [
+      makeAppointment({ id: 'a', recurrence: 'none', date: '2026-05-18', seriesId: 'legacy-series' }),
+      makeAppointment({ id: 'b', recurrence: 'none', date: '2026-05-25', seriesId: 'legacy-series' }),
+      makeAppointment({ id: 'c', recurrence: 'none', date: '2026-06-01', seriesId: 'legacy-series' }),
+    ];
+
+    expect(getEffectiveAppointmentRecurrence(appts[0], appts)).toBe('weekly');
+  });
+
+  test('preserves recurrence metadata when editing a recurring appointment', () => {
+    const original = makeAppointment({
+      recurrenceEndDate: '2026-08-31',
+      recurrenceIndex: 2,
+      isSeriesMaster: false,
+      googleEventId: 'google-master',
+    });
+    const edited = makeAppointment({
+      time: '09:00',
+      seriesId: undefined,
+      recurrence: 'none',
+      recurrenceEndDate: undefined,
+      recurrenceIndex: undefined,
+      isSeriesMaster: undefined,
+      googleEventId: undefined,
+    });
+
+    expect(preserveRecurrenceMetadata(edited, original)).toMatchObject({
+      time: '09:00',
+      seriesId: 'series-1',
+      recurrence: 'weekly',
+      recurrenceEndDate: '2026-08-31',
+      recurrenceIndex: 2,
+      isSeriesMaster: false,
+      googleEventId: 'google-master',
+    });
   });
 });

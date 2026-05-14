@@ -236,6 +236,53 @@ export const isRecurringAppointment = (appt?: Appointment | null): boolean =>
 export const hasScheduleDayOrTimeChanged = (appt: Appointment | undefined | null, nextDate: string, nextTime: string): boolean =>
     !!appt && (appt.date !== nextDate || appt.time !== nextTime);
 
+const daysBetweenISO = (a: string, b: string): number | null => {
+    const da = parseISODateLocal(a);
+    const db = parseISODateLocal(b);
+    if (!da || !db) return null;
+    return Math.round((db.getTime() - da.getTime()) / (1000 * 60 * 60 * 24));
+};
+
+export const getEffectiveAppointmentRecurrence = (
+    appt: Appointment | undefined | null,
+    allAppointments: Appointment[] = []
+): 'none' | 'weekly' | 'biweekly' | 'monthly' => {
+    if (!appt) return 'none';
+    if (appt.recurrence && appt.recurrence !== 'none') return appt.recurrence;
+    if (!appt.seriesId) return 'none';
+
+    const seriesDates = allAppointments
+        .filter(a => a.seriesId === appt.seriesId)
+        .map(a => a.date)
+        .filter(Boolean)
+        .sort();
+
+    if (seriesDates.length < 2) return 'none';
+    const gaps = seriesDates.slice(1).map((date, index) => daysBetweenISO(seriesDates[index], date));
+    const validGaps = gaps.filter((gap): gap is number => typeof gap === 'number' && gap > 0);
+    if (!validGaps.length) return 'none';
+
+    if (validGaps.every(gap => gap === 7)) return 'weekly';
+    if (validGaps.every(gap => gap === 14)) return 'biweekly';
+    if (validGaps.every(gap => gap >= 28 && gap <= 31)) return 'monthly';
+    return 'none';
+};
+
+export const preserveRecurrenceMetadata = (updated: Appointment, original?: Appointment | null): Appointment => {
+    if (!original) return updated;
+    return {
+        ...updated,
+        seriesId: original.seriesId ?? updated.seriesId,
+        recurrence: original.recurrence ?? updated.recurrence,
+        recurrenceEndDate: original.recurrenceEndDate ?? updated.recurrenceEndDate,
+        recurrenceIndex: original.recurrenceIndex ?? updated.recurrenceIndex,
+        isSeriesMaster: original.isSeriesMaster ?? updated.isSeriesMaster,
+        googleEventId: original.googleEventId ?? updated.googleEventId,
+        googleCalendarHtmlLink: original.googleCalendarHtmlLink ?? updated.googleCalendarHtmlLink,
+        importSource: original.importSource ?? updated.importSource,
+    };
+};
+
 const recurrenceLabel = (value?: Appointment['recurrence'] | 'none') => {
     if (value === 'weekly') return 'semanal';
     if (value === 'biweekly') return 'quinzenal';
@@ -363,6 +410,7 @@ export const Agenda: React.FC<AgendaProps> = ({
     const formRecurringWeekdayPhrase = formatRecurringWeekdayPhrase(formDate);
     const originWeekdayLabel = formatAppointmentWeekday(formOriginAppointment?.date || '');
     const originRecurringWeekdayPhrase = formatRecurringWeekdayPhrase(formOriginAppointment?.date || '');
+    const effectiveFormRecurrence = getEffectiveAppointmentRecurrence(formOriginAppointment, appointments);
     const editingRecurringAppointment = isRecurringAppointment(formOriginAppointment);
     const scheduleDayOrTimeChanged = hasScheduleDayOrTimeChanged(formOriginAppointment, formDate, time);
     const canChooseSeriesScheduleScope = editingRecurringAppointment && scheduleDayOrTimeChanged;
@@ -471,17 +519,18 @@ export const Agenda: React.FC<AgendaProps> = ({
 
         if (formId) {
             const originAppt = formOriginAppointment;
-            const updatedSingle = {
-                ...createAppointmentObj(formDate, formId),
-                googleEventId: originAppt?.googleEventId,
-                googleCalendarHtmlLink: originAppt?.googleCalendarHtmlLink
+            const baseUpdatedSingle = preserveRecurrenceMetadata(
+                createAppointmentObj(formDate, formId),
+                originAppt
+            );
+            const updatedSingle: Appointment = {
+                ...baseUpdatedSingle,
+                recurrence: effectiveFormRecurrence !== 'none' ? effectiveFormRecurrence : baseUpdatedSingle.recurrence
             };
 
             // "Este e próximos" só vale para série quando data/dia ou horário foram alterados.
             if (editApplyScope === 'future' && canChooseSeriesScheduleScope) {
-                const recurrenceForFuture = (originAppt?.recurrence && originAppt.recurrence !== 'none')
-                    ? originAppt.recurrence
-                    : editRecurrence;
+                const recurrenceForFuture = effectiveFormRecurrence;
 
                 if (recurrenceForFuture === 'none') {
                     alert('Não foi possível identificar a repetição da série. Salve apenas esta consulta ou recrie a série.');
@@ -625,7 +674,7 @@ export const Agenda: React.FC<AgendaProps> = ({
         setObs(appt.obs || '');
         setRecurrence('none');
         setEditApplyScope('single');
-        setEditRecurrence(appt.recurrence && appt.recurrence !== 'none' ? appt.recurrence : 'none');
+        setEditRecurrence(getEffectiveAppointmentRecurrence(appt, appointments));
         setShowForm(true);
     };
 
@@ -1495,7 +1544,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                                     <label className="text-xs text-slate-400 font-medium">Repetição da consulta</label>
                                     <p className="text-sm text-slate-200">
                                         {editingRecurringAppointment
-                                            ? `${recurrenceLabel(formOriginAppointment?.recurrence)} — ${originRecurringWeekdayPhrase || formRecurringWeekdayPhrase}`
+                                            ? `${recurrenceLabel(effectiveFormRecurrence)} — ${originRecurringWeekdayPhrase || formRecurringWeekdayPhrase}`
                                             : 'Consulta única, sem repetição.'}
                                     </p>
                                     <p className="text-[11px] text-slate-500">
