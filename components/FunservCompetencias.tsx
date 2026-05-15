@@ -24,6 +24,11 @@ interface CompetenciaData {
     importedAt: string;
     periodoDetectado?: string;
     dataFechamentoEnvio?: string; // YYYY-MM-DD
+    emissao?: string;
+    relatorio?: string;
+    titulo?: string;
+    prestador?: string;
+    qtdeContas?: number;
     totalContas: number;
     porPaciente: Array<{ nome: string; sessoes: number }>;
     itens: FaturamentoItem[];
@@ -48,6 +53,15 @@ interface ResumoRecebimentoPaciente {
   totalFinal: number;
 }
 
+interface FaturamentoMetadata {
+  titulo?: string;
+  prestador?: string;
+  emissao?: string;
+  dataFechamentoEnvio?: string;
+  relatorio?: string;
+  qtdeContas?: number;
+}
+
 const normalize = (v: unknown) => String(v ?? '').trim();
 
 const parseBRNumber = (raw: unknown): number | null => {
@@ -63,6 +77,62 @@ const toCompetenciaFromDateBR = (dateBR: string): string => {
   const m = dateBR.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (!m) return '';
   return `${m[3]}-${m[2]}`;
+};
+
+const toDateISOFromBR = (dateBR: string): string => {
+  const m = dateBR.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (!m) return '';
+  return `${m[3]}-${m[2]}-${m[1]}`;
+};
+
+const valueAfterLabel = (row: unknown[], label: RegExp): string => {
+  const cells = row.map(normalize);
+  const idx = cells.findIndex((cell) => label.test(cell));
+  if (idx < 0) return '';
+
+  const inline = cells[idx].replace(label, '').replace(/^[:\s-]+/, '').trim();
+  if (inline) return inline;
+
+  return cells.slice(idx + 1).find(Boolean) || '';
+};
+
+export const detectFaturamentoMetadata = (rows: unknown[][]): FaturamentoMetadata => {
+  const metadata: FaturamentoMetadata = {};
+
+  for (const row of rows.slice(0, 80)) {
+    const cells = row.map(normalize).filter(Boolean);
+    const joined = cells.join(' | ');
+
+    if (!metadata.titulo && cells.some((cell) => /produ[cç][aã]o\s*-\s*faturado/i.test(cell))) {
+      metadata.titulo = cells.find((cell) => /produ[cç][aã]o\s*-\s*faturado/i.test(cell));
+    }
+
+    if (!metadata.prestador) {
+      const prestador = valueAfterLabel(row, /^prestador:?/i);
+      if (prestador) metadata.prestador = prestador;
+    }
+
+    if (!metadata.emissao) {
+      const emissao = valueAfterLabel(row, /^emiss[aã]o:?/i) || joined.match(/emiss[aã]o:?[\s|]*(\d{2}\/\d{2}\/\d{4}(?:\s+\d{2}:?\d{2}:?\d{2})?)/i)?.[1] || '';
+      if (emissao) {
+        metadata.emissao = emissao;
+        metadata.dataFechamentoEnvio = toDateISOFromBR(emissao);
+      }
+    }
+
+    if (!metadata.relatorio) {
+      const relatorio = valueAfterLabel(row, /^relat[oó]rio:?/i);
+      if (relatorio) metadata.relatorio = relatorio;
+    }
+
+    if (!metadata.qtdeContas) {
+      const qtdeRaw = valueAfterLabel(row, /^qtde\s+contas:?/i) || joined.match(/qtde\s+contas:?[\s|]*(\d+)/i)?.[1] || '';
+      const qtde = parseInt(qtdeRaw.replace(/\D/g, ''), 10);
+      if (Number.isFinite(qtde)) metadata.qtdeContas = qtde;
+    }
+  }
+
+  return metadata;
 };
 
 const monthNow = () => {
@@ -338,6 +408,7 @@ export const FunservCompetencias: React.FC = () => {
       const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) as unknown[][];
 
       const periodo = detectPeriodo(rows);
+      const metadata = detectFaturamentoMetadata(rows);
       const compDetected = periodo ? toCompetenciaFromDateBR(periodo) : '';
       const competencia = compDetected || selectedCompetencia || monthNow();
 
@@ -350,7 +421,12 @@ export const FunservCompetencias: React.FC = () => {
           fileName: normalizedFileName,
           importedAt: new Date().toISOString(),
           periodoDetectado: periodo || undefined,
-          dataFechamentoEnvio: prev?.faturamento?.dataFechamentoEnvio || todayDateISO(),
+          dataFechamentoEnvio: metadata.dataFechamentoEnvio || prev?.faturamento?.dataFechamentoEnvio || todayDateISO(),
+          emissao: metadata.emissao,
+          relatorio: metadata.relatorio,
+          titulo: metadata.titulo,
+          prestador: metadata.prestador,
+          qtdeContas: metadata.qtdeContas,
           totalContas: itens.length,
           porPaciente,
           itens
@@ -537,6 +613,21 @@ export const FunservCompetencias: React.FC = () => {
                 </button>
               )}
             </div>
+            {!!selectedData?.faturamento && (selectedData.faturamento.titulo || selectedData.faturamento.relatorio || selectedData.faturamento.emissao || selectedData.faturamento.prestador || selectedData.faturamento.qtdeContas) && (
+              <div className="mt-2 rounded-lg border border-slate-700 bg-slate-950/40 p-2 space-y-1 text-[11px] text-slate-300">
+                <div className="font-semibold text-slate-200">Dados detectados do fechamento</div>
+                <div>Título: {selectedData.faturamento.titulo || '-'}</div>
+                <div>Prestador: {selectedData.faturamento.prestador || '-'}</div>
+                <div>Emissão: {selectedData.faturamento.emissao || '-'}</div>
+                <div>Relatório: {selectedData.faturamento.relatorio || '-'}</div>
+                <div>Qtde Contas no arquivo: {selectedData.faturamento.qtdeContas ?? '-'}</div>
+                {selectedData.faturamento.qtdeContas !== undefined && selectedData.faturamento.qtdeContas !== selectedData.faturamento.totalContas && (
+                  <div className="text-amber-300 font-semibold">
+                    Atenção: o arquivo informa {selectedData.faturamento.qtdeContas} contas, mas o sistema importou {selectedData.faturamento.totalContas} sessões.
+                  </div>
+                )}
+              </div>
+            )}
             <div className="mt-1">Sessões faturadas: {selectedData?.faturamento?.totalContas ?? 0}</div>
             <div className="mt-2 max-w-xs">
               <label className="block text-[11px] text-slate-400 mb-1">Fechado/enviado em</label>

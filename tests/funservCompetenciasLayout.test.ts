@@ -36,6 +36,11 @@ describe('FunservCompetencias layout', () => {
             fileName: 'funserv-maio.xlsx',
             importedAt: '2026-05-15T12:00:00.000Z',
             dataFechamentoEnvio: '2026-05-15',
+            titulo: 'Produção - Faturado',
+            prestador: 'CLIN. DE PSICOLOGIA PERSONART LTDA',
+            emissao: '15/05/2026 09:00:00',
+            relatorio: 'frm0700400',
+            qtdeContas: 1,
             totalContas: 1,
             porPaciente: [{ nome: 'Paciente Teste', sessoes: 1 }],
             itens: [{ autorizacao: '123', data: '10/05/2026', matricula: '456', nome: 'Paciente Teste', lote: '1' }],
@@ -47,6 +52,11 @@ describe('FunservCompetencias layout', () => {
     const html = renderToStaticMarkup(React.createElement(FunservCompetencias));
 
     expect(html).toMatch(/Fechado\/enviado em/);
+    expect(html).toMatch(/Dados detectados do fechamento/);
+    expect(html).toMatch(/Produção - Faturado/);
+    expect(html).toMatch(/CLIN\. DE PSICOLOGIA PERSONART LTDA/);
+    expect(html).toMatch(/frm0700400/);
+    expect(html).toMatch(/Qtde Contas no arquivo: 1/);
     expect(html).toContain('type="date"');
     expect(html).toContain('value="2026-05-15"');
     expect(html).toMatch(/15\/05\/2026/);
