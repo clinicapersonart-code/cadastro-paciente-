@@ -430,7 +430,7 @@ export const FunservCompetencias: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-end gap-3 md:justify-between">
         <div>
           <h3 className="text-lg font-bold text-white">Funserv por Competência</h3>
-          <p className="text-xs text-slate-400">Guias separadas: faturamento (sessões) e recebimento (consolidação).</p>
+          <p className="text-xs text-slate-400">Fluxo separado por etapas: primeiro guias enviadas, depois recebimentos e glosas.</p>
         </div>
         <div>
           <label className="block text-[11px] text-slate-400 mb-1">Competência (atendimento)</label>
@@ -459,9 +459,12 @@ export const FunservCompetencias: React.FC = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <div className="bg-slate-900/40 border border-slate-700 rounded-xl p-3 space-y-2">
-          <h4 className="text-white font-semibold">1) Guia de Faturamento (sessões)</h4>
+      <div className="space-y-3">
+        <div className="bg-sky-950/20 border border-sky-800/70 rounded-xl p-3 space-y-2">
+          <div>
+            <h4 className="text-white font-semibold">1) Faturamento — guias enviadas</h4>
+            <p className="text-xs text-slate-400">Mostra pacientes, datas de atendimento e sessões enviadas, sem valores.</p>
+          </div>
           <div className="flex flex-wrap gap-2">
             <label className="inline-flex items-center gap-2 bg-sky-700 hover:bg-sky-600 text-white px-3 py-2 rounded-lg text-sm font-semibold cursor-pointer">
               <span>Importar faturamento (.xls/.xlsx)</span>
@@ -501,8 +504,11 @@ export const FunservCompetencias: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-slate-900/40 border border-slate-700 rounded-xl p-3 space-y-2">
-          <h4 className="text-white font-semibold">2) Guia de Recebimento (consolidação)</h4>
+        <div className="bg-emerald-950/20 border border-emerald-800/70 rounded-xl p-3 space-y-2">
+          <div>
+            <h4 className="text-white font-semibold">2) Recebimento — conferência e glosas</h4>
+            <p className="text-xs text-slate-400">Mostra valor processado, glosa, líquido e repasse confirmado.</p>
+          </div>
           <div className="flex flex-wrap gap-2">
             <label className="inline-flex items-center gap-2 bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-2 rounded-lg text-sm font-semibold cursor-pointer">
               <span>Importar recebimento (.xls/.xlsx)</span>
