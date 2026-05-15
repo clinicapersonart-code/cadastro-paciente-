@@ -23,6 +23,7 @@ interface CompetenciaData {
     fileName: string;
     importedAt: string;
     periodoDetectado?: string;
+    dataFechamentoEnvio?: string; // YYYY-MM-DD
     totalContas: number;
     porPaciente: Array<{ nome: string; sessoes: number }>;
     itens: FaturamentoItem[];
@@ -86,6 +87,18 @@ const formatCompetenciaLabel = (comp: string): string => {
 };
 
 const money = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const todayDateISO = (): string => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+const formatInputDateBR = (raw?: string): string => {
+  if (!raw) return '-';
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return raw;
+  return `${m[3]}/${m[2]}/${m[1]}`;
+};
 
 const formatDateBR = (day: number, month: number, year: number): string => {
   return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
@@ -337,6 +350,7 @@ export const FunservCompetencias: React.FC = () => {
           fileName: normalizedFileName,
           importedAt: new Date().toISOString(),
           periodoDetectado: periodo || undefined,
+          dataFechamentoEnvio: prev?.faturamento?.dataFechamentoEnvio || todayDateISO(),
           totalContas: itens.length,
           porPaciente,
           itens
@@ -389,6 +403,31 @@ export const FunservCompetencias: React.FC = () => {
     } catch (e) {
       setMessage(e instanceof Error ? e.message : 'Falha ao importar recebimento.');
     }
+  };
+
+  const updateDataFechamentoEnvio = (dataFechamentoEnvio: string) => {
+    if (!selectedData?.faturamento) return;
+
+    saveCompetencia(selectedCompetencia, (prev) => {
+      if (!prev?.faturamento) {
+        return { competencia: selectedCompetencia, recebimento: prev?.recebimento };
+      }
+
+      return {
+        competencia: selectedCompetencia,
+        faturamento: {
+          ...prev.faturamento,
+          dataFechamentoEnvio: dataFechamentoEnvio || undefined
+        },
+        recebimento: prev.recebimento
+      };
+    });
+
+    setMessage(
+      dataFechamentoEnvio
+        ? `Data de fechamento/envio atualizada para ${formatInputDateBR(dataFechamentoEnvio)}.`
+        : `Data de fechamento/envio removida de ${selectedCompetencia}.`
+    );
   };
 
   const removeFaturamento = () => {
@@ -499,6 +538,17 @@ export const FunservCompetencias: React.FC = () => {
               )}
             </div>
             <div className="mt-1">Sessões faturadas: {selectedData?.faturamento?.totalContas ?? 0}</div>
+            <div className="mt-2 max-w-xs">
+              <label className="block text-[11px] text-slate-400 mb-1">Fechado/enviado em</label>
+              <input
+                type="date"
+                value={selectedData?.faturamento?.dataFechamentoEnvio || ''}
+                onChange={(e) => updateDataFechamentoEnvio(e.target.value)}
+                disabled={!selectedData?.faturamento}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              />
+              <p className="text-[11px] text-slate-500 mt-1">Data completa em que a guia foi fechada/enviada para a Funserv.</p>
+            </div>
             <div>Previsão de pagamento: {formatCompetenciaLabel(expectedRecebimentoMonth)} ({expectedRecebimentoMonth})</div>
             <div className="text-[11px] text-slate-400 mt-1">Ao trocar o mês, esse bloco mostra o arquivo e os dados que foram importados naquela competência.</div>
           </div>
@@ -555,6 +605,7 @@ export const FunservCompetencias: React.FC = () => {
           <thead className="bg-slate-900 text-slate-300">
             <tr>
               <th className="text-left p-2">Competência</th>
+              <th className="text-left p-2">Fechado/enviado em</th>
               <th className="text-left p-2">Status</th>
               <th className="text-right p-2">Sessões faturadas</th>
               <th className="text-left p-2">Mês previsto de recebimento</th>
@@ -569,6 +620,7 @@ export const FunservCompetencias: React.FC = () => {
               return (
                 <tr key={c.competencia} className="border-t border-slate-800 text-slate-100">
                   <td className="p-2">{c.competencia}</td>
+                  <td className="p-2">{formatInputDateBR(c.faturamento?.dataFechamentoEnvio)}</td>
                   <td className="p-2">{statusOf(c)}</td>
                   <td className="p-2 text-right">{c.faturamento?.totalContas ?? 0}</td>
                   <td className="p-2">{previsao}</td>
