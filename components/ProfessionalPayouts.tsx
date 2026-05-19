@@ -79,23 +79,22 @@ export interface ManualBillingShareStore {
   };
 }
 
-export interface ProfessionalBillingShareRow {
+export interface ProfessionalPaymentGuideRow {
   professional: string;
   patientName: string;
   convenio: string;
   competencia: string;
-  fechamentoEnvio: string;
-  previsaoPagamento: string;
-  sessoesEnviadas: number;
-  valorFaturado?: number;
-  recebidoProcessado?: number;
-  glosa?: number;
-  liquidoRecebido?: number;
-  status: 'Aguardando recebimento' | 'Recebido/confirmado';
+  mesPagamento: string;
+  sessoes: number;
+  valorRecebido: number;
+  descontoRate: number;
+  valorDesconto: number;
+  valorRepasse: number;
 }
 
-interface BuildProfessionalBillingShareRowsInput {
+interface BuildProfessionalPaymentGuideRowsInput {
   patients: Patient[];
+  mesPagamento: string;
   funservCompetencias?: FunservBillingShareStore;
   manualLancamentos?: ManualBillingShareStore;
 }
@@ -121,71 +120,110 @@ const findPatientByImportedName = (patients: Patient[], importedName: string): P
 
 const firstProfessional = (patient?: Patient): string => patient?.profissionais?.[0] || 'Sem profissional vinculado';
 
+const roundMoney = (value: number): number => Math.round(value * 100) / 100;
+
+export const getProfessionalDiscountRate = (professional: string, convenio: string): number => {
+  const professionalKey = normalizePatientName(professional);
+  const convenioKey = normalizePatientName(convenio);
+
+  if (professionalKey.includes('simone') || professionalKey.includes('geovana')) return 0.18;
+
+  const lowerDiscountProfessionals = ['bruno', 'stephanie', 'janaina', 'soraia'];
+  if (lowerDiscountProfessionals.some((name) => professionalKey.includes(name))) {
+    return convenioKey.includes('funserv') ? 0.11 : 0.06;
+  }
+
+  return 0.25;
+};
+
+const buildGuideRow = ({
+  professional,
+  patientName,
+  convenio,
+  competencia,
+  mesPagamento,
+  sessoes,
+  valorRecebido,
+}: Omit<ProfessionalPaymentGuideRow, 'descontoRate' | 'valorDesconto' | 'valorRepasse'>): ProfessionalPaymentGuideRow => {
+  const descontoRate = getProfessionalDiscountRate(professional, convenio);
+  const valorDesconto = roundMoney(valorRecebido * descontoRate);
+  const valorRepasse = roundMoney(valorRecebido - valorDesconto);
+
+  return {
+    professional,
+    patientName,
+    convenio,
+    competencia,
+    mesPagamento,
+    sessoes,
+    valorRecebido: roundMoney(valorRecebido),
+    descontoRate,
+    valorDesconto,
+    valorRepasse,
+  };
+};
+
 const summarizeRecebimentoByPatient = (itens: Array<{ nome: string; valorProcessado: number; valorDiferenca: number }> = []) => {
-  const map = new Map<string, { processado: number; glosa: number; liquido: number }>();
+  const map = new Map<string, { nome: string; sessoes: number; liquido: number }>();
   itens.forEach((item) => {
     const key = normalizePatientName(item.nome);
-    const curr = map.get(key) || { processado: 0, glosa: 0, liquido: 0 };
+    const curr = map.get(key) || { nome: item.nome, sessoes: 0, liquido: 0 };
     const glosa = item.valorDiferenca < 0 ? item.valorDiferenca : 0;
-    curr.processado += item.valorProcessado;
-    curr.glosa += glosa;
+    curr.sessoes += 1;
     curr.liquido += item.valorProcessado + glosa;
     map.set(key, curr);
   });
-  return map;
+  return Array.from(map.values());
 };
 
-export const buildProfessionalBillingShareRows = ({
+export const buildProfessionalPaymentGuideRows = ({
   patients,
+  mesPagamento,
   funservCompetencias = {},
   manualLancamentos = {},
-}: BuildProfessionalBillingShareRowsInput): ProfessionalBillingShareRow[] => {
-  const rows: ProfessionalBillingShareRow[] = [];
+}: BuildProfessionalPaymentGuideRowsInput): ProfessionalPaymentGuideRow[] => {
+  const rows: ProfessionalPaymentGuideRow[] = [];
 
   Object.values(funservCompetencias).forEach((entry) => {
-    if (!entry?.faturamento) return;
-    const recebimentoPorPaciente = summarizeRecebimentoByPatient(entry.recebimento?.itens);
+    if (!entry?.recebimento) return;
+    const expectedPaymentMonth = addMonths(entry.competencia, 2);
+    if (expectedPaymentMonth !== mesPagamento) return;
 
-    entry.faturamento.porPaciente.forEach((item) => {
+    summarizeRecebimentoByPatient(entry.recebimento.itens).forEach((item) => {
       const patient = findPatientByImportedName(patients, item.nome);
-      const recebimento = recebimentoPorPaciente.get(normalizePatientName(item.nome));
-
-      rows.push({
-        professional: firstProfessional(patient),
+      const professional = firstProfessional(patient);
+      rows.push(buildGuideRow({
+        professional,
         patientName: patient?.nome || item.nome,
-        convenio: patient?.convenio || 'Funserv',
+        convenio: 'Funserv',
         competencia: entry.competencia,
-        fechamentoEnvio: entry.faturamento?.dataFechamentoEnvio || 'manual',
-        previsaoPagamento: addMonths(entry.competencia, 2),
-        sessoesEnviadas: item.sessoes,
-        recebidoProcessado: recebimento?.processado,
-        glosa: recebimento?.glosa,
-        liquidoRecebido: recebimento?.liquido,
-        status: recebimento ? 'Recebido/confirmado' : 'Aguardando recebimento',
-      });
+        mesPagamento,
+        sessoes: item.sessoes,
+        valorRecebido: item.liquido,
+      }));
     });
   });
 
   Object.entries(manualLancamentos).forEach(([convenioName, competencias]) => {
     Object.values(competencias || {}).forEach((entry) => {
+      if (entry.mesRecebimento !== mesPagamento) return;
+
       entry.itens.forEach((item) => {
         const sessoes = item.sessoes || 0;
-        if (!item.paciente || sessoes <= 0) return;
+        const valorSessao = item.valorSessao || 0;
+        if (!item.paciente || sessoes <= 0 || valorSessao <= 0) return;
 
         const patient = findPatientByImportedName(patients, item.paciente);
-        const valorFaturado = typeof item.valorSessao === 'number' ? item.valorSessao * sessoes : undefined;
-
-        rows.push({
-          professional: firstProfessional(patient),
+        const professional = firstProfessional(patient);
+        rows.push(buildGuideRow({
+          professional,
           patientName: patient?.nome || item.paciente,
           convenio: convenioName,
           competencia: entry.competencia,
-          fechamentoEnvio: 'manual',
-          previsaoPagamento: entry.mesRecebimento,
-          sessoesEnviadas: sessoes,
-          valorFaturado,
-          status: 'Aguardando recebimento',
-        });
+          mesPagamento: entry.mesRecebimento,
+          sessoes,
+          valorRecebido: valorSessao * sessoes,
+        }));
       });
     });
   });
@@ -198,52 +236,53 @@ export const buildProfessionalBillingShareRows = ({
   );
 };
 
-export const buildProfessionalBillingShareMessage = (
+export const buildProfessionalPaymentGuideMessage = (
   professional: string,
-  rows: ProfessionalBillingShareRow[],
+  rows: ProfessionalPaymentGuideRow[],
+  mesPagamento: string,
   generatedAt: string = new Date().toISOString()
 ): string => {
   const filtered = rows.filter((row) => normalize(row.professional) === normalize(professional));
   const generatedDate = new Date(generatedAt).toLocaleDateString('pt-BR');
 
-  if (!professional) return 'Selecione um profissional para gerar a mensagem.';
+  if (!professional) return 'Selecione um profissional para gerar a guia de pagamento.';
   if (filtered.length === 0) {
-    return `Fechamento de convênios — ${professional}\nAtualizado em ${generatedDate}\n\nNenhum fechamento encontrado para este profissional.`;
+    return `Guia de pagamento — ${professional}\nMês de pagamento: ${formatCompetenciaLabel(mesPagamento)}\nAtualizado em ${generatedDate}\n\nNenhum pagamento encontrado para este profissional neste mês.`;
   }
 
-  const grouped = new Map<string, ProfessionalBillingShareRow[]>();
+  const grouped = new Map<string, ProfessionalPaymentGuideRow[]>();
   filtered.forEach((row) => {
-    const key = `${row.convenio}|${row.competencia}|${row.fechamentoEnvio}|${row.previsaoPagamento}|${row.status}`;
+    const key = `${row.convenio}|${row.competencia}`;
     const curr = grouped.get(key) || [];
     curr.push(row);
     grouped.set(key, curr);
   });
 
   const lines: string[] = [
-    `Fechamento de convênios — ${professional}`,
+    `Guia de pagamento — ${professional}`,
+    `Mês de pagamento: ${formatCompetenciaLabel(mesPagamento)}`,
     `Atualizado em ${generatedDate}`,
     '',
   ];
 
   Array.from(grouped.entries()).forEach(([key, group], index) => {
-    const [convenio, competencia, fechamentoEnvio, previsaoPagamento, status] = key.split('|');
+    const [convenio, competencia] = key.split('|');
     if (index > 0) lines.push('');
     lines.push(`${convenio} • Competência ${formatCompetenciaLabel(competencia)}`);
-    lines.push(`Fechado/enviado em: ${formatInputDateBR(fechamentoEnvio)}`);
-    lines.push(`Previsão de pagamento: ${formatCompetenciaLabel(previsaoPagamento)}`);
-    lines.push(`Status: ${status}`);
 
     group.forEach((row) => {
-      const valuePart = typeof row.valorFaturado === 'number' ? ` • faturado R$ ${formatCurrencyBR(row.valorFaturado)}` : '';
-      const receivedPart = typeof row.liquidoRecebido === 'number' ? ` • recebido líquido R$ ${formatCurrencyBR(row.liquidoRecebido)}` : '';
-      lines.push(`- ${row.patientName}: ${row.sessoesEnviadas} sessão(ões) enviada(s)${valuePart}${receivedPart}`);
+      const descontoPercent = Math.round(row.descontoRate * 100);
+      lines.push(`- ${row.patientName}: ${row.sessoes} sessão(ões) • recebido R$ ${formatCurrencyBR(row.valorRecebido)} • desconto ${descontoPercent}% • repasse R$ ${formatCurrencyBR(row.valorRepasse)}`);
     });
   });
 
-  const totalSessions = filtered.reduce((acc, row) => acc + row.sessoesEnviadas, 0);
-  const totalBilled = filtered.reduce((acc, row) => acc + (row.valorFaturado || 0), 0);
+  const totalRecebido = filtered.reduce((acc, row) => acc + row.valorRecebido, 0);
+  const totalDescontos = filtered.reduce((acc, row) => acc + row.valorDesconto, 0);
+  const totalRepasse = filtered.reduce((acc, row) => acc + row.valorRepasse, 0);
   lines.push('');
-  lines.push(`Total enviado: ${totalSessions} sessão(ões)${totalBilled > 0 ? ` • faturado R$ ${formatCurrencyBR(totalBilled)}` : ''}`);
+  lines.push(`Total recebido: R$ ${formatCurrencyBR(totalRecebido)}`);
+  lines.push(`Total descontos: R$ ${formatCurrencyBR(totalDescontos)}`);
+  lines.push(`Total repasse: R$ ${formatCurrencyBR(totalRepasse)}`);
 
   return lines.join('\n');
 };
@@ -332,15 +371,20 @@ export const ProfessionalPayouts: React.FC<ProfessionalPayoutsProps> = ({ patien
       .sort((a, b) => b.total - a.total);
   }, [rows]);
 
-  const billingShareRows = useMemo(
-    () => buildProfessionalBillingShareRows({ patients, funservCompetencias, manualLancamentos }),
-    [patients, funservCompetencias, manualLancamentos]
+  const paymentGuideRows = useMemo(
+    () => buildProfessionalPaymentGuideRows({
+      patients,
+      mesPagamento: selectedMesRecebimento,
+      funservCompetencias,
+      manualLancamentos,
+    }),
+    [patients, selectedMesRecebimento, funservCompetencias, manualLancamentos]
   );
 
   const shareProfessionals = useMemo(() => {
-    const set = new Set(billingShareRows.map((row) => row.professional).filter(Boolean));
+    const set = new Set(paymentGuideRows.map((row) => row.professional).filter(Boolean));
     return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [billingShareRows]);
+  }, [paymentGuideRows]);
 
   const effectiveShareProfessional =
     shareProfessional ||
@@ -349,13 +393,13 @@ export const ProfessionalPayouts: React.FC<ProfessionalPayoutsProps> = ({ patien
     '';
 
   const professionalShareRows = useMemo(
-    () => billingShareRows.filter((row) => normalize(row.professional) === normalize(effectiveShareProfessional)),
-    [billingShareRows, effectiveShareProfessional]
+    () => paymentGuideRows.filter((row) => normalize(row.professional) === normalize(effectiveShareProfessional)),
+    [paymentGuideRows, effectiveShareProfessional]
   );
 
   const professionalShareMessage = useMemo(
-    () => buildProfessionalBillingShareMessage(effectiveShareProfessional, billingShareRows),
-    [effectiveShareProfessional, billingShareRows]
+    () => buildProfessionalPaymentGuideMessage(effectiveShareProfessional, paymentGuideRows, selectedMesRecebimento),
+    [effectiveShareProfessional, paymentGuideRows, selectedMesRecebimento]
   );
 
   const copyProfessionalShare = async () => {
@@ -439,11 +483,11 @@ export const ProfessionalPayouts: React.FC<ProfessionalPayoutsProps> = ({ patien
       <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6 shadow-xl backdrop-blur-sm space-y-4">
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
           <div>
-            <h3 className="text-white font-bold text-lg">Compartilhar fechamento com profissional</h3>
+            <h3 className="text-white font-bold text-lg">Compartilhar guia de pagamento com profissional</h3>
             <p className="text-slate-400 text-sm">
-              Bate o nome do paciente importado no faturamento com o cadastro do paciente e monta uma mensagem por profissional, com convênio, fechamento e previsão de pagamento.
+              Monta a mensagem só quando houver valor recebido/guia de pagamento no mês selecionado, juntando Funserv e demais convênios com os descontos de repasse da clínica.
             </p>
-            <p className="text-[11px] text-slate-500 mt-1">Teste inicial: selecione o profissional Bruno Alexandre; a mensagem trará os pacientes cujo cadastro está vinculado a ele.</p>
+            <p className="text-[11px] text-slate-500 mt-1">Teste inicial: selecione Bruno Alexandre; a guia trará os pacientes cujo cadastro está vinculado a ele.</p>
           </div>
 
           <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
@@ -483,16 +527,16 @@ export const ProfessionalPayouts: React.FC<ProfessionalPayoutsProps> = ({ patien
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div className="bg-slate-900/70 border border-slate-700 rounded-xl p-3">
-            <div className="text-xs text-slate-400">Pacientes batidos</div>
+            <div className="text-xs text-slate-400">Pacientes na guia</div>
             <div className="text-2xl font-bold text-white">{new Set(professionalShareRows.map((row) => row.patientName)).size}</div>
           </div>
           <div className="bg-slate-900/70 border border-slate-700 rounded-xl p-3">
-            <div className="text-xs text-slate-400">Sessões enviadas</div>
-            <div className="text-2xl font-bold text-sky-300">{professionalShareRows.reduce((acc, row) => acc + row.sessoesEnviadas, 0)}</div>
+            <div className="text-xs text-slate-400">Sessões pagas</div>
+            <div className="text-2xl font-bold text-sky-300">{professionalShareRows.reduce((acc, row) => acc + row.sessoes, 0)}</div>
           </div>
           <div className="bg-slate-900/70 border border-slate-700 rounded-xl p-3">
-            <div className="text-xs text-slate-400">Convênios no fechamento</div>
-            <div className="text-2xl font-bold text-emerald-300">{new Set(professionalShareRows.map((row) => row.convenio)).size}</div>
+            <div className="text-xs text-slate-400">Total repasse</div>
+            <div className="text-2xl font-bold text-emerald-300">R$ {formatCurrencyBR(professionalShareRows.reduce((acc, row) => acc + row.valorRepasse, 0))}</div>
           </div>
         </div>
 
