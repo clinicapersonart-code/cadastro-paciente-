@@ -443,7 +443,7 @@ export const ProfessionalPayouts: React.FC<ProfessionalPayoutsProps> = ({ patien
             <p className="text-slate-400 text-sm">
               Bate o nome do paciente importado no faturamento com o cadastro do paciente e monta uma mensagem por profissional, com convênio, fechamento e previsão de pagamento.
             </p>
-            <p className="text-[11px] text-slate-500 mt-1">Use Bruno Alexandre para o primeiro teste quando ele aparecer na lista.</p>
+            <p className="text-[11px] text-slate-500 mt-1">Teste inicial: selecione o profissional Bruno Alexandre; a mensagem trará os pacientes cujo cadastro está vinculado a ele.</p>
           </div>
 
           <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
