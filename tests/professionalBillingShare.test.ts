@@ -2,6 +2,8 @@ import { describe, expect, test } from 'vitest';
 import {
   buildProfessionalPaymentGuideRows,
   buildProfessionalPaymentGuideMessage,
+  buildProfessionalClosingControlRows,
+  summarizeProfessionalClosingControl,
   getProfessionalDiscountRate,
 } from '../components/ProfessionalPayouts';
 import type { Patient } from '../types';
@@ -121,6 +123,99 @@ describe('professional payment guide share', () => {
     ]);
 
     expect(rows.some((row) => row.competencia === '2026-04')).toBe(false);
+  });
+
+  test('builds internal closing control per professional without creating a copyable message', () => {
+    const controlRows = buildProfessionalClosingControlRows({
+      patients,
+      mesReferencia: '2026-05',
+      funservCompetencias: {
+        '2026-03': {
+          competencia: '2026-03',
+          faturamento: {
+            fileName: 'funserv-marco.xlsx',
+            importedAt: '2026-04-05T10:00:00.000Z',
+            dataFechamentoEnvio: '2026-04-05',
+            totalContas: 3,
+            porPaciente: [
+              { nome: 'Alice Santos', sessoes: 2 },
+              { nome: 'Carla Souza', sessoes: 1 },
+            ],
+            itens: [],
+          },
+          recebimento: {
+            itens: [
+              { nome: 'Alice Santos', valorProcessado: 40, valorDiferenca: 0 },
+              { nome: 'Alice Santos', valorProcessado: 60, valorDiferenca: 0 },
+              { nome: 'Carla Souza', valorProcessado: 40, valorDiferenca: 0 },
+            ],
+          },
+        },
+        '2026-04': {
+          competencia: '2026-04',
+          faturamento: {
+            fileName: 'funserv-abril.xlsx',
+            importedAt: '2026-05-05T10:00:00.000Z',
+            totalContas: 1,
+            porPaciente: [{ nome: 'Alice Santos', sessoes: 1 }],
+            itens: [],
+          },
+        },
+      },
+      manualLancamentos: {
+        Gama: {
+          '2026-03': {
+            competencia: '2026-03',
+            mesRecebimento: '2026-05',
+            itens: [{ id: 'm1', paciente: 'Bob Lima', valorSessao: 100, sessoes: 3 }],
+          },
+        },
+      },
+    });
+
+    expect(controlRows.filter((row) => row.professional === 'Bruno Alexandre')).toEqual([
+      expect.objectContaining({
+        patientName: 'Alice Santos',
+        convenio: 'Funserv',
+        competencia: '2026-03',
+        previsaoPagamento: '2026-05',
+        status: 'Recebido/guia',
+        sessoesEnviadas: 2,
+        sessoesPagas: 2,
+        valorRecebido: 100,
+        valorRepasse: 89,
+      }),
+      expect.objectContaining({
+        patientName: 'Alice Santos',
+        convenio: 'Funserv',
+        competencia: '2026-04',
+        previsaoPagamento: '2026-06',
+        status: 'Aguardando pagamento',
+        sessoesEnviadas: 1,
+        sessoesPagas: 0,
+      }),
+      expect.objectContaining({
+        patientName: 'Bob Lima',
+        convenio: 'Gama',
+        competencia: '2026-03',
+        previsaoPagamento: '2026-05',
+        status: 'Recebido/guia',
+        sessoesEnviadas: 3,
+        sessoesPagas: 3,
+        valorRecebido: 300,
+        valorRepasse: 282,
+      }),
+    ]);
+
+    expect(summarizeProfessionalClosingControl(controlRows, 'Bruno Alexandre')).toEqual({
+      professional: 'Bruno Alexandre',
+      sentSessions: 6,
+      awaitingSessions: 1,
+      paidSessions: 5,
+      estimatedBilled: 300,
+      confirmedReceived: 400,
+      confirmedPayout: 371,
+    });
   });
 
   test('builds a copyable payment guide message with values and discounts', () => {

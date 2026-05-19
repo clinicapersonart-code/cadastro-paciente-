@@ -287,6 +287,150 @@ export const buildProfessionalPaymentGuideMessage = (
   return lines.join('\n');
 };
 
+
+export interface ProfessionalClosingControlRow {
+  professional: string;
+  patientName: string;
+  convenio: string;
+  competencia: string;
+  previsaoPagamento: string;
+  status: 'Aguardando pagamento' | 'Recebido/guia';
+  sessoesEnviadas: number;
+  sessoesPagas: number;
+  valorFaturado?: number;
+  valorRecebido: number;
+  valorRepasse: number;
+}
+
+interface BuildProfessionalClosingControlRowsInput {
+  patients: Patient[];
+  mesReferencia: string;
+  funservCompetencias?: FunservBillingShareStore;
+  manualLancamentos?: ManualBillingShareStore;
+}
+
+export interface ProfessionalClosingControlSummary {
+  professional: string;
+  sentSessions: number;
+  awaitingSessions: number;
+  paidSessions: number;
+  estimatedBilled: number;
+  confirmedReceived: number;
+  confirmedPayout: number;
+}
+
+export const buildProfessionalClosingControlRows = ({
+  patients,
+  mesReferencia,
+  funservCompetencias = {},
+  manualLancamentos = {},
+}: BuildProfessionalClosingControlRowsInput): ProfessionalClosingControlRow[] => {
+  const rows: ProfessionalClosingControlRow[] = [];
+
+  Object.values(funservCompetencias).forEach((entry) => {
+    if (!entry?.faturamento) return;
+    const previsaoPagamento = addMonths(entry.competencia, 2);
+    const recebimentos = new Map(
+      summarizeRecebimentoByPatient(entry.recebimento?.itens).map((item) => [normalizePatientName(item.nome), item])
+    );
+
+    entry.faturamento.porPaciente.forEach((item) => {
+      const patient = findPatientByImportedName(patients, item.nome);
+      const professional = firstProfessional(patient);
+      const recebimento = recebimentos.get(normalizePatientName(item.nome));
+      const valorRecebido = roundMoney(recebimento?.liquido || 0);
+      const paidRow = !!recebimento;
+      const payout = paidRow
+        ? buildGuideRow({
+          professional,
+          patientName: patient?.nome || item.nome,
+          convenio: 'Funserv',
+          competencia: entry.competencia,
+          mesPagamento: previsaoPagamento,
+          sessoes: recebimento.sessoes,
+          valorRecebido,
+        }).valorRepasse
+        : 0;
+
+      rows.push({
+        professional,
+        patientName: patient?.nome || item.nome,
+        convenio: 'Funserv',
+        competencia: entry.competencia,
+        previsaoPagamento,
+        status: paidRow ? 'Recebido/guia' : 'Aguardando pagamento',
+        sessoesEnviadas: item.sessoes,
+        sessoesPagas: recebimento?.sessoes || 0,
+        valorRecebido,
+        valorRepasse: payout,
+      });
+    });
+  });
+
+  Object.entries(manualLancamentos).forEach(([convenioName, competencias]) => {
+    Object.values(competencias || {}).forEach((entry) => {
+      entry.itens.forEach((item) => {
+        const sessoes = item.sessoes || 0;
+        const valorSessao = item.valorSessao || 0;
+        if (!item.paciente || sessoes <= 0) return;
+
+        const patient = findPatientByImportedName(patients, item.paciente);
+        const professional = firstProfessional(patient);
+        const valorFaturado = roundMoney(valorSessao * sessoes);
+        const paidRow = entry.mesRecebimento <= mesReferencia && valorFaturado > 0;
+        const payout = paidRow
+          ? buildGuideRow({
+            professional,
+            patientName: patient?.nome || item.paciente,
+            convenio: convenioName,
+            competencia: entry.competencia,
+            mesPagamento: entry.mesRecebimento,
+            sessoes,
+            valorRecebido: valorFaturado,
+          }).valorRepasse
+          : 0;
+
+        rows.push({
+          professional,
+          patientName: patient?.nome || item.paciente,
+          convenio: convenioName,
+          competencia: entry.competencia,
+          previsaoPagamento: entry.mesRecebimento,
+          status: paidRow ? 'Recebido/guia' : 'Aguardando pagamento',
+          sessoesEnviadas: sessoes,
+          sessoesPagas: paidRow ? sessoes : 0,
+          valorFaturado,
+          valorRecebido: paidRow ? valorFaturado : 0,
+          valorRepasse: payout,
+        });
+      });
+    });
+  });
+
+  return rows.sort((a, b) =>
+    a.professional.localeCompare(b.professional)
+    || a.convenio.localeCompare(b.convenio)
+    || a.competencia.localeCompare(b.competencia)
+    || a.patientName.localeCompare(b.patientName)
+  );
+};
+
+export const summarizeProfessionalClosingControl = (
+  rows: ProfessionalClosingControlRow[],
+  professional: string
+): ProfessionalClosingControlSummary => {
+  const filtered = rows.filter((row) => normalize(row.professional) === normalize(professional));
+  return {
+    professional,
+    sentSessions: filtered.reduce((acc, row) => acc + row.sessoesEnviadas, 0),
+    awaitingSessions: filtered.reduce((acc, row) => acc + Math.max(row.sessoesEnviadas - row.sessoesPagas, 0), 0),
+    paidSessions: filtered.reduce((acc, row) => acc + row.sessoesPagas, 0),
+    estimatedBilled: roundMoney(filtered.reduce((acc, row) => acc + (row.valorFaturado || 0), 0)),
+    confirmedReceived: roundMoney(filtered.reduce((acc, row) => acc + row.valorRecebido, 0)),
+    confirmedPayout: roundMoney(filtered.reduce((acc, row) => acc + row.valorRepasse, 0)),
+  };
+};
+
 const toCompetencia = (dateStr: string): string => {
   const txt = String(dateStr || '').trim();
   if (!txt) return '';
@@ -380,6 +524,23 @@ export const ProfessionalPayouts: React.FC<ProfessionalPayoutsProps> = ({ patien
     }),
     [patients, selectedMesRecebimento, funservCompetencias, manualLancamentos]
   );
+
+  const closingControlRows = useMemo(
+    () => buildProfessionalClosingControlRows({
+      patients,
+      mesReferencia: selectedMesRecebimento,
+      funservCompetencias,
+      manualLancamentos,
+    }),
+    [patients, selectedMesRecebimento, funservCompetencias, manualLancamentos]
+  );
+
+  const closingControlSummaries = useMemo(() => {
+    const professionalsSet = new Set(closingControlRows.map((row) => row.professional).filter(Boolean));
+    return Array.from(professionalsSet)
+      .sort((a, b) => a.localeCompare(b))
+      .map((professional) => summarizeProfessionalClosingControl(closingControlRows, professional));
+  }, [closingControlRows]);
 
   const shareProfessionals = useMemo(() => {
     const set = new Set(paymentGuideRows.map((row) => row.professional).filter(Boolean));
@@ -478,6 +639,93 @@ export const ProfessionalPayouts: React.FC<ProfessionalPayoutsProps> = ({ patien
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6 shadow-xl backdrop-blur-sm space-y-4">
+        <div>
+          <h3 className="text-white font-bold text-lg">Controle interno de fechamento por profissional</h3>
+          <p className="text-slate-400 text-sm">
+            Visão só da clínica: mostra o que foi enviado, o que está aguardando pagamento e o que já entrou na guia/recebimento. Não gera mensagem para profissional.
+          </p>
+          <p className="text-[11px] text-slate-500 mt-1">Referência de pagamento: {formatCompetenciaLabel(selectedMesRecebimento)}</p>
+        </div>
+
+        {closingControlSummaries.length === 0 ? (
+          <p className="text-sm text-slate-400">Nenhum fechamento lançado ainda para controle interno.</p>
+        ) : (
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            {closingControlSummaries.map((summaryItem) => {
+              const detailRows = closingControlRows.filter((row) => normalize(row.professional) === normalize(summaryItem.professional));
+              return (
+                <div key={summaryItem.professional} className="bg-slate-900/70 border border-slate-700 rounded-xl p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <h4 className="text-white font-bold">{summaryItem.professional}</h4>
+                      <p className="text-[11px] text-slate-500">{detailRows.length} lançamento(s) de fechamento</p>
+                    </div>
+                    <span className="text-[11px] rounded-full bg-slate-800 border border-slate-700 px-2 py-1 text-slate-300">Interno</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
+                    <div className="bg-slate-950/70 border border-slate-800 rounded-lg p-2">
+                      <div className="text-slate-500">Enviado</div>
+                      <div className="text-lg font-bold text-sky-300">{summaryItem.sentSessions}</div>
+                    </div>
+                    <div className="bg-slate-950/70 border border-slate-800 rounded-lg p-2">
+                      <div className="text-slate-500">Aguardando</div>
+                      <div className="text-lg font-bold text-amber-300">{summaryItem.awaitingSessions}</div>
+                    </div>
+                    <div className="bg-slate-950/70 border border-slate-800 rounded-lg p-2">
+                      <div className="text-slate-500">Pago/guia</div>
+                      <div className="text-lg font-bold text-emerald-300">{summaryItem.paidSessions}</div>
+                    </div>
+                    <div className="bg-slate-950/70 border border-slate-800 rounded-lg p-2">
+                      <div className="text-slate-500">Faturado estimado</div>
+                      <div className="font-bold text-slate-100">R$ {formatCurrencyBR(summaryItem.estimatedBilled)}</div>
+                    </div>
+                    <div className="bg-slate-950/70 border border-slate-800 rounded-lg p-2">
+                      <div className="text-slate-500">Recebido</div>
+                      <div className="font-bold text-cyan-300">R$ {formatCurrencyBR(summaryItem.confirmedReceived)}</div>
+                    </div>
+                    <div className="bg-slate-950/70 border border-slate-800 rounded-lg p-2">
+                      <div className="text-slate-500">Repasse</div>
+                      <div className="font-bold text-emerald-300">R$ {formatCurrencyBR(summaryItem.confirmedPayout)}</div>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto rounded-lg border border-slate-800">
+                    <table className="w-full text-xs">
+                      <thead className="bg-slate-950 text-slate-400">
+                        <tr>
+                          <th className="text-left p-2">Convênio</th>
+                          <th className="text-left p-2">Competência</th>
+                          <th className="text-left p-2">Paciente</th>
+                          <th className="text-right p-2">Env.</th>
+                          <th className="text-right p-2">Pago</th>
+                          <th className="text-left p-2">Previsão</th>
+                          <th className="text-left p-2">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {detailRows.map((row, idx) => (
+                          <tr key={`${summaryItem.professional}-${row.convenio}-${row.competencia}-${row.patientName}-${idx}`} className="border-t border-slate-800 text-slate-200">
+                            <td className="p-2">{row.convenio}</td>
+                            <td className="p-2">{row.competencia}</td>
+                            <td className="p-2">{row.patientName}</td>
+                            <td className="p-2 text-right text-sky-300">{row.sessoesEnviadas}</td>
+                            <td className="p-2 text-right text-emerald-300">{row.sessoesPagas}</td>
+                            <td className="p-2">{row.previsaoPagamento}</td>
+                            <td className={`p-2 ${row.status === 'Recebido/guia' ? 'text-emerald-300' : 'text-amber-300'}`}>{row.status}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6 shadow-xl backdrop-blur-sm space-y-4">
