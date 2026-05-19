@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "vitest run tests/googleCalendarImport.test.ts tests/funservCompetencias.test.ts tests/funservCompetenciasLayout.test.ts tests/agendaRecurrenceEdit.test.ts --reporter=verbose"
+    "test": "vitest run tests/googleCalendarImport.test.ts tests/funservCompetencias.test.ts tests/funservCompetenciasLayout.test.ts tests/agendaRecurrenceEdit.test.ts tests/professionalBillingShare.test.ts --reporter=verbose"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
