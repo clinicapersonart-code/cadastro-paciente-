@@ -1,6 +1,7 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, test } from 'vitest';
+import { FaturamentoHub } from '../components/FaturamentoHub';
 import { FunservCompetencias } from '../components/FunservCompetencias';
 
 const setupWindowStorage = (initial: Record<string, string> = {}) => {
@@ -60,5 +61,21 @@ describe('FunservCompetencias layout', () => {
     expect(html).toContain('type="date"');
     expect(html).toContain('value="2026-05-15"');
     expect(html).toMatch(/15\/05\/2026/);
+  });
+
+  test('mantem o contador de guias Funserv via extensao Chrome dentro de Convênios', () => {
+    setupWindowStorage();
+
+    const html = renderToStaticMarkup(React.createElement(FaturamentoHub, {
+      patients: [],
+      onSavePatient: () => undefined,
+      convenios: [{ id: 'conv-funserv', name: 'Funserv', active: true }],
+      setConvenios: () => undefined,
+      appointments: [],
+    }));
+
+    expect(html).toMatch(/Fechamentos \/ recebimentos/);
+    expect(html).toMatch(/Contador de guias \(extensão\)/);
+    expect(html).toMatch(/Faturamento — guias enviadas/);
   });
 });
