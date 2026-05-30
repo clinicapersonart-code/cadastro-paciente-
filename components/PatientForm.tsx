@@ -90,7 +90,7 @@ export const PatientForm: React.FC<PatientFormProps> = ({
             if (val === 'Funserv' && !updated.funservConfig) {
                 updated.funservConfig = {
                     active: true,
-                    totalSessions: 10,
+                    totalSessions: 18,
                     usedSessions: 0,
                     startDate: new Date().toISOString().split('T')[0],
                     frequency: '1x Semana',

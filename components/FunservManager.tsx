@@ -23,7 +23,7 @@ const PROFESSIONAL_EMAILS: Record<string, string> = {
 
 const FunservCard: React.FC<FunservCardProps> = ({ patient, onSave }) => {
     const config = patient.funservConfig || {
-        active: true, totalSessions: 10, usedSessions: 0, startDate: '', frequency: '1x Semana', alertEmail: '', history: [],
+        active: true, totalSessions: 18, usedSessions: 0, startDate: '', frequency: '1x Semana', alertEmail: '', history: [],
         numeroAutorizacao: '', dataAutorizacao: ''
     };
 

@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, test } from 'vitest';
 import { FaturamentoHub } from '../components/FaturamentoHub';
 import { FunservCompetencias } from '../components/FunservCompetencias';
+import { FunservManager } from '../components/FunservManager';
 
 const setupWindowStorage = (initial: Record<string, string> = {}) => {
   const storage = new Map<string, string>(Object.entries(initial));
@@ -77,5 +78,25 @@ describe('FunservCompetencias layout', () => {
     expect(html).toMatch(/Fechamentos \/ recebimentos/);
     expect(html).toMatch(/Contador de guias \(extensão\)/);
     expect(html).toMatch(/Faturamento — guias enviadas/);
+  });
+
+  test('usa 18 sessoes como padrao editavel para novos controles Funserv', () => {
+    setupWindowStorage();
+
+    const html = renderToStaticMarkup(React.createElement(FunservManager, {
+      patients: [{
+        id: 'p1',
+        nome: 'Paciente Funserv',
+        faixa: 'Adulto',
+        convenio: 'Funserv',
+        profissionais: ['Bruno Alexandre'],
+        especialidades: [],
+      }],
+      onSavePatient: () => undefined,
+    }));
+
+    expect(html).toMatch(/Total Permitido/);
+    expect(html).toContain('value="18"');
+    expect(html).toMatch(/18<\/span><span class="text-\[10px\] text-slate-500 ml-1">sessões restantes/);
   });
 });
