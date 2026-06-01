@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { detectFaturamentoMetadata, groupFaturamentoGuiasPorPaciente, summarizeFaturamentoPorPaciente } from '../components/FunservCompetencias';
+import { addManualFaturamentoGuide, detectFaturamentoMetadata, groupFaturamentoGuiasPorPaciente, summarizeFaturamentoPorPaciente } from '../components/FunservCompetencias';
 
 describe('summarizeFaturamentoPorPaciente', () => {
   test('groups billed Funserv sessions by patient name and sorts alphabetically', () => {
@@ -38,6 +38,27 @@ describe('groupFaturamentoGuiasPorPaciente', () => {
 });
 
 describe('adiamento de guias Funserv', () => {
+  test('adiciona guia antiga manual ao fechamento e recalcula resumo por paciente', () => {
+    const guiaManual = { autorizacao: '68123459', data: '03/04/2026', matricula: 'manual', nome: 'Alexia Eduarda Moraes', lote: 'guia-antiga-manual' };
+
+    const result = addManualFaturamentoGuide({
+      competencia: '2026-05',
+      faturamento: {
+        fileName: 'maio.xlsx',
+        importedAt: '2026-05-30T12:00:00.000Z',
+        totalContas: 1,
+        porPaciente: [{ nome: 'Alexia Eduarda Moraes', sessoes: 1 }],
+        itens: [
+          { autorizacao: '68123456', data: '10/05/2026', matricula: '1', nome: 'Alexia Eduarda Moraes', lote: 'A' },
+        ],
+      },
+    }, guiaManual, '2026-05-30T13:00:00.000Z');
+
+    expect(result.faturamento?.totalContas).toBe(2);
+    expect(result.faturamento?.porPaciente).toEqual([{ nome: 'Alexia Eduarda Moraes', sessoes: 2 }]);
+    expect(result.faturamento?.itens).toContainEqual(guiaManual);
+  });
+
   test('remove a guia do fechamento atual e deixa pendente no próximo mês', async () => {
     const { deferFaturamentoItemToNextCompetencia } = await import('../components/FunservCompetencias');
     const guiaParaAdiar = { autorizacao: '101', data: '08/04/2026', matricula: '1', nome: 'Maria Silva', lote: 'A' };

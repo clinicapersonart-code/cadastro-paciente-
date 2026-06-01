@@ -176,6 +176,11 @@ const formatInputDateBR = (raw?: string): string => {
   return `${m[3]}/${m[2]}/${m[1]}`;
 };
 
+const inputDateToBR = (raw: string): string => {
+  const formatted = formatInputDateBR(raw);
+  return formatted === '-' ? '' : formatted;
+};
+
 const formatDateBR = (day: number, month: number, year: number): string => {
   return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
 };
@@ -317,6 +322,27 @@ const withRecalculatedFaturamento = <T extends { totalContas: number; porPacient
   totalContas: itens.length,
   porPaciente: summarizeFaturamentoPorPaciente(itens)
 });
+
+export const addManualFaturamentoGuide = (
+  competencia: CompetenciaData,
+  item: FaturamentoItem,
+  importedAt: string = new Date().toISOString()
+): CompetenciaData => {
+  const existingFaturamento = competencia.faturamento ?? {
+    fileName: 'Cadastro manual',
+    importedAt,
+    dataFechamentoEnvio: todayDateISO(),
+    totalContas: 0,
+    porPaciente: [],
+    itens: []
+  };
+  const itens = mergeFaturamentoItens([...existingFaturamento.itens, item]);
+
+  return {
+    ...competencia,
+    faturamento: withRecalculatedFaturamento(existingFaturamento, itens)
+  };
+};
 
 export const deferFaturamentoItemToNextCompetencia = (
   competencias: Record<string, CompetenciaData>,
@@ -479,6 +505,8 @@ export const FunservCompetencias: React.FC = () => {
   const [showFaturamentoPreview, setShowFaturamentoPreview] = useState(false);
   const [showRecebimentoPreview, setShowRecebimentoPreview] = useState(false);
   const [expandedFaturamentoPaciente, setExpandedFaturamentoPaciente] = useState('');
+  const [showManualGuideForm, setShowManualGuideForm] = useState(false);
+  const [manualGuideForm, setManualGuideForm] = useState({ protocolo: '', dataAtendimento: '' });
   const [lastDeferredGuide, setLastDeferredGuide] = useState<{
     fromCompetencia: string;
     toCompetencia: string;
@@ -670,6 +698,40 @@ export const FunservCompetencias: React.FC = () => {
     setCompetencias((prev) => deferFaturamentoItemToNextCompetencia(prev, selectedCompetencia, item, adiadaEm));
     setLastDeferredGuide({ fromCompetencia: selectedCompetencia, toCompetencia, item });
     setMessage(`Protocolo ${item.autorizacao || '-'} de ${item.nome} enviado para o próximo mês (${toCompetencia}).`);
+  };
+
+  const handleAddManualGuide = () => {
+    const nome = expandedFaturamentoGroup?.nome;
+    const protocolo = manualGuideForm.protocolo.trim();
+    const data = inputDateToBR(manualGuideForm.dataAtendimento);
+
+    if (!nome) {
+      setMessage('Abra um paciente antes de adicionar guia antiga.');
+      return;
+    }
+    if (!protocolo || !data) {
+      setMessage('Informe o protocolo e a data de atendimento da guia antiga.');
+      return;
+    }
+
+    const item: FaturamentoItem = {
+      autorizacao: protocolo,
+      data,
+      matricula: 'manual',
+      nome,
+      lote: 'guia-antiga-manual'
+    };
+
+    setCompetencias((prev) => {
+      const current = prev[selectedCompetencia] ?? { competencia: selectedCompetencia };
+      return {
+        ...prev,
+        [selectedCompetencia]: addManualFaturamentoGuide(current, item)
+      };
+    });
+    setManualGuideForm({ protocolo: '', dataAtendimento: '' });
+    setShowManualGuideForm(false);
+    setMessage(`Guia antiga ${protocolo} de ${nome} adicionada em ${selectedCompetencia}.`);
   };
 
   const undoLastDeferredGuide = () => {
@@ -968,7 +1030,11 @@ export const FunservCompetencias: React.FC = () => {
                     <tr key={item.nome} className={`border-t border-slate-800 ${isExpanded ? 'bg-sky-950/30 text-sky-100' : 'text-slate-200'}`}>
                       <td className="p-2">
                         <button
-                          onClick={() => setExpandedFaturamentoPaciente(isExpanded ? '' : item.nome)}
+                          onClick={() => {
+                            setExpandedFaturamentoPaciente(isExpanded ? '' : item.nome);
+                            setShowManualGuideForm(false);
+                            setManualGuideForm({ protocolo: '', dataAtendimento: '' });
+                          }}
                           className="font-semibold text-left hover:text-sky-300 underline-offset-2 hover:underline"
                         >
                           {item.nome}
@@ -1014,6 +1080,55 @@ export const FunservCompetencias: React.FC = () => {
                     ))}
                   </tbody>
                 </table>
+              </div>
+
+              <div className="rounded-lg border border-dashed border-slate-700 bg-slate-900/50 p-2 space-y-2">
+                {!showManualGuideForm ? (
+                  <button
+                    onClick={() => setShowManualGuideForm(true)}
+                    className="w-full px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100 text-xs font-semibold border border-slate-700"
+                  >
+                    + Adicionar guia antiga/manual
+                  </button>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto_auto] gap-2 items-end">
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">Protocolo</label>
+                      <input
+                        type="text"
+                        value={manualGuideForm.protocolo}
+                        onChange={(e) => setManualGuideForm((prev) => ({ ...prev, protocolo: e.target.value }))}
+                        placeholder="Ex.: 68123456"
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">Data atendimento</label>
+                      <input
+                        type="date"
+                        value={manualGuideForm.dataAtendimento}
+                        onChange={(e) => setManualGuideForm((prev) => ({ ...prev, dataAtendimento: e.target.value }))}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                      />
+                    </div>
+                    <button
+                      onClick={handleAddManualGuide}
+                      className="px-3 py-2 rounded-lg bg-sky-700 hover:bg-sky-600 text-white text-xs font-semibold"
+                    >
+                      Salvar guia antiga
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowManualGuideForm(false);
+                        setManualGuideForm({ protocolo: '', dataAtendimento: '' });
+                      }}
+                      className="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-semibold"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                )}
+                <p className="text-[11px] text-slate-500">Use para guia antiga/fechada que ainda não entrou no envio atual. Ela entra no resumo deste fechamento.</p>
               </div>
               <p className="text-[11px] text-slate-400">Ao clicar em “Próximo mês”, o protocolo sai desta competência e fica pendente para entrar automaticamente no próximo fechamento.</p>
             </div>
