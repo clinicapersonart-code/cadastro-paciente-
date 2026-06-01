@@ -12,6 +12,7 @@ import { Agenda } from './components/Agenda';
 import { PublicRegistration } from './components/PublicRegistration';
 import { PublicWaitlist } from './components/PublicWaitlist';
 import { FaturamentoHub } from './components/FaturamentoHub';
+import { FunservManager } from './components/FunservManager';
 import { Inbox } from './components/Inbox';
 import { LoginScreen } from './components/LoginScreen';
 import { MedicalRecord } from './components/MedicalRecord';
@@ -38,13 +39,13 @@ const App: React.FC = () => {
 
     const convenioList: ConvenioConfig[] = (Array.isArray(convenios) ? convenios : defaultConvenios) as ConvenioConfig[];
     const convenioNames: string[] = convenioList.filter(c => c?.active !== false).map(c => c.name);
-    const [activeTab, setActiveTab] = useLocalStorage<'pacientes' | 'agenda' | 'faturamento' | 'inbox' | 'prontuario' | 'cadastro' | 'fila'>('personart.view.tab', 'pacientes');
+    const [activeTab, setActiveTab] = useLocalStorage<'pacientes' | 'agenda' | 'faturamento' | 'funserv' | 'inbox' | 'prontuario' | 'cadastro' | 'fila'>('personart.view.tab', 'pacientes');
     const [brand] = useLocalStorage<BrandConfig>(STORAGE_KEYS.BRAND, { color: '#e9c49e', dark: '#273e44', logo: null, name: 'Clínica Personart' });
 
-    // Migração de abas antigas: funserv/repasse -> faturamento
+    // Migração de abas antigas: repasse -> faturamento
     useEffect(() => {
         const rawTab = String(activeTab);
-        if (rawTab === 'funserv' || rawTab === 'repasse') {
+        if (rawTab === 'repasse') {
             setActiveTab('faturamento');
         }
     }, [activeTab, setActiveTab]);
@@ -1395,6 +1396,16 @@ const App: React.FC = () => {
                                     Faturamento
                                 </button>
                                 <button
+                                    onClick={() => setActiveTab('funserv')}
+                                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 ${activeTab === 'funserv'
+                                        ? 'bg-[#273e44] text-[#e9c49e] shadow-lg shadow-[#273e44]/20 border border-[#e9c49e]/10'
+                                        : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                                        }`}
+                                    title="Contador de guias Funserv"
+                                >
+                                    Guias Funserv
+                                </button>
+                                <button
                                     onClick={() => setActiveTab('inbox')}
                                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 flex items-center gap-2 ${activeTab === 'inbox'
                                         ? 'bg-[#273e44] text-[#e9c49e] shadow-lg shadow-[#273e44]/20 border border-[#e9c49e]/10'
@@ -1782,6 +1793,14 @@ const App: React.FC = () => {
                         setConvenios={setConvenios as React.Dispatch<React.SetStateAction<ConvenioConfig[]>>}
                         appointments={appointments}
                     />
+                )}
+                {activeTab === 'funserv' && (
+                    <div className="space-y-4">
+                        <div className="bg-teal-950/20 border border-teal-800/60 rounded-xl p-3 text-sm text-slate-300">
+                            Contador de guias Funserv via extensão Chrome/SaúdeWeb: controle por paciente com guias capturadas, sessões usadas/restantes e histórico salvo no cadastro Funserv do paciente.
+                        </div>
+                        <FunservManager patients={patients} onSavePatient={handleSavePatient} />
+                    </div>
                 )}
                 {activeTab === 'inbox' && (
                     <Inbox

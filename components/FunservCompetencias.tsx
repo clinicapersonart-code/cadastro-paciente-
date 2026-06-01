@@ -10,6 +10,11 @@ export interface FaturamentoItem {
   lote: string;
 }
 
+export interface GuiaPendenteFechamento extends FaturamentoItem {
+  origemCompetencia: string;
+  adiadaEm: string;
+}
+
 interface RecebimentoItem {
   nome: string;
   data: string;
@@ -17,7 +22,7 @@ interface RecebimentoItem {
   valorDiferenca: number;
 }
 
-interface CompetenciaData {
+export interface CompetenciaData {
   competencia: string; // YYYY-MM
   faturamento?: {
     fileName: string;
@@ -33,6 +38,7 @@ interface CompetenciaData {
     porPaciente: Array<{ nome: string; sessoes: number }>;
     itens: FaturamentoItem[];
   };
+  guiasPendentesFechamento?: GuiaPendenteFechamento[];
   recebimento?: {
     fileName: string;
     importedAt: string;
@@ -261,6 +267,133 @@ export const summarizeFaturamentoPorPaciente = (itens: FaturamentoItem[]): Array
     .sort((a, b) => a.nome.localeCompare(b.nome));
 };
 
+export const groupFaturamentoGuiasPorPaciente = (itens: FaturamentoItem[]): Array<{ nome: string; sessoes: number; itens: FaturamentoItem[] }> => {
+  const map = new Map<string, FaturamentoItem[]>();
+  itens.forEach((it) => {
+    const current = map.get(it.nome) ?? [];
+    current.push(it);
+    map.set(it.nome, current);
+  });
+
+  return Array.from(map.entries())
+    .map(([nome, patientItens]) => ({
+      nome,
+      sessoes: patientItens.length,
+      itens: [...patientItens].sort((a, b) => a.data.localeCompare(b.data) || a.autorizacao.localeCompare(b.autorizacao))
+    }))
+    .sort((a, b) => a.nome.localeCompare(b.nome));
+};
+
+const faturamentoItemKey = (item: FaturamentoItem): string => (
+  `${item.autorizacao}|${item.data}|${item.matricula}|${item.nome}|${item.lote}`
+);
+
+export const mergeFaturamentoItens = (itens: FaturamentoItem[]): FaturamentoItem[] => {
+  const seen = new Set<string>();
+  const merged: FaturamentoItem[] = [];
+
+  itens.forEach((item) => {
+    const key = faturamentoItemKey(item);
+    if (seen.has(key)) return;
+    seen.add(key);
+    merged.push({
+      autorizacao: item.autorizacao,
+      data: item.data,
+      matricula: item.matricula,
+      nome: item.nome,
+      lote: item.lote
+    });
+  });
+
+  return merged;
+};
+
+const withRecalculatedFaturamento = <T extends { totalContas: number; porPaciente: Array<{ nome: string; sessoes: number }>; itens: FaturamentoItem[] }>(
+  faturamento: T,
+  itens: FaturamentoItem[]
+): T => ({
+  ...faturamento,
+  itens,
+  totalContas: itens.length,
+  porPaciente: summarizeFaturamentoPorPaciente(itens)
+});
+
+export const deferFaturamentoItemToNextCompetencia = (
+  competencias: Record<string, CompetenciaData>,
+  fromCompetencia: string,
+  item: FaturamentoItem,
+  adiadaEm: string
+): Record<string, CompetenciaData> => {
+  const origem = competencias[fromCompetencia];
+  if (!origem?.faturamento) return competencias;
+
+  const key = faturamentoItemKey(item);
+  const remaining = origem.faturamento.itens.filter((current) => faturamentoItemKey(current) !== key);
+  if (remaining.length === origem.faturamento.itens.length) return competencias;
+
+  const toCompetencia = addMonths(fromCompetencia, 1);
+  const destino = competencias[toCompetencia] ?? { competencia: toCompetencia };
+  const pendingItem: GuiaPendenteFechamento = {
+    ...item,
+    origemCompetencia: fromCompetencia,
+    adiadaEm
+  };
+  const pending = destino.guiasPendentesFechamento ?? [];
+  const pendingWithoutDuplicate = pending.filter((current) => faturamentoItemKey(current) !== key);
+
+  return {
+    ...competencias,
+    [fromCompetencia]: {
+      ...origem,
+      faturamento: withRecalculatedFaturamento(origem.faturamento, remaining)
+    },
+    [toCompetencia]: {
+      ...destino,
+      competencia: toCompetencia,
+      guiasPendentesFechamento: [...pendingWithoutDuplicate, pendingItem]
+    }
+  };
+};
+
+export const restoreDeferredFaturamentoItem = (
+  competencias: Record<string, CompetenciaData>,
+  fromCompetencia: string,
+  toCompetencia: string,
+  item: FaturamentoItem
+): Record<string, CompetenciaData> => {
+  const key = faturamentoItemKey(item);
+  const origem = competencias[fromCompetencia];
+  const destino = competencias[toCompetencia];
+  const next = { ...competencias };
+
+  if (origem?.faturamento) {
+    const existsInOrigem = origem.faturamento.itens.some((current) => faturamentoItemKey(current) === key);
+    const restoredItens = existsInOrigem ? origem.faturamento.itens : mergeFaturamentoItens([...origem.faturamento.itens, item]);
+    next[fromCompetencia] = {
+      ...origem,
+      faturamento: withRecalculatedFaturamento(origem.faturamento, restoredItens)
+    };
+  }
+
+  if (destino) {
+    const pending = (destino.guiasPendentesFechamento ?? []).filter((current) => faturamentoItemKey(current) !== key);
+    const faturamento = destino.faturamento
+      ? withRecalculatedFaturamento(
+          destino.faturamento,
+          destino.faturamento.itens.filter((current) => faturamentoItemKey(current) !== key)
+        )
+      : undefined;
+
+    next[toCompetencia] = {
+      ...destino,
+      faturamento,
+      guiasPendentesFechamento: pending.length ? pending : undefined
+    };
+  }
+
+  return next;
+};
+
 const pickCol = (header: unknown[] | null, candidates: string[], fallback: number): number => {
   if (!header) return fallback;
   const lowered = header.map((v) => normalize(v).toLowerCase());
@@ -341,10 +474,16 @@ export const FunservCompetencias: React.FC = () => {
     'personart.funserv.competencias.v1',
     {}
   );
-  const [selectedCompetencia, setSelectedCompetencia] = useState(monthNow());
+  const [selectedCompetencia, setSelectedCompetencia] = useState(() => Object.keys(competencias).sort().at(-1) || monthNow());
   const [message, setMessage] = useState('');
   const [showFaturamentoPreview, setShowFaturamentoPreview] = useState(false);
   const [showRecebimentoPreview, setShowRecebimentoPreview] = useState(false);
+  const [expandedFaturamentoPaciente, setExpandedFaturamentoPaciente] = useState('');
+  const [lastDeferredGuide, setLastDeferredGuide] = useState<{
+    fromCompetencia: string;
+    toCompetencia: string;
+    item: FaturamentoItem;
+  } | null>(null);
 
   const ordered = useMemo(
     () => Object.values(competencias).sort((a, b) => b.competencia.localeCompare(a.competencia)),
@@ -353,6 +492,12 @@ export const FunservCompetencias: React.FC = () => {
 
   const selectedData = competencias[selectedCompetencia];
   const visibleCompetencias = selectedData ? [selectedData] : [];
+  const pendingGuidesForSelected = selectedData?.guiasPendentesFechamento ?? [];
+  const faturamentoGuiasPorPaciente = useMemo(
+    () => groupFaturamentoGuiasPorPaciente(selectedData?.faturamento?.itens ?? []),
+    [selectedData?.faturamento?.itens]
+  );
+  const expandedFaturamentoGroup = faturamentoGuiasPorPaciente.find((group) => group.nome === expandedFaturamentoPaciente);
   const expectedRecebimentoMonth = addMonths(selectedCompetencia, 2);
   const shouldWarnMissingRecebimento =
     !!selectedData?.faturamento &&
@@ -412,31 +557,38 @@ export const FunservCompetencias: React.FC = () => {
       const compDetected = periodo ? toCompetenciaFromDateBR(periodo) : '';
       const competencia = compDetected || selectedCompetencia || monthNow();
 
-      const itens = parseFaturamentoRows(rows);
-      const porPaciente = summarizeFaturamentoPorPaciente(itens);
+      const itensArquivo = parseFaturamentoRows(rows);
+      const pendingBeforeUpload = competencias[competencia]?.guiasPendentesFechamento ?? [];
 
-      saveCompetencia(competencia, (prev) => ({
-        competencia,
-        faturamento: {
-          fileName: normalizedFileName,
-          importedAt: new Date().toISOString(),
-          periodoDetectado: periodo || undefined,
-          dataFechamentoEnvio: metadata.dataFechamentoEnvio || prev?.faturamento?.dataFechamentoEnvio || todayDateISO(),
-          emissao: metadata.emissao,
-          relatorio: metadata.relatorio,
-          titulo: metadata.titulo,
-          prestador: metadata.prestador,
-          qtdeContas: metadata.qtdeContas,
-          totalContas: itens.length,
-          porPaciente,
-          itens
-        },
-        recebimento: prev?.recebimento
-      }));
+      saveCompetencia(competencia, (prev) => {
+        const pendingGuides = prev?.guiasPendentesFechamento ?? [];
+        const itens = mergeFaturamentoItens([...pendingGuides, ...itensArquivo]);
+        const porPaciente = summarizeFaturamentoPorPaciente(itens);
+
+        return {
+          competencia,
+          faturamento: {
+            fileName: normalizedFileName,
+            importedAt: new Date().toISOString(),
+            periodoDetectado: periodo || undefined,
+            dataFechamentoEnvio: metadata.dataFechamentoEnvio || prev?.faturamento?.dataFechamentoEnvio || todayDateISO(),
+            emissao: metadata.emissao,
+            relatorio: metadata.relatorio,
+            titulo: metadata.titulo,
+            prestador: metadata.prestador,
+            qtdeContas: metadata.qtdeContas,
+            totalContas: itens.length,
+            porPaciente,
+            itens
+          },
+          guiasPendentesFechamento: undefined,
+          recebimento: prev?.recebimento
+        };
+      });
 
       setSelectedCompetencia(competencia);
       setMessage(
-        `Faturamento importado em ${competencia}: ${itens.length} sessões. Previsão de recebimento: ${addMonths(competencia, 2)}.${convertedFromXls ? ` Arquivo .xls normalizado internamente para ${normalizedFileName}.` : ''}`
+        `Faturamento importado em ${competencia}: ${mergeFaturamentoItens([...pendingBeforeUpload, ...itensArquivo]).length} sessões. Previsão de recebimento: ${addMonths(competencia, 2)}.${pendingBeforeUpload.length ? ` Incluí ${pendingBeforeUpload.length} guia(s) pendente(s) de fechamento anterior.` : ''}${convertedFromXls ? ` Arquivo .xls normalizado internamente para ${normalizedFileName}.` : ''}`
       );
     } catch (e) {
       setMessage(e instanceof Error ? e.message : 'Falha ao importar faturamento.');
@@ -461,6 +613,7 @@ export const FunservCompetencias: React.FC = () => {
       saveCompetencia(competencia, (prev) => ({
         competencia,
         faturamento: prev?.faturamento,
+        guiasPendentesFechamento: prev?.guiasPendentesFechamento,
         recebimento: {
           fileName: normalizedFileName,
           importedAt: new Date().toISOString(),
@@ -486,7 +639,11 @@ export const FunservCompetencias: React.FC = () => {
 
     saveCompetencia(selectedCompetencia, (prev) => {
       if (!prev?.faturamento) {
-        return { competencia: selectedCompetencia, recebimento: prev?.recebimento };
+        return {
+          competencia: selectedCompetencia,
+          guiasPendentesFechamento: prev?.guiasPendentesFechamento,
+          recebimento: prev?.recebimento
+        };
       }
 
       return {
@@ -495,6 +652,7 @@ export const FunservCompetencias: React.FC = () => {
           ...prev.faturamento,
           dataFechamentoEnvio: dataFechamentoEnvio || undefined
         },
+        guiasPendentesFechamento: prev.guiasPendentesFechamento,
         recebimento: prev.recebimento
       };
     });
@@ -506,6 +664,27 @@ export const FunservCompetencias: React.FC = () => {
     );
   };
 
+  const handleDeferFaturamentoItem = (item: FaturamentoItem) => {
+    const toCompetencia = addMonths(selectedCompetencia, 1);
+    const adiadaEm = new Date().toISOString();
+    setCompetencias((prev) => deferFaturamentoItemToNextCompetencia(prev, selectedCompetencia, item, adiadaEm));
+    setLastDeferredGuide({ fromCompetencia: selectedCompetencia, toCompetencia, item });
+    setMessage(`Protocolo ${item.autorizacao || '-'} de ${item.nome} enviado para o próximo mês (${toCompetencia}).`);
+  };
+
+  const undoLastDeferredGuide = () => {
+    if (!lastDeferredGuide) return;
+    setCompetencias((prev) => restoreDeferredFaturamentoItem(
+      prev,
+      lastDeferredGuide.fromCompetencia,
+      lastDeferredGuide.toCompetencia,
+      lastDeferredGuide.item
+    ));
+    setSelectedCompetencia(lastDeferredGuide.fromCompetencia);
+    setMessage(`A guia ${lastDeferredGuide.item.autorizacao || '-'} voltou para o fechamento ${lastDeferredGuide.fromCompetencia}.`);
+    setLastDeferredGuide(null);
+  };
+
   const removeFaturamento = () => {
     if (!selectedData?.faturamento) return;
     if (!confirm(`Remover guia de faturamento da competência ${selectedCompetencia}?`)) return;
@@ -513,6 +692,7 @@ export const FunservCompetencias: React.FC = () => {
     saveCompetencia(selectedCompetencia, (prev) => ({
       competencia: selectedCompetencia,
       faturamento: undefined,
+      guiasPendentesFechamento: prev?.guiasPendentesFechamento,
       recebimento: prev?.recebimento
     }));
     setMessage(`Guia de faturamento removida de ${selectedCompetencia}.`);
@@ -525,6 +705,7 @@ export const FunservCompetencias: React.FC = () => {
     saveCompetencia(selectedCompetencia, (prev) => ({
       competencia: selectedCompetencia,
       faturamento: prev?.faturamento,
+      guiasPendentesFechamento: prev?.guiasPendentesFechamento,
       recebimento: undefined
     }));
     setMessage(`Guia de recebimento removida de ${selectedCompetencia}.`);
@@ -689,7 +870,19 @@ export const FunservCompetencias: React.FC = () => {
         </div>
       </div>
 
-      {message && <p className="text-sm text-slate-300">{message}</p>}
+      {message && (
+        <div className="flex flex-wrap items-center gap-2 text-sm text-slate-300">
+          <span>{message}</span>
+          {lastDeferredGuide && (
+            <button
+              onClick={undoLastDeferredGuide}
+              className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-xs font-semibold text-white"
+            >
+              Desfazer
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="overflow-x-auto rounded-xl border border-slate-700">
         <table className="w-full text-sm">
@@ -725,28 +918,108 @@ export const FunservCompetencias: React.FC = () => {
         </table>
       </div>
 
-      {selectedData?.faturamento && selectedData.faturamento.porPaciente.length > 0 && (
-        <div className="bg-slate-900/30 border border-slate-700 rounded-xl p-3 space-y-2">
-          <h4 className="text-white font-semibold">Resumo faturado por paciente ({selectedCompetencia})</h4>
+      {pendingGuidesForSelected.length > 0 && (
+        <div className="bg-amber-950/20 border border-amber-800/70 rounded-xl p-3 space-y-2">
+          <h4 className="text-white font-semibold">Guias pendentes para este fechamento ({selectedCompetencia})</h4>
+          <p className="text-xs text-slate-400">Elas vieram de fechamento anterior e serão incluídas automaticamente quando você importar o faturamento deste mês.</p>
           <div className="overflow-x-auto rounded-lg border border-slate-700">
             <table className="w-full text-xs">
               <thead className="bg-slate-900 text-slate-300">
                 <tr>
+                  <th className="text-left p-2">Origem</th>
+                  <th className="text-left p-2">Data</th>
                   <th className="text-left p-2">Paciente</th>
-                  <th className="text-right p-2">Sessões faturadas</th>
+                  <th className="text-left p-2">Guia/autorização</th>
                 </tr>
               </thead>
               <tbody>
-                {selectedData.faturamento.porPaciente.map((item) => (
-                  <tr key={item.nome} className="border-t border-slate-800 text-slate-200">
-                    <td className="p-2">{item.nome}</td>
-                    <td className="p-2 text-right font-semibold text-sky-300">{item.sessoes}</td>
+                {pendingGuidesForSelected.map((it, idx) => (
+                  <tr key={`${it.autorizacao}-${it.origemCompetencia}-${idx}`} className="border-t border-slate-800 text-slate-200">
+                    <td className="p-2">{it.origemCompetencia}</td>
+                    <td className="p-2">{it.data}</td>
+                    <td className="p-2">{it.nome}</td>
+                    <td className="p-2 font-semibold text-amber-200">{it.autorizacao}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <p className="text-[11px] text-slate-400">Cada linha encontrada na guia de faturamento conta como 1 sessão faturada.</p>
+        </div>
+      )}
+
+      {selectedData?.faturamento && faturamentoGuiasPorPaciente.length > 0 && (
+        <div className="bg-slate-900/30 border border-slate-700 rounded-xl p-3 space-y-3">
+          <div>
+            <h4 className="text-white font-semibold">Resumo faturado por paciente ({selectedCompetencia})</h4>
+            <p className="text-xs text-slate-400">Clique no nome do paciente para ver datas, protocolo e mandar uma guia específica para o próximo mês.</p>
+          </div>
+          <div className="overflow-x-auto rounded-lg border border-slate-700">
+            <table className="w-full text-xs">
+              <thead className="bg-slate-900 text-slate-300">
+                <tr>
+                  <th className="text-left p-2">Paciente</th>
+                  <th className="text-right p-2">Guias</th>
+                </tr>
+              </thead>
+              <tbody>
+                {faturamentoGuiasPorPaciente.map((item) => {
+                  const isExpanded = expandedFaturamentoPaciente === item.nome;
+                  return (
+                    <tr key={item.nome} className={`border-t border-slate-800 ${isExpanded ? 'bg-sky-950/30 text-sky-100' : 'text-slate-200'}`}>
+                      <td className="p-2">
+                        <button
+                          onClick={() => setExpandedFaturamentoPaciente(isExpanded ? '' : item.nome)}
+                          className="font-semibold text-left hover:text-sky-300 underline-offset-2 hover:underline"
+                        >
+                          {item.nome}
+                        </button>
+                      </td>
+                      <td className="p-2 text-right font-semibold text-sky-300">{item.sessoes}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {expandedFaturamentoGroup ? (
+            <div className="rounded-lg border border-slate-700 bg-slate-950/40 p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <h5 className="text-sm font-semibold text-white">Guias enviadas • {expandedFaturamentoGroup.nome}</h5>
+                <span className="text-xs text-slate-400">{expandedFaturamentoGroup.sessoes} guia(s)</span>
+              </div>
+              <div className="overflow-x-auto rounded-lg border border-slate-800">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-900 text-slate-300">
+                    <tr>
+                      <th className="text-left p-2">Data atendimento</th>
+                      <th className="text-left p-2">Protocolo</th>
+                      <th className="text-right p-2">Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {expandedFaturamentoGroup.itens.map((it, idx) => (
+                      <tr key={`${it.autorizacao}-${it.data}-${idx}`} className="border-t border-slate-800 text-slate-200">
+                        <td className="p-2">{it.data || '-'}</td>
+                        <td className="p-2 font-semibold text-sky-200">{it.autorizacao || '-'}</td>
+                        <td className="p-2 text-right">
+                          <button
+                            onClick={() => handleDeferFaturamentoItem(it)}
+                            className="px-2 py-1 rounded bg-amber-700 hover:bg-amber-600 text-white font-semibold"
+                          >
+                            Próximo mês
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-[11px] text-slate-400">Ao clicar em “Próximo mês”, o protocolo sai desta competência e fica pendente para entrar automaticamente no próximo fechamento.</p>
+            </div>
+          ) : (
+            <p className="text-[11px] text-slate-400">Cada linha encontrada na guia de faturamento conta como 1 guia/sessão faturada.</p>
+          )}
         </div>
       )}
 

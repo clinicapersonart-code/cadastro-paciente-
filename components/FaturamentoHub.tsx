@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Appointment, ConvenioConfig, Patient } from '../types';
-import { FunservManager } from './FunservManager';
 import { ProfessionalPayouts } from './ProfessionalPayouts';
 import { FaturamentoPagamentos } from './FaturamentoPagamentos';
 import { FaturamentoContasClinica } from './FaturamentoContasClinica';
@@ -54,8 +53,6 @@ export const FaturamentoHub: React.FC<FaturamentoHubProps> = ({
   );
 
   const [selectedConvenio, setSelectedConvenio] = useState(() => convenioNames[0] || '');
-  const [funservTab, setFunservTab] = useState<'fechamentos' | 'contador'>('fechamentos');
-
   useEffect(() => {
     if (!selectedConvenio && convenioNames.length > 0) {
       setSelectedConvenio(convenioNames[0]);
@@ -147,39 +144,7 @@ export const FaturamentoHub: React.FC<FaturamentoHubProps> = ({
               </div>
 
               {isFunserv ? (
-                <div className="space-y-4">
-                  <div className="bg-slate-900/60 border border-slate-700 rounded-xl p-2 inline-flex gap-2 flex-wrap">
-                    <button
-                      onClick={() => setFunservTab('fechamentos')}
-                      className={`px-3 py-2 rounded-lg text-sm font-medium transition ${funservTab === 'fechamentos'
-                        ? 'bg-[#273e44] text-[#e9c49e] border border-[#e9c49e]/10'
-                        : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
-                        }`}
-                    >
-                      Fechamentos / recebimentos
-                    </button>
-                    <button
-                      onClick={() => setFunservTab('contador')}
-                      className={`px-3 py-2 rounded-lg text-sm font-medium transition ${funservTab === 'contador'
-                        ? 'bg-[#273e44] text-[#e9c49e] border border-[#e9c49e]/10'
-                        : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
-                        }`}
-                    >
-                      Contador de guias (extensão)
-                    </button>
-                  </div>
-
-                  {funservTab === 'fechamentos' ? (
-                    <FunservCompetencias />
-                  ) : (
-                    <div className="space-y-3">
-                      <div className="bg-teal-950/20 border border-teal-800/60 rounded-xl p-3 text-sm text-slate-300">
-                        Controle por paciente via extensão Chrome/SaúdeWeb: mostra guias capturadas, sessões usadas/restantes e histórico salvo no cadastro Funserv do paciente.
-                      </div>
-                      <FunservManager patients={patients} onSavePatient={onSavePatient} />
-                    </div>
-                  )}
-                </div>
+                <FunservCompetencias />
               ) : (
                 <ConvenioManualLancamentos convenioName={selectedConvenio || 'Convênio'} />
               )}

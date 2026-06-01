@@ -59,12 +59,16 @@ describe('FunservCompetencias layout', () => {
     expect(html).toMatch(/CLIN\. DE PSICOLOGIA PERSONART LTDA/);
     expect(html).toMatch(/frm0700400/);
     expect(html).toMatch(/Qtde Contas no arquivo: 1/);
+    expect(html).toMatch(/Clique no nome do paciente/);
+    expect(html).toMatch(/Paciente Teste/);
+    expect(html).toMatch(/Guias/);
+    expect(html).not.toMatch(/Mandar para próximo fechamento/);
     expect(html).toContain('type="date"');
     expect(html).toContain('value="2026-05-15"');
     expect(html).toMatch(/15\/05\/2026/);
   });
 
-  test('mantem o contador de guias Funserv via extensao Chrome dentro de Convênios', () => {
+  test('mantem em Convênios apenas o fluxo de fechamentos Funserv', () => {
     setupWindowStorage();
 
     const html = renderToStaticMarkup(React.createElement(FaturamentoHub, {
@@ -75,9 +79,10 @@ describe('FunservCompetencias layout', () => {
       appointments: [],
     }));
 
-    expect(html).toMatch(/Fechamentos \/ recebimentos/);
-    expect(html).toMatch(/Contador de guias \(extensão\)/);
     expect(html).toMatch(/Faturamento — guias enviadas/);
+    expect(html).toMatch(/Recebimento — conferência e glosas/);
+    expect(html).not.toMatch(/Contador de guias \(extensão\)/);
+    expect(html).not.toMatch(/Controle por paciente via extensão Chrome\/SaúdeWeb/);
   });
 
   test('usa 18 sessoes como padrao editavel para novos controles Funserv', () => {
