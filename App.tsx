@@ -6,6 +6,7 @@ import { downloadFile, exportToCSV } from './services/fileService';
 import { supabase, isSupabaseConfigured } from './services/supabase';
 import { syncAppointmentToGoogle } from './services/googleCalendarSync';
 import { groupPendingScheduleChangeRequests, formatScheduleDate } from './utils/scheduleRequests';
+import { buildPatientDataForActiveToggle } from './utils/patientPersistence';
 import { PatientForm } from './components/PatientForm';
 import { PatientTable } from './components/PatientTable';
 import { Agenda } from './components/Agenda';
@@ -1757,7 +1758,10 @@ const App: React.FC = () => {
                                 onToggleActive={async (id, active) => {
                                     setPatients(prev => prev.map(p => p.id === id ? { ...p, active } : p));
                                     if (supabase) {
-                                        await supabase.from('patients').update({ active }).eq('id', id).catch(() => { });
+                                        const patient = patients.find(p => p.id === id);
+                                        if (patient) {
+                                            await supabase.from('patients').update({ data: buildPatientDataForActiveToggle(patient, active) }).eq('id', id).catch(() => { });
+                                        }
                                     }
                                     showToast(active ? 'Paciente reativado!' : 'Paciente desativado.', active ? 'success' : 'info');
                                 }}
@@ -2128,7 +2132,10 @@ const App: React.FC = () => {
                                             setPatients(prev => prev.map(p => p.id === id ? { ...p, active } : p));
                                             setSelectedPatientForRecord(prev => prev ? { ...prev, active } : null);
                                             if (supabase) {
-                                                await supabase.from('patients').update({ active }).eq('id', id).catch(() => { });
+                                                const patient = patients.find(p => p.id === id);
+                                                if (patient) {
+                                                    await supabase.from('patients').update({ data: buildPatientDataForActiveToggle(patient, active) }).eq('id', id).catch(() => { });
+                                                }
                                             }
                                             showToast(active ? 'Paciente reativado!' : 'Paciente desativado.', active ? 'success' : 'info');
                                         }}
