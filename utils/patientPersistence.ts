@@ -5,6 +5,7 @@ export const buildPatientDataForActiveToggle = (patient: Patient, active: boolea
 };
 
 type SupabaseDeleteResponse = { error?: { message?: string } | null };
+type SupabaseWriteResponse = { error?: { message?: string } | null };
 type SupabaseDeleteQuery = {
   eq: (column: string, value: string) => Promise<SupabaseDeleteResponse>;
 };
@@ -13,6 +14,12 @@ type SupabaseDeleteTable = {
 };
 type SupabaseDeleteClient = {
   from: (table: string) => SupabaseDeleteTable;
+};
+type SupabasePatientUpsertTable = {
+  upsert: (payload: unknown) => Promise<SupabaseWriteResponse>;
+};
+type SupabasePatientUpsertClient = {
+  from: (table: 'patients') => SupabasePatientUpsertTable;
 };
 
 export const PATIENT_CLOUD_DELETE_STEPS = [
@@ -37,4 +44,36 @@ export const deletePatientFromCloud = async (
       throw new Error(`Falha ao excluir ${step.table}: ${error.message || 'erro desconhecido'}`);
     }
   }
+};
+
+export const buildPatientCloudRecord = (patient: Patient) => {
+  const cleanData: Patient = JSON.parse(JSON.stringify(patient));
+  const numAut = cleanData.funservConfig?.numeroAutorizacao || cleanData.numero_autorizacao || '';
+  const dataAut = cleanData.funservConfig?.dataAutorizacao || cleanData.data_autorizacao || null;
+
+  return {
+    id: cleanData.id,
+    nome: cleanData.nome,
+    carteirinha: cleanData.carteirinha || '',
+    numero_autorizacao: numAut,
+    data_autorizacao: dataAut,
+    data: cleanData,
+  };
+};
+
+export const persistPatientActiveToggle = async (
+  supabaseClient: SupabasePatientUpsertClient,
+  patient: Patient,
+  active: boolean,
+): Promise<Patient> => {
+  const patientToSave = buildPatientDataForActiveToggle(patient, active);
+  const { error } = await supabaseClient
+    .from('patients')
+    .upsert(buildPatientCloudRecord(patientToSave));
+
+  if (error) {
+    throw new Error(`Falha ao salvar status do paciente: ${error.message || 'erro desconhecido'}`);
+  }
+
+  return patientToSave;
 };

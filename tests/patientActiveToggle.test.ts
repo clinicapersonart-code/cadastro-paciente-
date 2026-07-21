@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import type { Patient } from '../types';
-import { buildPatientDataForActiveToggle, deletePatientFromCloud, PATIENT_CLOUD_DELETE_STEPS } from '../utils/patientPersistence';
+import { buildPatientDataForActiveToggle, deletePatientFromCloud, PATIENT_CLOUD_DELETE_STEPS, persistPatientActiveToggle } from '../utils/patientPersistence';
 
 const patientBase = (overrides: Partial<Patient> = {}): Patient => ({
   id: '1',
@@ -78,4 +78,48 @@ test('permanent deletion: throws when Supabase returns an error instead of silen
   await expect(deletePatientFromCloud(fakeSupabase, 'patient-1'))
     .rejects
     .toThrow('Falha ao excluir patients: violates foreign key');
+});
+
+test('deactivation cloud sync: persists the full patient data payload with active=false', async () => {
+  const upserted: any[] = [];
+  const fakeSupabase = {
+    from: (table: string) => {
+      expect(table).toBe('patients');
+      return {
+        upsert: async (payload: any) => {
+          upserted.push(payload);
+          return { error: null };
+        },
+      };
+    },
+  };
+
+  const updated = await persistPatientActiveToggle(fakeSupabase, patientBase({
+    active: true,
+    convenio: 'Funserv',
+    carteirinha: '123',
+    funservConfig: { numeroAutorizacao: '999', dataAutorizacao: '2026-07-01' } as any,
+  }), false);
+
+  expect(updated.active).toBe(false);
+  expect(upserted).toHaveLength(1);
+  expect(upserted[0].id).toBe('1');
+  expect(upserted[0].nome).toBe('Maria');
+  expect(upserted[0].carteirinha).toBe('123');
+  expect(upserted[0].numero_autorizacao).toBe('999');
+  expect(upserted[0].data_autorizacao).toBe('2026-07-01');
+  expect(upserted[0].data.active).toBe(false);
+  expect(upserted[0].data.convenio).toBe('Funserv');
+});
+
+test('deactivation cloud sync: throws Supabase errors so the UI cannot claim success', async () => {
+  const fakeSupabase = {
+    from: () => ({
+      upsert: async () => ({ error: { message: 'update blocked by policy' } }),
+    }),
+  };
+
+  await expect(persistPatientActiveToggle(fakeSupabase, patientBase({ active: true }), false))
+    .rejects
+    .toThrow('Falha ao salvar status do paciente: update blocked by policy');
 });

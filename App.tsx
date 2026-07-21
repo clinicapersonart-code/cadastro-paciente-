@@ -6,7 +6,7 @@ import { downloadFile, exportToCSV } from './services/fileService';
 import { supabase, isSupabaseConfigured } from './services/supabase';
 import { syncAppointmentToGoogle } from './services/googleCalendarSync';
 import { groupPendingScheduleChangeRequests, formatScheduleDate } from './utils/scheduleRequests';
-import { buildPatientDataForActiveToggle, deletePatientFromCloud } from './utils/patientPersistence';
+import { buildPatientDataForActiveToggle, deletePatientFromCloud, persistPatientActiveToggle } from './utils/patientPersistence';
 import { PatientForm } from './components/PatientForm';
 import { PatientTable } from './components/PatientTable';
 import { Agenda } from './components/Agenda';
@@ -1219,6 +1219,29 @@ const App: React.FC = () => {
         showToast(`Bem-vindo(a), ${user.name.split(' ')[0]}!`, 'success');
     };
 
+    const handleTogglePatientActive = async (id: string, active: boolean) => {
+        const patient = patients.find(p => p.id === id);
+        if (!patient) return;
+
+        const updatedPatient = buildPatientDataForActiveToggle(patient, active);
+        setPatients(prev => prev.map(p => p.id === id ? updatedPatient : p));
+        setSelectedPatientForRecord(prev => prev?.id === id ? updatedPatient : prev);
+
+        if (supabase && isSupabaseConfigured() && connectionStatus !== 'offline') {
+            try {
+                await persistPatientActiveToggle(supabase, patient, active);
+                showToast(active ? 'Paciente reativado!' : 'Paciente desativado.', active ? 'success' : 'info');
+            } catch (e: any) {
+                console.error('Erro ao salvar status do paciente:', e);
+                setPatients(prev => prev.map(p => p.id === id ? patient : p));
+                setSelectedPatientForRecord(prev => prev?.id === id ? patient : prev);
+                showToast(`Não consegui salvar a alteração na nuvem: ${e?.message || 'erro desconhecido'}`, 'error');
+            }
+        } else {
+            showToast(active ? 'Paciente reativado localmente.' : 'Paciente desativado localmente.', 'info');
+        }
+    };
+
     const filteredPatients = useMemo(() => {
         return patients.filter(p => {
             // RBAC: Profissionais só veem seus próprios pacientes
@@ -1749,16 +1772,7 @@ const App: React.FC = () => {
                                 patients={filteredPatients}
                                 onEdit={p => { setEditingPatient(p); window.scrollTo(0, 0); }}
                                 onDelete={handleDeletePatient}
-                                onToggleActive={async (id, active) => {
-                                    setPatients(prev => prev.map(p => p.id === id ? { ...p, active } : p));
-                                    if (supabase) {
-                                        const patient = patients.find(p => p.id === id);
-                                        if (patient) {
-                                            await supabase.from('patients').update({ data: buildPatientDataForActiveToggle(patient, active) }).eq('id', id).catch(() => { });
-                                        }
-                                    }
-                                    showToast(active ? 'Paciente reativado!' : 'Paciente desativado.', active ? 'success' : 'info');
-                                }}
+                                onToggleActive={handleTogglePatientActive}
                             />
                         </div>
                     </div>
@@ -1905,9 +1919,7 @@ const App: React.FC = () => {
                                                                         onClick={async (e) => {
                                                                             e.stopPropagation();
                                                                             const newActive = patient.active === false ? true : false;
-                                                                            setPatients(prev => prev.map(p => p.id === patient.id ? { ...p, active: newActive } : p));
-                                                                            if (supabase) await supabase.from('patients').update({ data: buildPatientDataForActiveToggle(patient, newActive) }).eq('id', patient.id).catch(() => { });
-                                                                            showToast(newActive ? 'Paciente reativado!' : 'Paciente desativado.', newActive ? 'success' : 'info');
+                                                                            await handleTogglePatientActive(patient.id, newActive);
                                                                         }}
                                                                         className={`absolute top-2 right-2 p-1.5 rounded-lg text-sm opacity-0 group-hover:opacity-100 transition-all ${patient.active === false ? 'text-green-400 hover:bg-green-500/10' : 'text-amber-400 hover:bg-amber-500/10'}`}
                                                                         title={patient.active === false ? 'Reativar' : 'Desativar'}
@@ -1960,9 +1972,7 @@ const App: React.FC = () => {
                                                                         onClick={async (e) => {
                                                                             e.stopPropagation();
                                                                             const newActive = patient.active === false ? true : false;
-                                                                            setPatients(prev => prev.map(p => p.id === patient.id ? { ...p, active: newActive } : p));
-                                                                            if (supabase) await supabase.from('patients').update({ data: buildPatientDataForActiveToggle(patient, newActive) }).eq('id', patient.id).catch(() => { });
-                                                                            showToast(newActive ? 'Paciente reativado!' : 'Paciente desativado.', newActive ? 'success' : 'info');
+                                                                            await handleTogglePatientActive(patient.id, newActive);
                                                                         }}
                                                                         className={`absolute top-2 right-2 p-1.5 rounded-lg text-sm opacity-0 group-hover:opacity-100 transition-all ${patient.active === false ? 'text-green-400 hover:bg-green-500/10' : 'text-amber-400 hover:bg-amber-500/10'}`}
                                                                         title={patient.active === false ? 'Reativar' : 'Desativar'}
@@ -2122,17 +2132,7 @@ const App: React.FC = () => {
                                                 });
                                             }
                                         }}
-                                        onToggleActive={async (id, active) => {
-                                            setPatients(prev => prev.map(p => p.id === id ? { ...p, active } : p));
-                                            setSelectedPatientForRecord(prev => prev ? { ...prev, active } : null);
-                                            if (supabase) {
-                                                const patient = patients.find(p => p.id === id);
-                                                if (patient) {
-                                                    await supabase.from('patients').update({ data: buildPatientDataForActiveToggle(patient, active) }).eq('id', id).catch(() => { });
-                                                }
-                                            }
-                                            showToast(active ? 'Paciente reativado!' : 'Paciente desativado.', active ? 'success' : 'info');
-                                        }}
+                                        onToggleActive={handleTogglePatientActive}
                                         onDelete={handleDeletePatient}
                                         onBack={() => setSelectedPatientForRecord(null)}
                                     />
