@@ -6,7 +6,7 @@ import { downloadFile, exportToCSV } from './services/fileService';
 import { supabase, isSupabaseConfigured } from './services/supabase';
 import { syncAppointmentToGoogle } from './services/googleCalendarSync';
 import { groupPendingScheduleChangeRequests, formatScheduleDate } from './utils/scheduleRequests';
-import { buildPatientDataForActiveToggle } from './utils/patientPersistence';
+import { buildPatientDataForActiveToggle, deletePatientFromCloud } from './utils/patientPersistence';
 import { PatientForm } from './components/PatientForm';
 import { PatientTable } from './components/PatientTable';
 import { Agenda } from './components/Agenda';
@@ -678,17 +678,11 @@ const App: React.FC = () => {
         // 2. Remove da nuvem (Supabase)
         if (supabase && isSupabaseConfigured() && connectionStatus !== 'offline') {
             try {
-                await Promise.all([
-                    supabase.from('patients').delete().eq('id', id),
-                    supabase.from('medical_records').delete().eq('patient_id', id),
-                    supabase.from('appointments').delete().eq('patient_id', id),
-                    supabase.from('patient_documents').delete().eq('patient_id', id),
-                    supabase.from('document_folders').delete().eq('patient_id', id),
-                ]);
+                await deletePatientFromCloud(supabase, id);
                 showToast(`Paciente "${patientName}" excluído permanentemente.`, 'info');
-            } catch (e) {
+            } catch (e: any) {
                 console.error('Erro ao excluir da nuvem:', e);
-                showToast(`Paciente excluído localmente. Erro na nuvem.`, 'error');
+                showToast(`Paciente removido da tela, mas a exclusão na nuvem falhou: ${e?.message || 'erro desconhecido'}`, 'error');
             }
             await Promise.all(patientAppointments.map(appt => syncAppointmentWithGoogle(appt, 'delete')));
         } else {
@@ -1908,11 +1902,11 @@ const App: React.FC = () => {
                                                                         <p className="text-xs text-slate-600 mt-1">{(medicalRecords[patient.id]?.length || 0)} registro(s)</p>
                                                                     </button>
                                                                     <button
-                                                                        onClick={(e) => {
+                                                                        onClick={async (e) => {
                                                                             e.stopPropagation();
                                                                             const newActive = patient.active === false ? true : false;
                                                                             setPatients(prev => prev.map(p => p.id === patient.id ? { ...p, active: newActive } : p));
-                                                                            if (supabase) supabase.from('patients').update({ active: newActive }).eq('id', patient.id).catch(() => { });
+                                                                            if (supabase) await supabase.from('patients').update({ data: buildPatientDataForActiveToggle(patient, newActive) }).eq('id', patient.id).catch(() => { });
                                                                             showToast(newActive ? 'Paciente reativado!' : 'Paciente desativado.', newActive ? 'success' : 'info');
                                                                         }}
                                                                         className={`absolute top-2 right-2 p-1.5 rounded-lg text-sm opacity-0 group-hover:opacity-100 transition-all ${patient.active === false ? 'text-green-400 hover:bg-green-500/10' : 'text-amber-400 hover:bg-amber-500/10'}`}
@@ -1963,11 +1957,11 @@ const App: React.FC = () => {
                                                                         <p className="text-xs text-slate-600 mt-1">{(medicalRecords[patient.id]?.length || 0)} registro(s)</p>
                                                                     </button>
                                                                     <button
-                                                                        onClick={(e) => {
+                                                                        onClick={async (e) => {
                                                                             e.stopPropagation();
                                                                             const newActive = patient.active === false ? true : false;
                                                                             setPatients(prev => prev.map(p => p.id === patient.id ? { ...p, active: newActive } : p));
-                                                                            if (supabase) supabase.from('patients').update({ active: newActive }).eq('id', patient.id).catch(() => { });
+                                                                            if (supabase) await supabase.from('patients').update({ data: buildPatientDataForActiveToggle(patient, newActive) }).eq('id', patient.id).catch(() => { });
                                                                             showToast(newActive ? 'Paciente reativado!' : 'Paciente desativado.', newActive ? 'success' : 'info');
                                                                         }}
                                                                         className={`absolute top-2 right-2 p-1.5 rounded-lg text-sm opacity-0 group-hover:opacity-100 transition-all ${patient.active === false ? 'text-green-400 hover:bg-green-500/10' : 'text-amber-400 hover:bg-amber-500/10'}`}
