@@ -192,6 +192,20 @@ export interface UserProfile {
   color?: string; // Cor na agenda
 }
 
+export type PatientAccessLevel = 'full' | 'documents_only' | 'upload_report_only';
+
+export interface PatientAccessGrant {
+  id: string;
+  patientId: string;
+  userId: string;
+  userName?: string;
+  accessLevel: PatientAccessLevel;
+  active: boolean;
+  createdAt: string;
+  createdByUserId: string;
+  createdByName: string;
+}
+
 export interface MedicalRecordChunk {
   id: string;
   date: string;
@@ -241,9 +255,15 @@ export interface PatientDocument {
   title: string;
   type: 'Laudo' | 'Atestado' | 'Encaminhamento' | 'Contrato' | 'Outro';
   date: string;
+  kind?: 'created' | 'uploaded'; // undefined = documento legado criado no sistema
   content?: string; // Para documentos gerados no sistema (HTML/Texto)
-  fileData?: string; // Base64 para pequenos arquivos
+  fileData?: string; // Legado: Base64 para pequenos arquivos
   fileName?: string;
+  filePath?: string; // Caminho privado no Supabase Storage
+  fileMimeType?: string;
+  fileSize?: number;
+  storageBucket?: string;
+  uploadedAt?: string;
   professionalName: string;
   professionalId: string;
   folderId?: string; // ID da pasta (null = raiz)

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Patient, BrandConfig, Appointment, PreCadastro, UserProfile, MedicalRecordChunk, ActivityLog, ScheduleChangeRequest, ConvenioConfig, WaitlistEntry } from './types';
+import { Patient, BrandConfig, Appointment, PreCadastro, UserProfile, MedicalRecordChunk, ActivityLog, ScheduleChangeRequest, ConvenioConfig, WaitlistEntry, PatientAccessGrant } from './types';
 import { STORAGE_KEYS, DEFAULT_CONVENIOS, DEFAULT_PROFISSIONAIS, DEFAULT_ESPECIALIDADES } from './constants';
 import useLocalStorage from './hooks/useLocalStorage';
 import { downloadFile, exportToCSV } from './services/fileService';
@@ -7,6 +7,7 @@ import { supabase, isSupabaseConfigured } from './services/supabase';
 import { syncAppointmentToGoogle } from './services/googleCalendarSync';
 import { groupPendingScheduleChangeRequests, formatScheduleDate } from './utils/scheduleRequests';
 import { buildPatientDataForActiveToggle, deletePatientFromCloud, persistPatientActiveToggle } from './utils/patientPersistence';
+import { getPatientAccessMode, listPatientsVisibleToUser } from './utils/patientAccess';
 import { PatientForm } from './components/PatientForm';
 import { PatientTable } from './components/PatientTable';
 import { Agenda } from './components/Agenda';
@@ -97,9 +98,10 @@ const App: React.FC = () => {
     const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
     const [medicalRecords, setMedicalRecords] = useLocalStorage<Record<string, import('./types').MedicalRecordChunk[]>>('personart.medical_records.db', {});
 
-    // Estado para Documentos e Pastas (persistência por paciente)
+    // Estado para Documentos, Pastas e Compartilhamentos (persistência por paciente)
     const [patientDocuments, setPatientDocuments] = useLocalStorage<Record<string, import('./types').PatientDocument[]>>('personart.patient_documents.db', {});
     const [documentFolders, setDocumentFolders] = useLocalStorage<Record<string, import('./types').DocumentFolder[]>>('personart.document_folders.db', {});
+    const [patientAccessGrants, setPatientAccessGrants] = useLocalStorage<PatientAccessGrant[]>('personart.patient_access.db', []);
 
     const googleSyncEnabled = String(import.meta.env.VITE_GOOGLE_CALENDAR_SYNC_ENABLED ?? '').toLowerCase().trim() === 'true';
 
@@ -278,7 +280,31 @@ const App: React.FC = () => {
                 try {
                     const { data: patData, error: patError } = await supabase.from('patients').select('*');
                     if (patError) throw patError;
-                    if (patData) setPatients(patData.map((row: any) => row.data));
+                    const cloudPatients = patData ? patData.map((row: any) => row.data as Patient) : [];
+                    if (patData) setPatients(cloudPatients);
+
+                    let cloudAccessGrants: PatientAccessGrant[] = [];
+                    try {
+                        const { data: accessData, error: accessError } = await supabase.from('patient_access').select('*');
+                        if (!accessError && accessData) {
+                            cloudAccessGrants = accessData.map((row: any) => ({
+                                ...(row.data || row),
+                                active: row.active ?? row.data?.active ?? true,
+                                accessLevel: row.access_level || row.data?.accessLevel
+                            }) as PatientAccessGrant);
+                            setPatientAccessGrants(cloudAccessGrants);
+                        }
+                    } catch (e) {
+                        // Ambientes antigos podem ainda não ter a tabela patient_access.
+                        console.warn('Compartilhamentos de paciente ainda não disponíveis na nuvem:', e);
+                    }
+
+                    const visiblePatients = listPatientsVisibleToUser(cloudPatients, currentUser, cloudAccessGrants);
+                    const visiblePatientIds = visiblePatients.map(p => p.id);
+                    const fullAccessPatientIds = cloudPatients
+                        .filter(p => getPatientAccessMode(p, currentUser, cloudAccessGrants) === 'full')
+                        .map(p => p.id);
+                    const hasGlobalPatientAccess = currentUser?.role === 'clinic' || currentUser?.role === 'admin';
 
                     const { data: apptData, error: apptError } = await supabase.from('appointments').select('*');
                     if (!apptError && apptData) setAppointments(apptData.map((row: any) => row.data));
@@ -286,7 +312,18 @@ const App: React.FC = () => {
                     const { data: inboxData } = await supabase.from('inbox').select('*');
                     if (inboxData) setInbox(inboxData.map((row: any) => row.data));
 
-                    const { data: recData, error: recError } = await supabase.from('medical_records').select('*');
+                    let recQuery = supabase.from('medical_records').select('*');
+                    if (!hasGlobalPatientAccess) {
+                        if (fullAccessPatientIds.length === 0) {
+                            setMedicalRecords({});
+                        } else {
+                            recQuery = recQuery.in('patient_id', fullAccessPatientIds);
+                        }
+                    }
+
+                    const { data: recData, error: recError } = !hasGlobalPatientAccess && fullAccessPatientIds.length === 0
+                        ? { data: [], error: null }
+                        : await recQuery;
                     const cloudIds = new Set<string>();
                     if (!recError && recData && recData.length > 0) {
                         const grouped: Record<string, MedicalRecordChunk[]> = {};
@@ -303,6 +340,7 @@ const App: React.FC = () => {
                     const localRecords = JSON.parse(localStorage.getItem('personart.medical_records.db') || '{}');
                     const toUpload: any[] = [];
                     Object.entries(localRecords).forEach(([patientId, records]: [string, any]) => {
+                        if (!hasGlobalPatientAccess && !fullAccessPatientIds.includes(patientId)) return;
                         if (Array.isArray(records)) {
                             records.forEach((rec: MedicalRecordChunk) => {
                                 if (!cloudIds.has(rec.id)) {
@@ -368,7 +406,11 @@ const App: React.FC = () => {
                     setConnectionStatus('connected');
                     setDbError('');
 
-                    const { data: docData } = await supabase.from('patient_documents').select('*');
+                    const shouldLoadPatientScopedDocuments = hasGlobalPatientAccess || visiblePatientIds.length > 0;
+                    const docQuery = hasGlobalPatientAccess
+                        ? supabase.from('patient_documents').select('*')
+                        : supabase.from('patient_documents').select('*').in('patient_id', visiblePatientIds);
+                    const { data: docData } = shouldLoadPatientScopedDocuments ? await docQuery : { data: [] as any[] };
                     if (docData) {
                         const groupedDocs: Record<string, import('./types').PatientDocument[]> = {};
                         docData.forEach((row: any) => {
@@ -379,7 +421,10 @@ const App: React.FC = () => {
                         setPatientDocuments(groupedDocs);
                     }
 
-                    const { data: folderData } = await supabase.from('document_folders').select('*');
+                    const folderQuery = hasGlobalPatientAccess
+                        ? supabase.from('document_folders').select('*')
+                        : supabase.from('document_folders').select('*').in('patient_id', visiblePatientIds);
+                    const { data: folderData } = shouldLoadPatientScopedDocuments ? await folderQuery : { data: [] as any[] };
                     if (folderData) {
                         const groupedFolders: Record<string, import('./types').DocumentFolder[]> = {};
                         folderData.forEach((row: any) => {
@@ -1244,19 +1289,9 @@ const App: React.FC = () => {
 
     const filteredPatients = useMemo(() => {
         return patients.filter(p => {
-            // RBAC: Profissionais só veem seus próprios pacientes
+            // RBAC: Profissionais só veem pacientes atribuídos ou compartilhados explicitamente
             if (currentUser?.role === 'professional') {
-                // Verifica se o nome do profissional está na lista de profissionais do paciente
-                const professionalName = currentUser.name;
-                const patientProfessionals = p.profissionais || [];
-
-                // Busca correspondência parcial (ex: "Simone" bate com "Simone - CRP 06/123")
-                const isAssigned = patientProfessionals.some(prof =>
-                    prof && (prof.toLowerCase().includes(professionalName.toLowerCase()) ||
-                        professionalName.toLowerCase().includes((prof.split(' - ')[0] || '').toLowerCase()))
-                );
-
-                if (!isAssigned) return false;
+                if (getPatientAccessMode(p, currentUser, patientAccessGrants) === 'none') return false;
             }
 
             const s = searchTerm.toLowerCase();
@@ -1270,7 +1305,19 @@ const App: React.FC = () => {
 
             return true;
         }).sort((a, b) => a.nome.localeCompare(b.nome));
-    }, [patients, searchTerm, filters, currentUser, showInactive]);
+    }, [patients, searchTerm, filters, currentUser, showInactive, patientAccessGrants]);
+
+    const currentUserHasFullPatientAccess = useMemo(() => {
+        if (!currentUser) return false;
+        if (currentUser.role === 'clinic' || currentUser.role === 'admin') return true;
+        return patients.some(p => getPatientAccessMode(p, currentUser, patientAccessGrants) === 'full');
+    }, [patients, currentUser, patientAccessGrants]);
+
+    useEffect(() => {
+        if (currentUser?.role === 'professional' && !currentUserHasFullPatientAccess && activeTab !== 'prontuario') {
+            setActiveTab('prontuario');
+        }
+    }, [currentUser, currentUserHasFullPatientAccess, activeTab, setActiveTab]);
 
     const copyLink = (pathOrQuery: string) => {
         const basePath = (window.location.pathname || '/').replace(/\/+$/, '');
@@ -1330,6 +1377,68 @@ const App: React.FC = () => {
         }
 
         showToast(`Usuário "${updatedUser.name}" atualizado!`, 'success');
+    };
+
+    const handleSavePatientAccessGrant = (grant: PatientAccessGrant) => {
+        setPatientAccessGrants(prev => {
+            const withoutDuplicateActiveGrant = prev.map(existing =>
+                existing.patientId === grant.patientId && existing.userId === grant.userId && existing.active !== false
+                    ? { ...existing, active: false }
+                    : existing
+            );
+            return [...withoutDuplicateActiveGrant, grant];
+        });
+
+        if (supabase && connectionStatus !== 'offline') {
+            supabase.from('patient_access')
+                .update({ active: false })
+                .eq('patient_id', grant.patientId)
+                .eq('user_id', grant.userId)
+                .eq('active', true)
+                .then(({ error }) => {
+                    if (error) console.error('Erro ao desativar compartilhamento anterior:', error);
+                });
+
+            supabase.from('patient_access').upsert({
+                id: grant.id,
+                patient_id: grant.patientId,
+                user_id: grant.userId,
+                access_level: grant.accessLevel,
+                active: grant.active,
+                data: JSON.parse(JSON.stringify(grant))
+            }).then(({ error }) => {
+                if (error) {
+                    console.error('Erro ao salvar compartilhamento na nuvem:', error);
+                    showToast('Compartilhamento salvo localmente, mas falhou na nuvem.', 'error');
+                }
+            });
+        }
+
+        showToast('Acesso do paciente compartilhado.', 'success');
+    };
+
+    const handleDeletePatientAccessGrant = (grantId: string) => {
+        setPatientAccessGrants(prev => prev.map(grant => grant.id === grantId ? { ...grant, active: false } : grant));
+
+        const grant = patientAccessGrants.find(g => g.id === grantId);
+        if (supabase && connectionStatus !== 'offline' && grant) {
+            const inactiveGrant = { ...grant, active: false };
+            supabase.from('patient_access').upsert({
+                id: inactiveGrant.id,
+                patient_id: inactiveGrant.patientId,
+                user_id: inactiveGrant.userId,
+                access_level: inactiveGrant.accessLevel,
+                active: false,
+                data: JSON.parse(JSON.stringify(inactiveGrant))
+            }).then(({ error }) => {
+                if (error) {
+                    console.error('Erro ao revogar compartilhamento na nuvem:', error);
+                    showToast('Revogado localmente, mas falhou na nuvem.', 'error');
+                }
+            });
+        }
+
+        showToast('Compartilhamento revogado.', 'info');
     };
 
     if (view === 'landing') return (
@@ -1451,13 +1560,15 @@ const App: React.FC = () => {
                             </>
                         )}
 
-                        {/* Prontuário visível apenas para profissionais e admin */}
+                        {/* Prontuário/Pacientes visível para profissionais/admin; agenda só com acesso clínico completo */}
                         {currentUser?.role !== 'clinic' && (
                             <>
-                                <button onClick={() => setActiveTab('agenda')} className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${activeTab === 'agenda' ? 'bg-sky-600' : 'hover:bg-slate-700'}`}>
-                                    <CalendarIcon className="w-4 h-4" />
-                                    Agenda
-                                </button>
+                                {currentUserHasFullPatientAccess && (
+                                    <button onClick={() => setActiveTab('agenda')} className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${activeTab === 'agenda' ? 'bg-sky-600' : 'hover:bg-slate-700'}`}>
+                                        <CalendarIcon className="w-4 h-4" />
+                                        Agenda
+                                    </button>
+                                )}
                                 <button onClick={() => setActiveTab('prontuario')} className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${activeTab === 'prontuario' ? 'bg-green-600' : 'hover:bg-slate-700'}`}>
                                     <FileTextIcon className="w-4 h-4" />
                                     Pacientes
@@ -1465,8 +1576,8 @@ const App: React.FC = () => {
                             </>
                         )}
 
-                        {/* Cadastrar Paciente visível para admin e profissionais */}
-                        {(currentUser?.role === 'admin' || currentUser?.role === 'professional') && (
+                        {/* Cadastrar Paciente visível para admin e profissionais com acesso clínico completo */}
+                        {(currentUser?.role === 'admin' || (currentUser?.role === 'professional' && currentUserHasFullPatientAccess)) && (
                             <button onClick={() => setActiveTab('cadastro')} className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${activeTab === 'cadastro' ? 'bg-purple-600' : 'hover:bg-slate-700'}`}>
                                 <PlusIcon className="w-4 h-4" />
                                 Cadastrar
@@ -1913,19 +2024,25 @@ const App: React.FC = () => {
                                                                             )}
                                                                         </h3>
                                                                         <p className="text-xs text-slate-500">{patient.convenio || 'Particular'} • {patient.faixa || 'N/I'}</p>
-                                                                        <p className="text-xs text-slate-600 mt-1">{(medicalRecords[patient.id]?.length || 0)} registro(s)</p>
+                                                                        {getPatientAccessMode(patient, currentUser, patientAccessGrants) === 'full' ? (
+                                                                            <p className="text-xs text-slate-600 mt-1">{(medicalRecords[patient.id]?.length || 0)} registro(s)</p>
+                                                                        ) : (
+                                                                            <p className="text-xs text-sky-400 mt-1">Acesso limitado • anexar laudo/documentos</p>
+                                                                        )}
                                                                     </button>
-                                                                    <button
-                                                                        onClick={async (e) => {
-                                                                            e.stopPropagation();
-                                                                            const newActive = patient.active === false ? true : false;
-                                                                            await handleTogglePatientActive(patient.id, newActive);
-                                                                        }}
-                                                                        className={`absolute top-2 right-2 p-1.5 rounded-lg text-sm opacity-0 group-hover:opacity-100 transition-all ${patient.active === false ? 'text-green-400 hover:bg-green-500/10' : 'text-amber-400 hover:bg-amber-500/10'}`}
-                                                                        title={patient.active === false ? 'Reativar' : 'Desativar'}
-                                                                    >
-                                                                        {patient.active === false ? '✅' : '⏸️'}
-                                                                    </button>
+                                                                    {getPatientAccessMode(patient, currentUser, patientAccessGrants) === 'full' && (
+                                                                        <button
+                                                                            onClick={async (e) => {
+                                                                                e.stopPropagation();
+                                                                                const newActive = patient.active === false ? true : false;
+                                                                                await handleTogglePatientActive(patient.id, newActive);
+                                                                            }}
+                                                                            className={`absolute top-2 right-2 p-1.5 rounded-lg text-sm opacity-0 group-hover:opacity-100 transition-all ${patient.active === false ? 'text-green-400 hover:bg-green-500/10' : 'text-amber-400 hover:bg-amber-500/10'}`}
+                                                                            title={patient.active === false ? 'Reativar' : 'Desativar'}
+                                                                        >
+                                                                            {patient.active === false ? '✅' : '⏸️'}
+                                                                        </button>
+                                                                    )}
                                                                 </div>
                                                             ))}
                                                         </div>
@@ -1966,19 +2083,25 @@ const App: React.FC = () => {
                                                                             )}
                                                                         </h3>
                                                                         <p className="text-xs text-slate-500">{patient.convenio || 'Particular'} • {patient.faixa || 'N/I'}</p>
-                                                                        <p className="text-xs text-slate-600 mt-1">{(medicalRecords[patient.id]?.length || 0)} registro(s)</p>
+                                                                        {getPatientAccessMode(patient, currentUser, patientAccessGrants) === 'full' ? (
+                                                                            <p className="text-xs text-slate-600 mt-1">{(medicalRecords[patient.id]?.length || 0)} registro(s)</p>
+                                                                        ) : (
+                                                                            <p className="text-xs text-sky-400 mt-1">Acesso limitado • anexar laudo/documentos</p>
+                                                                        )}
                                                                     </button>
-                                                                    <button
-                                                                        onClick={async (e) => {
-                                                                            e.stopPropagation();
-                                                                            const newActive = patient.active === false ? true : false;
-                                                                            await handleTogglePatientActive(patient.id, newActive);
-                                                                        }}
-                                                                        className={`absolute top-2 right-2 p-1.5 rounded-lg text-sm opacity-0 group-hover:opacity-100 transition-all ${patient.active === false ? 'text-green-400 hover:bg-green-500/10' : 'text-amber-400 hover:bg-amber-500/10'}`}
-                                                                        title={patient.active === false ? 'Reativar' : 'Desativar'}
-                                                                    >
-                                                                        {patient.active === false ? '✅' : '⏸️'}
-                                                                    </button>
+                                                                    {getPatientAccessMode(patient, currentUser, patientAccessGrants) === 'full' && (
+                                                                        <button
+                                                                            onClick={async (e) => {
+                                                                                e.stopPropagation();
+                                                                                const newActive = patient.active === false ? true : false;
+                                                                                await handleTogglePatientActive(patient.id, newActive);
+                                                                            }}
+                                                                            className={`absolute top-2 right-2 p-1.5 rounded-lg text-sm opacity-0 group-hover:opacity-100 transition-all ${patient.active === false ? 'text-green-400 hover:bg-green-500/10' : 'text-amber-400 hover:bg-amber-500/10'}`}
+                                                                            title={patient.active === false ? 'Reativar' : 'Desativar'}
+                                                                        >
+                                                                            {patient.active === false ? '✅' : '⏸️'}
+                                                                        </button>
+                                                                    )}
                                                                 </div>
                                                             ))}
                                                         </div>
@@ -2015,7 +2138,7 @@ const App: React.FC = () => {
                                     <PatientPortal
                                         patient={selectedPatientForRecord}
                                         currentUser={currentUser}
-                                        existingRecords={medicalRecords[selectedPatientForRecord.id] || []}
+                                        existingRecords={getPatientAccessMode(selectedPatientForRecord, currentUser, patientAccessGrants) === 'full' ? (medicalRecords[selectedPatientForRecord.id] || []) : []}
                                         onSaveRecord={(patientId, record) => {
                                             setMedicalRecords(prev => ({
                                                 ...prev,
@@ -2071,7 +2194,12 @@ const App: React.FC = () => {
                                             }
                                             showToast('Registro excluído!', 'info');
                                         }}
-                                        // === Documentos e Pastas ===
+                                        // === Documentos, Pastas e Compartilhamentos ===
+                                        accessMode={getPatientAccessMode(selectedPatientForRecord, currentUser, patientAccessGrants) === 'full' ? 'full' : getPatientAccessMode(selectedPatientForRecord, currentUser, patientAccessGrants) === 'documents_only' ? 'documents_only' : 'upload_report_only'}
+                                        users={users}
+                                        patientAccessGrants={patientAccessGrants}
+                                        onSavePatientAccessGrant={handleSavePatientAccessGrant}
+                                        onDeletePatientAccessGrant={handleDeletePatientAccessGrant}
                                         documents={patientDocuments[selectedPatientForRecord.id] || []}
                                         folders={documentFolders[selectedPatientForRecord.id] || []}
                                         onSaveDocument={(patientId, doc) => {
