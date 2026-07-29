@@ -1812,9 +1812,7 @@ const App: React.FC = () => {
                             onSave={handleSavePatient}
                             onClear={() => setEditingPatient(null)}
                             convenios={convenioNames} profissionais={profissionais} especialidades={especialidades}
-                            onAddProfissional={p => setProfissionais(prev => [...prev, p])}
                             onAddEspecialidade={e => setEspecialidades(prev => [...prev, e])}
-                            onRemoveProfissional={p => setProfissionais(prev => prev.filter(x => x !== p))}
                             onRemoveEspecialidade={e => setEspecialidades(prev => prev.filter(x => x !== e))}
                             hideProntuario={currentUser?.role === 'clinic'}
                         />
@@ -2305,7 +2303,6 @@ const App: React.FC = () => {
                                     : especialidades
                             }
                             onAddConvenio={c => setConvenios(prev => [...prev, c])}
-                            // Profissionais: trava nome, esconde criar novo
                             lockedProfessional={
                                 currentUser?.role === 'professional'
                                     ? (profissionais.find(p =>
@@ -2314,12 +2311,9 @@ const App: React.FC = () => {
                                     ) || currentUser.name)
                                     : undefined
                             }
-                            hideProfessionalAdd={currentUser?.role === 'professional'}
                             hideEspecialidadeAdd={currentUser?.role === 'professional'}
-                            onAddProfissional={currentUser?.role === 'admin' ? (p => setProfissionais(prev => [...prev, p])) : undefined}
                             onAddEspecialidade={currentUser?.role === 'admin' ? (e => setEspecialidades(prev => [...prev, e])) : undefined}
                             onRemoveConvenio={currentUser?.role === 'admin' ? (c => setConvenios(prev => prev.filter(x => x !== c))) : undefined}
-                            onRemoveProfissional={currentUser?.role === 'admin' ? (p => setProfissionais(prev => prev.filter(x => x !== p))) : undefined}
                             onRemoveEspecialidade={currentUser?.role === 'admin' ? (e => setEspecialidades(prev => prev.filter(x => x !== e))) : undefined}
                         />
                     </div>

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Patient, FunservConfig } from '../types';
-import { PlusIcon, XIcon, TrashIcon, CalendarIcon, CheckIcon, RepeatIcon, ArrowRightIcon, ClockIcon, UserIcon } from './icons';
+import { PlusIcon, XIcon, TrashIcon, CalendarIcon, CheckIcon, RepeatIcon, ArrowRightIcon, ClockIcon } from './icons';
 import { DEFAULT_ORIGINS } from '../constants';
 
 interface PatientFormProps {
@@ -12,14 +12,11 @@ interface PatientFormProps {
     profissionais: string[];
     especialidades: string[];
     onAddConvenio?: (convenio: string) => void;
-    onAddProfissional?: (profissional: string) => void;
     onAddEspecialidade?: (especialidade: string) => void;
     onRemoveConvenio?: (convenio: string) => void;
-    onRemoveProfissional?: (profissional: string) => void;
     onRemoveEspecialidade?: (especialidade: string) => void;
-    // NOVO: Para profissionais, trava o nome deles
+    // Para profissionais, trava o nome deles
     lockedProfessional?: string;
-    hideProfessionalAdd?: boolean;
     hideEspecialidadeAdd?: boolean;
     hideProntuario?: boolean;
 }
@@ -39,19 +36,17 @@ const Chip = ({ text, onRemove }: { text: string, onRemove: () => void }) => (
 
 export const PatientForm: React.FC<PatientFormProps> = ({
     editingPatient, onSave, onClear, convenios, profissionais, especialidades,
-    onAddConvenio, onAddProfissional, onAddEspecialidade,
-    onRemoveConvenio, onRemoveProfissional, onRemoveEspecialidade,
-    lockedProfessional, hideProfessionalAdd, hideEspecialidadeAdd, hideProntuario
+    onAddConvenio, onAddEspecialidade,
+    onRemoveConvenio, onRemoveEspecialidade,
+    lockedProfessional, hideEspecialidadeAdd, hideProntuario
 }) => {
     const [formData, setFormData] = useState<Patient>(emptyPatient);
     const [activeTab, setActiveTab] = useState<'cadastro' | 'prontuario'>('cadastro');
 
     // States for adding new items
-    const [novoProfissional, setNovoProfissional] = useState('');
     const [novaEspecialidade, setNovaEspecialidade] = useState('');
 
     // States for the select dropdowns
-    const [selectedProfissional, setSelectedProfissional] = useState('');
     const [selectedEspecialidade, setSelectedEspecialidade] = useState('');
     const [selectedConvenio, setSelectedConvenio] = useState('');
 
@@ -63,7 +58,12 @@ export const PatientForm: React.FC<PatientFormProps> = ({
     const [apptRecurrence, setApptRecurrence] = useState('none'); // none, weekly, biweekly, monthly
 
     useEffect(() => {
-        setFormData(editingPatient ? { ...editingPatient } : { ...emptyPatient });
+        const nextPatient = editingPatient ? { ...editingPatient } : { ...emptyPatient };
+        if (!editingPatient && lockedProfessional) {
+            nextPatient.profissionais = [lockedProfessional];
+            nextPatient.primaryPsychologist = lockedProfessional;
+        }
+        setFormData(nextPatient);
         setActiveTab('cadastro'); // Reset tab on new patient load
         if (editingPatient?.convenio) {
             setSelectedConvenio(editingPatient.convenio);
@@ -73,7 +73,7 @@ export const PatientForm: React.FC<PatientFormProps> = ({
         // Reset scheduling fields when form resets
         setScheduleInitial(false);
         setApptRecurrence('none');
-    }, [editingPatient]);
+    }, [editingPatient, lockedProfessional]);
 
     // Atualiza o profissional do agendamento se adicionar um ao paciente
     useEffect(() => {
@@ -196,15 +196,6 @@ export const PatientForm: React.FC<PatientFormProps> = ({
                 : prev.profissionais;
             return { ...prev, [role]: value || undefined, profissionais: professionals };
         });
-    };
-
-    const removeProfessionalFromPatient = (professional: string) => {
-        setFormData(prev => ({
-            ...prev,
-            profissionais: prev.profissionais.filter(p => p !== professional),
-            primaryPsychologist: prev.primaryPsychologist === professional ? undefined : prev.primaryPsychologist,
-            neuropsychologist: prev.neuropsychologist === professional ? undefined : prev.neuropsychologist,
-        }));
     };
 
     const parseISODate = (iso?: string): Date | null => {
@@ -420,67 +411,6 @@ export const PatientForm: React.FC<PatientFormProps> = ({
                         </div>
                     </div>
 
-                    <div>
-                        <label className="block text-sm font-medium text-slate-400 mb-1">Profissionais vinculados</label>
-                        {lockedProfessional ? (
-                            // Modo travado: apenas mostra o nome do profissional
-                            <div className="bg-slate-900/70 border border-slate-600 rounded-lg px-4 py-3 text-white font-medium flex items-center gap-2">
-                                <UserIcon className="w-4 h-4 text-sky-400" />
-                                {lockedProfessional}
-                                <span className="text-xs text-slate-500 ml-auto">(atribuído automaticamente)</span>
-                            </div>
-                        ) : (
-                            <>
-                                <div className="flex gap-2 mb-2">
-                                    <select
-                                        id="profissional-select"
-                                        value={selectedProfissional}
-                                        onChange={(e) => setSelectedProfissional(e.target.value)}
-                                        className="flex-1 w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition"
-                                    >
-                                        <option value="">Selecione para adicionar ou excluir...</option>
-                                        {profissionais.map(p => <option key={p} value={p}>{p}</option>)}
-                                    </select>
-                                    {onRemoveProfissional && (
-                                        <button
-                                            type="button"
-                                            title="Excluir profissional selecionado da lista de opções"
-                                            onClick={() => {
-                                                if (selectedProfissional) {
-                                                    onRemoveProfissional(selectedProfissional);
-                                                    setSelectedProfissional('');
-                                                }
-                                            }}
-                                            className="bg-slate-700 hover:bg-red-900/50 hover:text-red-300 text-slate-200 px-3 rounded-lg text-sm transition"
-                                        >
-                                            <TrashIcon className="w-4 h-4" />
-                                        </button>
-                                    )}
-                                    <button
-                                        type="button"
-                                        title="Adicionar profissional ao paciente"
-                                        onClick={() => {
-                                            if (selectedProfissional) {
-                                                handleAddItem(formData.profissionais, (p) => setFormData(prev => ({ ...prev, profissionais: p })), selectedProfissional);
-                                            }
-                                        }}
-                                        className="bg-sky-600 hover:bg-sky-500 text-white font-semibold px-4 rounded-lg text-sm transition"
-                                    >
-                                        Adicionar
-                                    </button>
-                                </div>
-                                {!hideProfessionalAdd && onAddProfissional && (
-                                    <div className="flex gap-2">
-                                        <input type="text" value={novoProfissional} onChange={(e) => setNovoProfissional(e.target.value)} placeholder="Criar novo profissional (Digite e clique em +)" className="flex-1 w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition" />
-                                        <button type="button" onClick={() => { if (novoProfissional) { onAddProfissional(novoProfissional); setNovoProfissional(''); } }} className="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 rounded-lg text-sm transition"><PlusIcon className="w-4 h-4" /></button>
-                                    </div>
-                                )}
-                                <div className="flex flex-wrap gap-2 mt-2">
-                                    {formData.profissionais.map((p: string) => <span key={p}><Chip text={p} onRemove={() => removeProfessionalFromPatient(p)} /></span>)}
-                                </div>
-                            </>
-                        )}
-                    </div>
 
                     <div>
                         <label className="block text-sm font-medium text-slate-400 mb-1">Especialidades</label>
