@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Appointment, Patient, UserProfile, ConvenioConfig } from '../types';
+import { Appointment, Patient, UserProfile, ConvenioConfig, AppointmentClinicalType } from '../types';
 import { CalendarIcon, PlusIcon, TrashIcon, CheckIcon, EditIcon, ChevronLeftIcon, ChevronRightIcon, XIcon } from './icons';
 import useLocalStorage from '../hooks/useLocalStorage';
 import { buildSeriesId } from '../utils/googleRecurrence';
@@ -27,6 +27,14 @@ const DAY_END_HOUR = 20;
 const SLOT_STEP_MIN = 15;
 const PX_PER_MIN = 1.2; // altura do bloco (ajuste fino visual)
 const DURATION_OPTIONS_MIN = [15, 30, 45, 60, 75, 90];
+const SESSION_TYPE_OPTIONS: AppointmentClinicalType[] = [
+    'Psicoterapia',
+    'Avaliação Neuro',
+    'Testagem',
+    'Devolutiva Neuro',
+    'ABA',
+    'Outro',
+];
 
 const formatDurationLabel = (minutes: number) => {
     if (minutes < 60) return `${minutes} min`;
@@ -314,17 +322,61 @@ const nextMonthlyDateFrom = (templateDateISO: string, selectedDateISO: string): 
     return toISODateValue(next);
 };
 
+const isNeuroSessionType = (sessionType?: AppointmentClinicalType): boolean =>
+    sessionType === 'Avaliação Neuro' || sessionType === 'Testagem' || sessionType === 'Devolutiva Neuro';
+
+const findMatchingProfessional = (target: string | undefined, professionals: string[] = []): string => {
+    const key = normalizeStr((target || '').trim());
+    if (!key) return '';
+    return professionals.find(professional => {
+        const proKey = normalizeStr(professional || '');
+        const baseKey = normalizeStr((professional || '').split(' - ')[0] || '');
+        return proKey === key || baseKey === key || proKey.includes(key) || key.includes(baseKey);
+    }) || target || '';
+};
+
+const professionalNamesMatch = (left?: string, right?: string): boolean => {
+    const leftKey = normalizeStr(left || '');
+    const rightKey = normalizeStr(right || '');
+    const leftBase = normalizeStr((left || '').split(' - ')[0] || '');
+    const rightBase = normalizeStr((right || '').split(' - ')[0] || '');
+    if (!leftKey || !rightKey) return false;
+    return leftKey === rightKey || leftBase === rightBase || leftKey.includes(rightBase) || rightKey.includes(leftBase);
+};
+
+export const getPatientRoleProfessional = (
+    patient: Patient,
+    sessionType?: AppointmentClinicalType
+): string => {
+    const professionals = patient.profissionais || [];
+    if (isNeuroSessionType(sessionType)) {
+        return findMatchingProfessional(patient.neuropsychologist, professionals)
+            || findMatchingProfessional(patient.primaryPsychologist, professionals)
+            || professionals[0]
+            || '';
+    }
+
+    return findMatchingProfessional(patient.primaryPsychologist, professionals)
+        || professionals[0]
+        || findMatchingProfessional(patient.neuropsychologist, professionals)
+        || '';
+};
+
 export const getPatientScheduleSuggestion = (
     patient: Patient,
     allAppointments: Appointment[],
-    selectedDateISO: string
+    selectedDateISO: string,
+    sessionType?: AppointmentClinicalType
 ): { profissional?: string; date?: string; time?: string; recurrence?: 'none' | 'weekly' | 'biweekly' | 'monthly' } => {
     const patientAppointments = allAppointments
         .filter(a => a.patientId === patient.id)
         .sort((a, b) => (b.date + 'T' + b.time).localeCompare(a.date + 'T' + a.time));
 
-    const linkedProfessional = patient.profissionais?.[0] || '';
-    const recurringAppointment = patientAppointments.find(a => getEffectiveAppointmentRecurrence(a, allAppointments) !== 'none');
+    const linkedProfessional = getPatientRoleProfessional(patient, sessionType);
+    const recurringAppointment = patientAppointments.find(a =>
+        getEffectiveAppointmentRecurrence(a, allAppointments) !== 'none'
+        && (!linkedProfessional || professionalNamesMatch(a.profissional, linkedProfessional))
+    ) || (!sessionType ? patientAppointments.find(a => getEffectiveAppointmentRecurrence(a, allAppointments) !== 'none') : undefined);
 
     if (!recurringAppointment) {
         return { profissional: linkedProfessional || patientAppointments[0]?.profissional };
@@ -412,6 +464,7 @@ export const Agenda: React.FC<AgendaProps> = ({
     const [formDate, setFormDate] = useState('');
     const [time, setTime] = useState('08:00');
     const [type, setType] = useState<'Convênio' | 'Particular'>('Convênio');
+    const [sessionType, setSessionType] = useState<AppointmentClinicalType>('Psicoterapia');
     const [durationMin, setDurationMin] = useState<number>(45);
     const [price, setPrice] = useState<number | ''>('');
     const [obs, setObs] = useState('');
@@ -509,9 +562,9 @@ export const Agenda: React.FC<AgendaProps> = ({
         return convenios.find(c => (c.name || '').toLowerCase().trim() === name.toLowerCase().trim()) || null;
     };
 
-    const applyPatientScheduleSuggestion = (patient: Patient) => {
+    const applyPatientScheduleSuggestion = (patient: Patient, nextSessionType: AppointmentClinicalType = sessionType) => {
         if (formId) return;
-        const suggestion = getPatientScheduleSuggestion(patient, appointments, formDate || selectedDate || new Date().toISOString().split('T')[0]);
+        const suggestion = getPatientScheduleSuggestion(patient, appointments, formDate || selectedDate || new Date().toISOString().split('T')[0], nextSessionType);
 
         if (suggestion.profissional && currentUser?.role !== 'professional') {
             setFormProfissional(suggestion.profissional);
@@ -531,6 +584,7 @@ export const Agenda: React.FC<AgendaProps> = ({
             setDurationMin(45);
             setPrice('');
             setFormConvenioName('');
+            setSessionType('Psicoterapia');
             if (selectedDate && !selectedSlot) setFormDate(selectedDate);
         }
     }, [showForm, formId, selectedDate, selectedSlot]);
@@ -589,6 +643,7 @@ export const Agenda: React.FC<AgendaProps> = ({
             time,
             type,
             convenioName: type === 'Convênio' ? effectiveConvenioName : undefined,
+            sessionType,
             status: 'Agendado',
             obs: suffix ? (obs ? `${obs} (${suffix})` : suffix) : obs,
             durationMin: effectiveDuration,
@@ -646,6 +701,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                         time: updatedSingle.time,
                         type: updatedSingle.type,
                         convenioName: updatedSingle.convenioName,
+                        sessionType: updatedSingle.sessionType,
                         obs: updatedSingle.obs,
                         durationMin: updatedSingle.durationMin,
                         price: updatedSingle.price
@@ -730,6 +786,7 @@ export const Agenda: React.FC<AgendaProps> = ({
         setFormProfissional('');
         setFormConvenioName('');
         setType('Convênio');
+        setSessionType('Psicoterapia');
         setDurationMin(45);
         setPrice('');
         setEditApplyScope('single');
@@ -747,6 +804,7 @@ export const Agenda: React.FC<AgendaProps> = ({
         setFormDate(appt.date);
         setTime(appt.time);
         setType(appt.type);
+        setSessionType(appt.sessionType || 'Psicoterapia');
         setDurationMin(appt.durationMin || 45);
         setPrice(typeof appt.price === 'number' ? appt.price : '');
         setObs(appt.obs || '');
@@ -1494,16 +1552,39 @@ export const Agenda: React.FC<AgendaProps> = ({
                                 )}
                             </div>
 
-                            <select
-                                required
-                                value={currentUser?.role === 'professional' && currentUser?.name ? (profissionais.find(p => p.toLowerCase().includes(currentUser.name.toLowerCase()) || currentUser.name.toLowerCase().includes(p.toLowerCase().split(' - ')[0])) || formProfissional) : formProfissional}
-                                onChange={e => setFormProfissional(e.target.value)}
-                                disabled={currentUser?.role === 'professional'}
-                                className={`w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white ${currentUser?.role === 'professional' ? 'opacity-50 cursor-not-allowed' : ''}`}
-                            >
-                                <option value="">Selecione o profissional...</option>
-                                {profissionais.map(p => <option key={p} value={p}>{p}</option>)}
-                            </select>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-[11px] text-slate-400 mb-1">Tipo de sessão</label>
+                                    <select
+                                        value={sessionType}
+                                        onChange={e => {
+                                            const nextSessionType = e.target.value as AppointmentClinicalType;
+                                            setSessionType(nextSessionType);
+                                            const patient = patients.find(p => p.id === selectedPatientId);
+                                            if (patient && !formId && currentUser?.role !== 'professional') {
+                                                applyPatientScheduleSuggestion(patient, nextSessionType);
+                                            }
+                                        }}
+                                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white"
+                                    >
+                                        {SESSION_TYPE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
+                                    </select>
+                                    <p className="text-[10px] text-slate-500 mt-1">Sugere psicólogo ou neuro conforme o vínculo do paciente.</p>
+                                </div>
+                                <div>
+                                    <label className="block text-[11px] text-slate-400 mb-1">Profissional</label>
+                                    <select
+                                        required
+                                        value={currentUser?.role === 'professional' && currentUser?.name ? (profissionais.find(p => p.toLowerCase().includes(currentUser.name.toLowerCase()) || currentUser.name.toLowerCase().includes(p.toLowerCase().split(' - ')[0])) || formProfissional) : formProfissional}
+                                        onChange={e => setFormProfissional(e.target.value)}
+                                        disabled={currentUser?.role === 'professional'}
+                                        className={`w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white ${currentUser?.role === 'professional' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                    >
+                                        <option value="">Selecione o profissional...</option>
+                                        {profissionais.map(p => <option key={p} value={p}>{p}</option>)}
+                                    </select>
+                                </div>
+                            </div>
 
                             <div className="grid grid-cols-2 gap-3">
                                 <div>

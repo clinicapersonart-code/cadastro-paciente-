@@ -63,7 +63,11 @@ export const PatientTable: React.FC<PatientTableProps> = ({ patients, onEdit, on
                             <td className="px-6 py-4">{p.origem || '-'}</td>
                             <td className="px-6 py-4">
                                 <div className="flex flex-wrap gap-1">
-                                    {p.profissionais.map(pro => <span key={pro} className="bg-slate-700 text-slate-300 text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap">{pro}</span>)}
+                                    {p.primaryPsychologist && <span className="bg-sky-900/60 text-sky-200 text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap">Psico: {p.primaryPsychologist.split(' - ')[0]}</span>}
+                                    {p.neuropsychologist && <span className="bg-purple-900/60 text-purple-200 text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap">Neuro: {p.neuropsychologist.split(' - ')[0]}</span>}
+                                    {p.profissionais
+                                        .filter(pro => pro !== p.primaryPsychologist && pro !== p.neuropsychologist)
+                                        .map(pro => <span key={pro} className="bg-slate-700 text-slate-300 text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap">{pro}</span>)}
                                 </div>
                             </td>
                             <td className="px-6 py-4">

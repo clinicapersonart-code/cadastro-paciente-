@@ -19,6 +19,14 @@ export interface FunservConfig {
   dataAutorizacao?: string;
 }
 
+export type AppointmentClinicalType =
+  | 'Psicoterapia'
+  | 'Avaliação Neuro'
+  | 'Testagem'
+  | 'Devolutiva Neuro'
+  | 'ABA'
+  | 'Outro';
+
 export interface Patient {
   id: string;
   nome: string;
@@ -34,6 +42,8 @@ export interface Patient {
   data_autorizacao?: string;
   tipoAtendimento?: 'Convencional' | 'ABA' | '';
   profissionais: string[];
+  primaryPsychologist?: string;
+  neuropsychologist?: string;
   especialidades: string[];
   crm?: string;
   origem?: string;
@@ -62,6 +72,7 @@ export interface Appointment {
   time: string;
   type: 'Convênio' | 'Particular';
   convenioName?: string;
+  sessionType?: AppointmentClinicalType;
   professionalEmail?: string;
   patientResponsavel?: string;
   patientContato?: string;

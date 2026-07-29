@@ -159,7 +159,16 @@ export const PatientForm: React.FC<PatientFormProps> = ({
             };
         }
 
-        onSave(formData, initialAppointment);
+        const patientToSubmit: Patient = {
+            ...formData,
+            profissionais: [
+                ...formData.profissionais,
+                formData.primaryPsychologist || '',
+                formData.neuropsychologist || '',
+            ].filter((value, index, arr): value is string => !!value && arr.indexOf(value) === index),
+        };
+
+        onSave(patientToSubmit, initialAppointment);
     };
 
     const handleAddItem = (
@@ -178,6 +187,24 @@ export const PatientForm: React.FC<PatientFormProps> = ({
         item: string
     ) => {
         setter(list.filter(i => i !== item));
+    };
+
+    const setRoleProfessional = (role: 'primaryPsychologist' | 'neuropsychologist', value: string) => {
+        setFormData(prev => {
+            const professionals = value && !prev.profissionais.includes(value)
+                ? [...prev.profissionais, value]
+                : prev.profissionais;
+            return { ...prev, [role]: value || undefined, profissionais: professionals };
+        });
+    };
+
+    const removeProfessionalFromPatient = (professional: string) => {
+        setFormData(prev => ({
+            ...prev,
+            profissionais: prev.profissionais.filter(p => p !== professional),
+            primaryPsychologist: prev.primaryPsychologist === professional ? undefined : prev.primaryPsychologist,
+            neuropsychologist: prev.neuropsychologist === professional ? undefined : prev.neuropsychologist,
+        }));
     };
 
     const parseISODate = (iso?: string): Date | null => {
@@ -358,8 +385,43 @@ export const PatientForm: React.FC<PatientFormProps> = ({
                         </div>
                     </div>
 
+                    <div className="bg-slate-900/40 border border-slate-700 rounded-xl p-4 space-y-3">
+                        <div>
+                            <h3 className="text-sm font-bold text-slate-200">Profissionais por papel</h3>
+                            <p className="text-xs text-slate-500 mt-1">Esses campos guiam a sugestão automática na agenda. Dá para trocar manualmente em cada agendamento.</p>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label htmlFor="primaryPsychologist" className="block text-sm font-medium text-slate-400 mb-1">Psicólogo responsável</label>
+                                <select
+                                    id="primaryPsychologist"
+                                    value={formData.primaryPsychologist || ''}
+                                    onChange={(e) => setRoleProfessional('primaryPsychologist', e.target.value)}
+                                    disabled={!!lockedProfessional}
+                                    className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition disabled:opacity-60"
+                                >
+                                    <option value="">Selecione...</option>
+                                    {profissionais.map(p => <option key={p} value={p}>{p}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label htmlFor="neuropsychologist" className="block text-sm font-medium text-slate-400 mb-1">Neuropsicólogo</label>
+                                <select
+                                    id="neuropsychologist"
+                                    value={formData.neuropsychologist || ''}
+                                    onChange={(e) => setRoleProfessional('neuropsychologist', e.target.value)}
+                                    disabled={!!lockedProfessional}
+                                    className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition disabled:opacity-60"
+                                >
+                                    <option value="">Opcional...</option>
+                                    {profissionais.map(p => <option key={p} value={p}>{p}</option>)}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
                     <div>
-                        <label className="block text-sm font-medium text-slate-400 mb-1">Profissionais</label>
+                        <label className="block text-sm font-medium text-slate-400 mb-1">Profissionais vinculados</label>
                         {lockedProfessional ? (
                             // Modo travado: apenas mostra o nome do profissional
                             <div className="bg-slate-900/70 border border-slate-600 rounded-lg px-4 py-3 text-white font-medium flex items-center gap-2">
@@ -414,7 +476,7 @@ export const PatientForm: React.FC<PatientFormProps> = ({
                                     </div>
                                 )}
                                 <div className="flex flex-wrap gap-2 mt-2">
-                                    {formData.profissionais.map((p: string) => <span key={p}><Chip text={p} onRemove={() => handleRemoveItem(formData.profissionais, (pro) => setFormData(prev => ({ ...prev, profissionais: pro })), p)} /></span>)}
+                                    {formData.profissionais.map((p: string) => <span key={p}><Chip text={p} onRemove={() => removeProfessionalFromPatient(p)} /></span>)}
                                 </div>
                             </>
                         )}

@@ -128,4 +128,24 @@ describe('agenda recurring edit helpers', () => {
       recurrence: 'weekly',
     });
   });
+
+  test('suggests psychologist or neuropsychologist according to session type', () => {
+    const patient = makePatient({
+      profissionais: ['Bruno Alexandre - CRP 181006', 'Drieli Guimaraes Thimoteo'],
+      primaryPsychologist: 'Bruno Alexandre - CRP 181006',
+      neuropsychologist: 'Drieli Guimaraes Thimoteo',
+    });
+
+    expect(getPatientScheduleSuggestion(patient, [], '2026-07-15', 'Psicoterapia')).toEqual({
+      profissional: 'Bruno Alexandre - CRP 181006',
+    });
+
+    expect(getPatientScheduleSuggestion(patient, [], '2026-07-15', 'Avaliação Neuro')).toEqual({
+      profissional: 'Drieli Guimaraes Thimoteo',
+    });
+
+    expect(getPatientScheduleSuggestion(patient, [], '2026-07-15', 'Testagem')).toEqual({
+      profissional: 'Drieli Guimaraes Thimoteo',
+    });
+  });
 });
