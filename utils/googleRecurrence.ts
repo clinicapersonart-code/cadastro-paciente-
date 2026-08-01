@@ -26,12 +26,15 @@ export const buildGoogleRecurrenceRule = (
   recurrence: AppointmentRecurrence | undefined,
   _startDate: string,
   endDate?: string,
+  openEnded = false,
 ): string | undefined => {
   if (!recurrence || recurrence === 'none') return undefined;
-  if (!endDate) throw new Error('Informe a data final da recorrência para sincronizar com o Google Agenda.');
 
   const config = INTERVAL_BY_RECURRENCE[recurrence];
-  return `RRULE:FREQ=${config.freq};INTERVAL=${config.interval};UNTIL=${normalizeDateForUntil(endDate)}`;
+  const baseRule = `RRULE:FREQ=${config.freq};INTERVAL=${config.interval}`;
+  if (openEnded) return baseRule;
+  if (!endDate) throw new Error('Informe a data final da recorrência para sincronizar com o Google Agenda.');
+  return `${baseRule};UNTIL=${normalizeDateForUntil(endDate)}`;
 };
 
 export const isRecurringAppointment = (appointment: Pick<Appointment, 'recurrence' | 'seriesId'>): boolean => (

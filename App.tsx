@@ -9,6 +9,7 @@ import { groupPendingScheduleChangeRequests, formatScheduleDate } from './utils/
 import { buildPatientDataForActiveToggle, deletePatientFromCloud, persistPatientActiveToggle } from './utils/patientPersistence';
 import { getPatientAccessMode, listPatientsVisibleToUser } from './utils/patientAccess';
 import { buildInitialAppointmentsForPatient, preCadastroToInitialAppointment, type InitialAppointmentInput } from './utils/patientInitialAppointment';
+import { buildOpenEndedRecurrenceExtensions } from './utils/openEndedRecurrence';
 import { PatientForm } from './components/PatientForm';
 import { PatientTable } from './components/PatientTable';
 import { Agenda } from './components/Agenda';
@@ -582,6 +583,34 @@ const App: React.FC = () => {
     };
 
     const withGooglePayloadDetails = (appt: Appointment): Appointment => withProfessionalEmail(withPatientGoogleDetails(appt));
+
+    useEffect(() => {
+        const extensions = buildOpenEndedRecurrenceExtensions(appointments);
+        if (!extensions.length) return;
+
+        const enrichedExtensions = extensions.map(appt => withGooglePayloadDetails(appt));
+        setAppointments(prev => {
+            const existingIds = new Set(prev.map(appt => appt.id));
+            const missing = enrichedExtensions.filter(appt => !existingIds.has(appt.id));
+            return missing.length ? [...prev, ...missing] : prev;
+        });
+
+        if (supabase && connectionStatus !== 'offline') {
+            const records = enrichedExtensions.map(a => ({
+                id: a.id,
+                date: a.date,
+                patient_id: a.patientId,
+                status: a.status,
+                carteirinha: a.carteirinha || '',
+                numero_autorizacao: a.numero_autorizacao || '',
+                data_autorizacao: a.data_autorizacao || null,
+                data: JSON.parse(JSON.stringify(a))
+            }));
+            supabase.from('appointments').upsert(records).then(({ error }) => {
+                if (error) console.error('Erro ao renovar recorrência sem prazo:', error);
+            });
+        }
+    }, [appointments, patients, users, connectionStatus, setAppointments]);
 
     const syncAppointmentWithGoogle = async (appt: Appointment, action: 'upsert' | 'delete', deleteScope: 'single' | 'all' = 'single') => {
         try {

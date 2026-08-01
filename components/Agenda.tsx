@@ -3,6 +3,7 @@ import { Appointment, Patient, UserProfile, ConvenioConfig, AppointmentClinicalT
 import { CalendarIcon, PlusIcon, TrashIcon, CheckIcon, EditIcon, ChevronLeftIcon, ChevronRightIcon, XIcon } from './icons';
 import useLocalStorage from '../hooks/useLocalStorage';
 import { buildSeriesId } from '../utils/googleRecurrence';
+import { buildRecurringAppointmentDates, ROLLING_RECURRENCE_MONTHS_AHEAD } from '../utils/openEndedRecurrence';
 import { listImportCandidates, type ImportCandidate } from '../services/googleCalendarImport';
 import { groupImportCandidates, type ImportSeriesGroup } from '../utils/googleCalendarGrouping';
 import { getGoogleImportRange, GOOGLE_IMPORT_MONTHS_AHEAD } from '../utils/googleCalendarImportRange';
@@ -282,6 +283,7 @@ export const preserveRecurrenceMetadata = (updated: Appointment, original?: Appo
         ...updated,
         seriesId: original.seriesId ?? updated.seriesId,
         recurrence: original.recurrence ?? updated.recurrence,
+        recurrenceOpenEnded: original.recurrenceOpenEnded ?? updated.recurrenceOpenEnded,
         recurrenceEndDate: original.recurrenceEndDate ?? updated.recurrenceEndDate,
         recurrenceIndex: original.recurrenceIndex ?? updated.recurrenceIndex,
         isSeriesMaster: original.isSeriesMaster ?? updated.isSeriesMaster,
@@ -469,6 +471,7 @@ export const Agenda: React.FC<AgendaProps> = ({
     const [price, setPrice] = useState<number | ''>('');
     const [obs, setObs] = useState('');
     const [recurrence, setRecurrence] = useState<'none' | 'weekly' | 'biweekly' | 'monthly'>('none');
+    const [recurrenceOpenEnded, setRecurrenceOpenEnded] = useState(false);
     const [recurrenceEndDate, setRecurrenceEndDate] = useState<string>('');
 
     // Edição: aplicar recorrência na edição
@@ -580,6 +583,7 @@ export const Agenda: React.FC<AgendaProps> = ({
         if (showForm && !formId) {
             setObs('');
             setRecurrence('none');
+            setRecurrenceOpenEnded(false);
             setRecurrenceEndDate('');
             setDurationMin(45);
             setPrice('');
@@ -721,49 +725,37 @@ export const Agenda: React.FC<AgendaProps> = ({
         const seriesId = recurrence !== 'none'
             ? buildSeriesId(patient.id, effectiveProfissional, formDate, time)
             : undefined;
-        const [y, m, d] = formDate.split('-').map(Number);
-        const currentDateCalculator = new Date(y, m - 1, d);
-        
-        let totalToCreate = 1;
-        const intervalDays = recurrence === 'weekly' ? 7 : recurrence === 'biweekly' ? 14 : 30;
 
-        if (recurrence !== 'none') {
-            if (recurrenceEndDate) {
-                const [ey, em, ed] = recurrenceEndDate.split('-').map(Number);
-                const endCalcDate = new Date(ey, em - 1, ed);
-                const diffTime = endCalcDate.getTime() - currentDateCalculator.getTime();
-                if (diffTime < 0) {
-                    alert('A data de término não pode ser anterior à data de início.');
-                    return;
-                }
-                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                totalToCreate = Math.floor(diffDays / intervalDays) + 1;
-                if (totalToCreate > 104) totalToCreate = 104; // Max ~2 anos
-            } else {
-                totalToCreate = recurrence === 'weekly' ? 24 : 12; // Default ~6 meses
+        if (recurrence !== 'none' && !recurrenceOpenEnded && recurrenceEndDate) {
+            const [sy, sm, sd] = formDate.split('-').map(Number);
+            const [ey, em, ed] = recurrenceEndDate.split('-').map(Number);
+            const startCalcDate = new Date(sy, sm - 1, sd);
+            const endCalcDate = new Date(ey, em - 1, ed);
+            if (endCalcDate.getTime() < startCalcDate.getTime()) {
+                alert('A data de término não pode ser anterior à data de início.');
+                return;
             }
         }
 
-        for (let i = 0; i < totalToCreate; i++) {
-            const cy = currentDateCalculator.getFullYear();
-            const cm = String(currentDateCalculator.getMonth() + 1).padStart(2, '0');
-            const cd = String(currentDateCalculator.getDate()).padStart(2, '0');
-            const isoDate = `${cy}-${cm}-${cd}`;
+        const recurringDates = buildRecurringAppointmentDates(formDate, recurrence, {
+            endDate: recurrenceOpenEnded ? undefined : recurrenceEndDate,
+            openEnded: recurrenceOpenEnded,
+            windowStartDate: formDate,
+            monthsAhead: ROLLING_RECURRENCE_MONTHS_AHEAD,
+            maxOccurrences: 160,
+        });
 
+        for (const [i, isoDate] of recurringDates.entries()) {
             const suffix = (recurrence !== 'none' && i > 0) ? `Sessão ${i + 1}` : '';
             newBatch.push(createAppointmentObj(isoDate, undefined, suffix, i));
-
-            if (recurrence !== 'none') {
-                if (recurrence === 'monthly') currentDateCalculator.setMonth(currentDateCalculator.getMonth() + 1);
-                else currentDateCalculator.setDate(currentDateCalculator.getDate() + intervalDays);
-            }
         }
 
         if (recurrence !== 'none' && seriesId && newBatch.length > 0) {
-            const effectiveRecurrenceEndDate = recurrenceEndDate || newBatch[newBatch.length - 1].date;
+            const effectiveRecurrenceEndDate = newBatch[newBatch.length - 1].date;
             newBatch.forEach((appt, index) => {
                 appt.seriesId = seriesId;
                 appt.recurrence = recurrence;
+                appt.recurrenceOpenEnded = recurrenceOpenEnded;
                 appt.recurrenceEndDate = effectiveRecurrenceEndDate;
                 appt.recurrenceIndex = index;
                 appt.isSeriesMaster = index === 0;
@@ -789,6 +781,8 @@ export const Agenda: React.FC<AgendaProps> = ({
         setSessionType('Psicoterapia');
         setDurationMin(45);
         setPrice('');
+        setRecurrenceOpenEnded(false);
+        setRecurrenceEndDate('');
         setEditApplyScope('single');
         setEditRecurrence('none');
     };
@@ -1666,7 +1660,13 @@ export const Agenda: React.FC<AgendaProps> = ({
                                             <button
                                                 key={r}
                                                 type="button"
-                                                onClick={() => setRecurrence(r)}
+                                                onClick={() => {
+                                                    setRecurrence(r);
+                                                    if (r === 'none') {
+                                                        setRecurrenceOpenEnded(false);
+                                                        setRecurrenceEndDate('');
+                                                    }
+                                                }}
                                                 className={`flex-1 py-2 text-xs rounded-lg transition ${recurrence === r ? 'bg-sky-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
                                                     }`}
                                             >
@@ -1684,15 +1684,33 @@ export const Agenda: React.FC<AgendaProps> = ({
                                         </p>
                                     )}
                                     {recurrence !== 'none' && (
-                                        <div className="flex items-center gap-2 mt-2">
-                                            <span className="text-xs text-slate-400">Até</span>
-                                            <input
-                                                type="date"
-                                                min={formDate}
-                                                value={recurrenceEndDate}
-                                                onChange={e => setRecurrenceEndDate(e.target.value)}
-                                                className="flex-1 bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-sm text-white"
-                                            />
+                                        <div className="space-y-2 mt-2">
+                                            <label className="flex items-start gap-2 rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={recurrenceOpenEnded}
+                                                    onChange={e => {
+                                                        setRecurrenceOpenEnded(e.target.checked);
+                                                        if (e.target.checked) setRecurrenceEndDate('');
+                                                    }}
+                                                    className="mt-0.5 accent-sky-500"
+                                                />
+                                                <span>
+                                                    <span className="block text-xs font-semibold text-slate-200">Sem prazo — até encerrar</span>
+                                                    <span className="block text-[11px] text-slate-500">O Google fica recorrente sem data final; o sistema mantém os próximos {ROLLING_RECURRENCE_MONTHS_AHEAD} meses e renova sozinho.</span>
+                                                </span>
+                                            </label>
+                                            <div className={`flex items-center gap-2 ${recurrenceOpenEnded ? 'opacity-50' : ''}`}>
+                                                <span className="text-xs text-slate-400">Até</span>
+                                                <input
+                                                    type="date"
+                                                    min={formDate}
+                                                    value={recurrenceEndDate}
+                                                    disabled={recurrenceOpenEnded}
+                                                    onChange={e => setRecurrenceEndDate(e.target.value)}
+                                                    className="flex-1 bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-sm text-white disabled:cursor-not-allowed"
+                                                />
+                                            </div>
                                         </div>
                                     )}
                                 </div>
@@ -1701,7 +1719,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                                     <label className="text-xs text-slate-400 font-medium">Repetição da consulta</label>
                                     <p className="text-sm text-slate-200">
                                         {editingRecurringAppointment
-                                            ? `${recurrenceLabel(effectiveFormRecurrence)} — ${originRecurringWeekdayPhrase || formRecurringWeekdayPhrase}`
+                                            ? `${recurrenceLabel(effectiveFormRecurrence)}${formOriginAppointment?.recurrenceOpenEnded ? ' sem prazo' : ''} — ${originRecurringWeekdayPhrase || formRecurringWeekdayPhrase}`
                                             : 'Consulta única, sem repetição.'}
                                     </p>
                                     <p className="text-[11px] text-slate-500">

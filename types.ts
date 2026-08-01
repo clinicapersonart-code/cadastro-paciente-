@@ -88,6 +88,9 @@ export interface Appointment {
   // Série recorrente local + Google RRULE
   seriesId?: string;
   recurrence?: 'none' | 'weekly' | 'biweekly' | 'monthly';
+  // true = série sem prazo; Google usa RRULE sem UNTIL e o sistema mantém janela local rolante.
+  recurrenceOpenEnded?: boolean;
+  // Para séries com prazo: data final real. Para sem prazo: última data local já materializada na janela rolante.
   recurrenceEndDate?: string;
   recurrenceIndex?: number;
   isSeriesMaster?: boolean;

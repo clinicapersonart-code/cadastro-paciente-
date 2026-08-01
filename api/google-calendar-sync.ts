@@ -34,6 +34,7 @@ type AppointmentPayload = {
   obs?: string;
   seriesId?: string;
   recurrence?: 'none' | 'weekly' | 'biweekly' | 'monthly';
+  recurrenceOpenEnded?: boolean;
   recurrenceEndDate?: string;
   recurrenceIndex?: number;
   isSeriesMaster?: boolean;
@@ -145,15 +146,17 @@ function normalizeDateForUntil(date: string) {
   return `${compact}T235959Z`;
 }
 
-function buildGoogleRecurrenceRule(recurrence: AppointmentPayload['recurrence'], endDate?: string) {
+function buildGoogleRecurrenceRule(recurrence: AppointmentPayload['recurrence'], endDate?: string, openEnded = false) {
   if (!recurrence || recurrence === 'none') return undefined;
-  if (!endDate) throw new Error('Informe a data final da recorrência para sincronizar com o Google Agenda.');
 
   const config = recurrence === 'monthly'
     ? { freq: 'MONTHLY', interval: 1 }
     : { freq: 'WEEKLY', interval: recurrence === 'biweekly' ? 2 : 1 };
 
-  return `RRULE:FREQ=${config.freq};INTERVAL=${config.interval};UNTIL=${normalizeDateForUntil(endDate)}`;
+  const baseRule = `RRULE:FREQ=${config.freq};INTERVAL=${config.interval}`;
+  if (openEnded) return baseRule;
+  if (!endDate) throw new Error('Informe a data final da recorrência para sincronizar com o Google Agenda.');
+  return `${baseRule};UNTIL=${normalizeDateForUntil(endDate)}`;
 }
 
 function normalizeEmail(email = '') {
@@ -262,6 +265,8 @@ export function buildEventBody(appointment: AppointmentPayload) {
     .filter(Boolean)
     .join('\n');
 
+  const recurrenceRule = buildGoogleRecurrenceRule(appointment.recurrence, appointment.recurrenceEndDate, appointment.recurrenceOpenEnded);
+
   return {
     summary,
     description,
@@ -281,9 +286,7 @@ export function buildEventBody(appointment: AppointmentPayload) {
         seriesId: appointment.seriesId || '',
       },
     },
-    ...(buildGoogleRecurrenceRule(appointment.recurrence, appointment.recurrenceEndDate)
-      ? { recurrence: [buildGoogleRecurrenceRule(appointment.recurrence, appointment.recurrenceEndDate)] }
-      : {}),
+    ...(recurrenceRule ? { recurrence: [recurrenceRule] } : {}),
     ...(professionalEmail ? { attendees: [{ email: professionalEmail }] } : {}),
   };
 }
