@@ -149,6 +149,7 @@ export interface PreCadastro {
     data: string;
     hora: string;
     frequencia: string;
+    dia?: string;
   }
 }
 

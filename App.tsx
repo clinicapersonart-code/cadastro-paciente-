@@ -8,6 +8,7 @@ import { syncAppointmentToGoogle } from './services/googleCalendarSync';
 import { groupPendingScheduleChangeRequests, formatScheduleDate } from './utils/scheduleRequests';
 import { buildPatientDataForActiveToggle, deletePatientFromCloud, persistPatientActiveToggle } from './utils/patientPersistence';
 import { getPatientAccessMode, listPatientsVisibleToUser } from './utils/patientAccess';
+import { buildInitialAppointmentsForPatient, preCadastroToInitialAppointment, type InitialAppointmentInput } from './utils/patientInitialAppointment';
 import { PatientForm } from './components/PatientForm';
 import { PatientTable } from './components/PatientTable';
 import { Agenda } from './components/Agenda';
@@ -618,7 +619,7 @@ const App: React.FC = () => {
         }
     };
 
-    const handleSavePatient = async (patient: Patient, initialAppointment?: any) => {
+    const handleSavePatient = async (patient: Patient, initialAppointment?: InitialAppointmentInput) => {
         const newPatientId = patient.id || `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
         const isNew = !patients.find(p => p.id === patient.id);
 
@@ -659,27 +660,11 @@ const App: React.FC = () => {
             showToast('Paciente salvo apenas localmente (Offline).', 'info');
         }
 
-        if (initialAppointment) {
-            const newAppt: Appointment = {
-                id: crypto.randomUUID(),
-                patientId: newPatientId,
-                patientName: patientToSave.nome,
-                carteirinha: patientToSave.carteirinha,
-                patientResponsavel: patientToSave.responsavel,
-                patientContato: patientToSave.contato,
-                patientFaixa: patientToSave.faixa,
-                patientNascimento: patientToSave.nascimento,
-                numero_autorizacao: numAut,
-                data_autorizacao: dataAut,
-                profissional: initialAppointment.professional,
-                date: initialAppointment.date,
-                time: initialAppointment.time,
-                type: initialAppointment.type,
-                status: 'Agendado',
-                convenioName: patientToSave.convenio,
-                obs: 'Agendamento Inicial'
-            };
-            await handleAddAppointment(newAppt);
+        const initialAppointments = buildInitialAppointmentsForPatient(patientToSave, initialAppointment);
+        if (initialAppointments.length === 1) {
+            await handleAddAppointment(initialAppointments[0]);
+        } else if (initialAppointments.length > 1) {
+            await handleAddBatchAppointments(initialAppointments);
         }
     };
 
@@ -1948,7 +1933,8 @@ const App: React.FC = () => {
                                 especialidades: [],
                             };
 
-                            await handleSavePatient(newPatient);
+                            const initialAppointment = preCadastroToInitialAppointment(item);
+                            await handleSavePatient(newPatient, initialAppointment);
 
                             // Remove do inbox
                             if (supabase) {
@@ -2280,7 +2266,7 @@ const App: React.FC = () => {
                         </h2>
                         <PatientForm
                             editingPatient={editingPatient}
-                            onSave={(patient) => {
+                            onSave={(patient, initialAppointment) => {
                                 // Para profissionais, auto-atribui o nome deles
                                 if (currentUser?.role === 'professional') {
                                     // Encontra o profissional correspondente na lista
@@ -2290,7 +2276,7 @@ const App: React.FC = () => {
                                     );
                                     patient.profissionais = matchingPro ? [matchingPro] : [currentUser.name];
                                 }
-                                handleSavePatient(patient);
+                                handleSavePatient(patient, initialAppointment);
                                 setEditingPatient(null);
                                 showToast('Paciente cadastrado com sucesso!', 'success');
                             }}

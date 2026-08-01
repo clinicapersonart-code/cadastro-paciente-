@@ -124,14 +124,14 @@ export const Inbox: React.FC<InboxProps> = ({ inbox, onApprove, onDelete }) => {
                                     )}
                                 </div>
 
-                                {item.agendamento?.data && (
+                                {(item.agendamento?.data || item.agendamento?.dia) && (
                                     <div className="bg-slate-900/50 border border-slate-700 rounded-lg p-3 mt-2">
                                         <div className="flex items-center gap-2 text-amber-400 text-xs font-medium mb-1">
                                             <CalendarIcon className="w-4 h-4" />
                                             Sugestão de Agendamento
                                         </div>
                                         <p className="text-slate-300 text-sm">
-                                            {formatDate(item.agendamento.data)} às {item.agendamento.hora || '--:--'}
+                                            {item.agendamento.data ? formatDate(item.agendamento.data) : item.agendamento.dia} às {item.agendamento.hora || '--:--'}
                                             <span className="text-slate-500"> • {item.agendamento.frequencia}</span>
                                         </p>
                                     </div>
