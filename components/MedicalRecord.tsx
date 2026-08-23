@@ -444,7 +444,26 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
         return true;
     };
 
-    // Tentar Groq Cloud (funciona em produção)
+    // Tentar IA via API do servidor (Vercel): evita depender de chave pública no navegador
+    const tryServerAI = async (prompt: string): Promise<boolean> => {
+        try {
+            const response = await fetch('/api/medical-record-ai', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt })
+            });
+
+            if (!response.ok) throw new Error(`Medical record AI API error (${response.status})`);
+
+            const data = await response.json();
+            return processAIResponse(data.content || '');
+        } catch (error) {
+            console.error('Medical record AI API error:', error);
+            return false;
+        }
+    };
+
+    // Fallback legado: Groq direto no navegador, caso exista VITE_GROQ_API_KEY em ambiente antigo
     const tryGroq = async (prompt: string): Promise<boolean> => {
         const apiKey = import.meta.env.VITE_GROQ_API_KEY;
         if (!apiKey) return false;
@@ -499,7 +518,7 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
         }
     };
 
-    // Formatar com IA (tenta Groq primeiro, depois Ollama)
+    // Formatar com IA: servidor em produção, fallbacks para ambientes antigos/dev
     const formatWithAI = async () => {
         if (!quickNotes.trim()) {
             alert('Digite algumas anotações para formatar.');
@@ -510,16 +529,16 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
         const prompt = buildPrompt(quickNotes);
 
         try {
-            // Tenta Groq Cloud primeiro (funciona no Vercel)
+            const serverSuccess = await tryServerAI(prompt);
+            if (serverSuccess) return;
+
             const groqSuccess = await tryGroq(prompt);
             if (groqSuccess) return;
 
-            // Fallback: tenta Ollama local
             const ollamaSuccess = await tryOllama(prompt);
             if (ollamaSuccess) return;
 
-            // Se nenhum funcionou
-            alert('Não foi possível conectar à IA. Verifique sua conexão.');
+            alert('IA indisponível no momento. O texto foi mantido nas anotações para você não perder o registro.');
             setFormattedRecord(prev => ({ ...prev, content: quickNotes }));
         } finally {
             setIsFormatting(false);

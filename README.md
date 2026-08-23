@@ -15,7 +15,9 @@ View your app in AI Studio: https://ai.studio/apps/drive/1tFeDKuTjGf-1jSHXNPtIjk
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+2. Configure as variáveis em [.env.local](.env.local):
+   - `GROQ_API_KEY` para a IA do prontuário via API do servidor
+   - Supabase/Google Agenda conforme necessário
 3. Run the app:
    `npm run dev`
 
