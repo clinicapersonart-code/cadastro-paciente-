@@ -445,7 +445,7 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
     };
 
     // Tentar IA via API do servidor (Vercel): evita depender de chave pública no navegador
-    const tryServerAI = async (prompt: string): Promise<boolean> => {
+    const tryServerAI = async (prompt: string): Promise<{ ok: boolean; error?: string }> => {
         try {
             const response = await fetch('/api/medical-record-ai', {
                 method: 'POST',
@@ -453,13 +453,24 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
                 body: JSON.stringify({ prompt })
             });
 
-            if (!response.ok) throw new Error(`Medical record AI API error (${response.status})`);
+            const raw = await response.text();
+            let data: { content?: string; error?: string } = {};
+            try {
+                data = raw ? JSON.parse(raw) : {};
+            } catch {
+                data = { error: raw.slice(0, 200) };
+            }
 
-            const data = await response.json();
-            return processAIResponse(data.content || '');
+            if (!response.ok) {
+                throw new Error(data.error || `Medical record AI API error (${response.status})`);
+            }
+
+            const success = processAIResponse(data.content || '');
+            return { ok: success };
         } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
             console.error('Medical record AI API error:', error);
-            return false;
+            return { ok: false, error: message };
         }
     };
 
@@ -529,8 +540,8 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
         const prompt = buildPrompt(quickNotes);
 
         try {
-            const serverSuccess = await tryServerAI(prompt);
-            if (serverSuccess) return;
+            const serverResult = await tryServerAI(prompt);
+            if (serverResult.ok) return;
 
             const groqSuccess = await tryGroq(prompt);
             if (groqSuccess) return;
@@ -538,7 +549,8 @@ Responda APENAS em JSON válido neste formato exato (sem markdown, sem explicaç
             const ollamaSuccess = await tryOllama(prompt);
             if (ollamaSuccess) return;
 
-            alert('IA indisponível no momento. O texto foi mantido nas anotações para você não perder o registro.');
+            const detail = serverResult.error ? `\n\nDetalhe técnico: ${serverResult.error}` : '';
+            alert(`IA indisponível no momento. O texto foi mantido nas anotações para você não perder o registro.${detail}`);
             setFormattedRecord(prev => ({ ...prev, content: quickNotes }));
         } finally {
             setIsFormatting(false);
